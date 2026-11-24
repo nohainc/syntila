@@ -114,7 +114,7 @@ void main() {
         .toList();
 
     expect(notifications.map((item) => item.title), [
-      'Workspace offline',
+      'Worker offline',
       'Worker connection expired',
       'Worker connection failed',
       'Invitation received',

@@ -537,9 +537,9 @@ void main() {
         findsOneWidget);
     expect(
         find.text(
-            'Connect Syntila Workspace to make local Workers available to your Spaces.'),
+            'Connect Syntila Connect to make local Workers available to your Spaces.'),
         findsOneWidget);
-    expect(find.text('Connect Workspace →'), findsOneWidget);
+    expect(find.text('Connect Worker →'), findsOneWidget);
 
     // Dashboard sections must NOT appear for new user
     expect(find.text('For you'), findsNothing);
@@ -552,8 +552,8 @@ void main() {
     await tester.tap(find.text('Create Space →'));
     expect(spaceCreated, isTrue);
 
-    await tester.ensureVisible(find.text('Connect Workspace →'));
-    await tester.tap(find.text('Connect Workspace →'));
+    await tester.ensureVisible(find.text('Connect Worker →'));
+    await tester.tap(find.text('Connect Worker →'));
     expect(workspaceOpened, isTrue);
   });
 
@@ -609,9 +609,9 @@ void main() {
         findsOneWidget);
     expect(
         find.text(
-            'Connect Syntila Workspace to make local Workers available to your Spaces.'),
+            'Connect Syntila Connect to make local Workers available to your Spaces.'),
         findsOneWidget);
-    expect(find.text('Connect Workspace →'), findsOneWidget);
+    expect(find.text('Connect Worker →'), findsOneWidget);
 
     // Test accept on first invite
     await tester.tap(find.text('Accept').first);
@@ -626,8 +626,8 @@ void main() {
     expect(spaceCreated, isTrue);
 
     // Test connect workspace
-    await tester.ensureVisible(find.text('Connect Workspace →'));
-    await tester.tap(find.text('Connect Workspace →'));
+    await tester.ensureVisible(find.text('Connect Worker →'));
+    await tester.tap(find.text('Connect Worker →'));
     expect(workspaceOpened, isTrue);
   });
 
@@ -799,7 +799,7 @@ void main() {
       const AxHomeAttentionItem(
         id: 'workspace-prob-1',
         kind: AxAttentionKind.workspaceProblem,
-        categoryLabel: 'Workspace offline',
+        categoryLabel: 'Worker offline',
         title: "Workspace Mac-Mini went offline",
         subtitle: 'Re-connect to enable workers',
         timestampDisplay: '45 min ago',
@@ -854,8 +854,8 @@ void main() {
     expect(find.text('Worker needs attention'), findsOneWidget);
     expect(find.text('ChatGPT Worker authentication expired'), findsOneWidget);
 
-    // Priority 5: Workspace offline (present - total 5 items reached)
-    expect(find.text('Workspace offline'), findsNothing);
+    // Priority 5: Worker offline (present - total 5 items reached)
+    expect(find.text('Worker offline'), findsNothing);
     expect(find.text("Workspace Mac-Mini went offline"), findsNothing);
 
     // Priority 6 & lower items past limit of 5:
@@ -2215,7 +2215,7 @@ void main() {
 
     // Section 1: For You - present
     expect(find.text('For you'), findsOneWidget);
-    expect(find.text('Workspace offline'), findsOneWidget);
+    expect(find.text('Worker offline'), findsOneWidget);
 
     // Section 2: Running Now - present
     expect(find.text('Running now'), findsOneWidget);
@@ -3371,7 +3371,7 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Welcome to Syntila'), findsNothing);
       expect(find.text('Setup required'), findsNothing);
-      expect(find.text('Workspace offline'), findsNothing);
+      expect(find.text('Worker offline'), findsNothing);
       expect(find.text('Continue working'), findsOneWidget);
     });
 

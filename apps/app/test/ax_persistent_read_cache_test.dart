@@ -423,7 +423,6 @@ void main() {
     final reopened = store(backend);
     expect(await reopened.hydrateReadCache(), isTrue);
     expect(reopened.spaces.items.single.name, 'Cached Space');
-    expect(reopened.workspaces.items.single.name, 'Workspace');
     expect(reopened.discussion.peek('W').messages.single.isMe, isTrue);
     expect(reopened.workHistory.peek('W').requests.single.id, 'R');
     expect(reopened.syncEngine.peek(reopened.spaces.query).isStale, isTrue);

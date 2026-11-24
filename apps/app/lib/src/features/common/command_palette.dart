@@ -86,7 +86,7 @@ class _CommandPaletteDialogState extends State<CommandPaletteDialog> {
         },
       ),
       CommandPaletteAction(
-        title: 'Workspaces',
+        title: 'Workers',
         subtitle: 'Connected computers and assigned Worker profiles',
         icon: Icons.computer_outlined,
         category: 'Navigation',

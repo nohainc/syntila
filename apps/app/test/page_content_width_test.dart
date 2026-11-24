@@ -2,7 +2,7 @@ import 'package:syntila_app/src/app_shell.dart';
 import 'package:syntila_app/src/features/home/home_page.dart';
 import 'package:syntila_app/src/features/people/people_page.dart';
 import 'package:syntila_app/src/features/spaces/archived_spaces_page.dart';
-import 'package:syntila_app/src/features/workspace/workspaces_page.dart';
+import 'package:syntila_app/src/features/workers/worker_instances_section.dart';
 import 'package:syntila_app/src/features/settings/settings_page.dart';
 import 'package:syntila_app/src/platform/platform_services.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +32,7 @@ void main() {
     expect(tester.getSize(find.byType(SettingsPage)).width, 700);
   });
 
-  testWidgets('Workspaces uses the wider content limit', (tester) async {
+  testWidgets('Workers page renders within content width', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
@@ -43,7 +43,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byType(WorkspacesPage)).width, 900);
+    expect(find.byType(WorkerInstancesSection), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -27,7 +27,7 @@ class _CanceledDesktopAuthFixture extends _SignedInDesktopAuthFixture {
           {required String intentId}) async =>
       const AxDesktopAuthIntentStatus(
         status: 'denied',
-        clientName: 'Syntila Workspace',
+        clientName: 'Syntila Connect',
         audience: 'syntila.desktop.management',
       );
 }
@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Sign-in approved'), findsOneWidget);
-    expect(find.text('Return to Syntila Workspace to finish signing in.'),
+    expect(find.text('Return to Syntila Connect to finish signing in.'),
         findsOneWidget);
     expect(
         find.text('You can close this page, window, or tab.'), findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
 
     expect(find.text('Welcome to Syntila'), findsOneWidget);
     expect(
-      find.text('Sign in to continue approving Syntila Workspace.'),
+      find.text('Sign in to continue approving Syntila Connect.'),
       findsOneWidget,
     );
   });

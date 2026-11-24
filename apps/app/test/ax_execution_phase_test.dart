@@ -32,8 +32,7 @@ void main() {
     test('delivery sub-steps read as Queued, starting as Starting', () {
       expect(AxExecutionPhase.label('delivering'), 'Queued');
       expect(AxExecutionPhase.label('starting'), 'Starting');
-      expect(
-          AxExecutionPhase.detail('delivering'), 'Sending to your Workspace');
+      expect(AxExecutionPhase.detail('delivering'), 'Sending to your Worker');
       expect(AxExecutionPhase.detail('starting'), 'Starting your worker');
     });
 

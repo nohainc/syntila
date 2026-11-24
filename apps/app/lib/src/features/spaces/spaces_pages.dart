@@ -1,4 +1,3 @@
-import '../workspace/worker_target_picker.dart';
 import 'space_member_usage.dart';
 import 'spaces_pages/provider_failure_panel.dart';
 import '../../ax/attachment_limits.dart';
@@ -10,7 +9,8 @@ import '../common/quiet_notices.dart';
 import '../common/page_width.dart';
 import '../common/space_color.dart';
 import '../common/thread_dialogs.dart';
-import 'package:syntila_protocol/syntila_protocol.dart' show ExecutionSelection, WorkerInstance;
+import 'package:syntila_protocol/syntila_protocol.dart'
+    show ExecutionSelection, WorkerInstance;
 import '../../ax/workflow_configuration_options.dart';
 import '../../ax/sync/ax_space_invitations.dart';
 import '../invitations/space_invitation_dialog.dart';
@@ -39,7 +39,6 @@ import '../../ax/sync/ax_work_history.dart';
 import '../../ax/sync/ax_work_realtime_sync.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/sync/ax_workflow_configurations.dart';
-import '../../ax/sync/ax_worker_visibility_preferences.dart';
 import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_space_tab_queries.dart';
 import '../../ax/sync/ax_sync_engine.dart';
@@ -49,6 +48,7 @@ import '../../ax/sync/persistence/ax_thread_view_state_store.dart';
 import '../../ax/sync/ax_collaboration_mutations.dart';
 import '../../brand.dart';
 import '../profile/subscription_page.dart';
+import '../workers/worker_target_picker.dart';
 import '../workflows/workflow_visibility.dart';
 import '../workflows/research_execution_selection.dart';
 import '../common/composer_metrics.dart';
@@ -68,7 +68,6 @@ import '../../ax/work_request_file_picker_stub.dart'
 part 'spaces_pages/space_page.dart';
 part 'spaces_pages/space_actions.dart';
 part 'spaces_pages/space_tabs.dart';
-part 'spaces_pages/space_workspace_selector.dart';
 part 'spaces_pages/space_folder_dialog.dart';
 part 'spaces_pages/thread_page.dart';
 part 'spaces_pages/new_thread_page.dart';
@@ -76,6 +75,15 @@ part 'spaces_pages/thread_actions.dart';
 part 'spaces_pages/background_work_queue.dart';
 part 'spaces_pages/work_components.dart';
 part 'spaces_pages/timeline_container.dart';
+
+const double _settingRowSpacing = 8;
+const double _settingLabelWidth = 84;
+
+TextStyle? _settingLabelStyle(ThemeData theme) => theme.textTheme.bodySmall
+    ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+TextStyle? _settingValueStyle(ThemeData theme) =>
+    theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500);
 
 List<AxBuiltinWorkflow> _currentWorkflowVersions(
     List<AxBuiltinWorkflow> catalog) {

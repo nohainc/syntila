@@ -73,7 +73,7 @@ class ExecutionStatusPopover extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Workspaces',
+                      'Workers',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -194,7 +194,7 @@ class ExecutionStatusPopover extends StatelessWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'No execution Workspaces connected.',
+                                'No Workers connected.',
                                 style: TextStyle(fontSize: 13, color: mutedInk),
                               ),
                             ],
@@ -241,7 +241,7 @@ class ExecutionStatusPopover extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Manage Workspaces',
+                        'Manage Workers',
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,

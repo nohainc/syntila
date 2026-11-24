@@ -19,7 +19,6 @@ class SelectiveSource extends AxFixtureDataSource {
           space.copyWith(settings: {...space.settings, 'showAiHistory': true}),
       ];
 
-  @override
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => workers;
 }
 
@@ -293,24 +292,6 @@ void main() {
     expect(builds['SpacePage'] ?? 0, 0);
     expect(
         builds['ValueListenableBuilder<List<AxSpace>>'] ?? 0, greaterThan(0));
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets(
-      'Workspace consumers update counts without rebuilding shell or Space tree',
-      (tester) async {
-    final store = await shell(tester, '/workspaces');
-    observe();
-    builds.clear();
-    store.syncEngine.update(
-        store.catalogs.workers,
-        (_) => [
-              AxWorker.fromJson({'id': 'w', 'workspaceId': 'workspace-fixture'})
-            ]);
-    await tester.pumpAndSettle();
-    expect(builds['WorkspacesPage'] ?? 0, greaterThan(0));
-    expect(builds['SyntilaAppShell'] ?? 0, 0);
-    expect(builds['SpaceTree'] ?? 0, 0);
     await tester.pumpWidget(const SizedBox());
   });
 

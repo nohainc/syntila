@@ -5545,7 +5545,6 @@ class _WorkFormDataSource extends AxFixtureDataSource {
 class _GenericWorkerConfigDataSource extends _WorkFormDataSource {
   Map<String, dynamic>? savedWorkConfig;
 
-  @override
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [
         AxWorker(
           id: 'local-worker-dynamic-test',

@@ -78,10 +78,6 @@ extension _AxAppRunDetails on _AxAppStateMixin {
                   onChanged: _setViewPreferences,
                   themeMode: _themeMode,
                   onThemeModeChanged: _setThemeMode,
-                  workspaceId: executionWorkspaceId ??
-                      (workspaces.isNotEmpty ? workspaces.first.id : null),
-                  workspaces: workspaces,
-                  inventories: store.mcpInventories,
                   support: widget.dataSource is AxSupportDataSource
                       ? AxSupportEntry(widget.dataSource as AxSupportDataSource)
                       : null,
@@ -152,7 +148,7 @@ extension _AxAppRunDetails on _AxAppStateMixin {
               ),
               const SizedBox(height: 16),
               _runSection(
-                title: 'Workspaces',
+                title: 'Workers',
                 subtitle: 'Task DAG, progress, and active Worker details',
                 icon: Icons.account_tree_outlined,
                 child: compact
@@ -378,7 +374,7 @@ extension _AxAppRunDetails on _AxAppStateMixin {
         children: [
           _contextLine(Icons.extension_outlined, 'Worker', worker),
           _contextLine(Icons.extension_outlined, 'Worker connection', 'Auto'),
-          _contextLine(Icons.computer_outlined, 'Workspace', 'Auto'),
+          _contextLine(Icons.computer_outlined, 'Worker', 'Auto'),
           _contextLine(Icons.smart_toy_outlined, 'Model', 'Auto'),
         ],
       ),

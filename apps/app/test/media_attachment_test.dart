@@ -6,8 +6,7 @@ import 'package:video_player/video_player.dart';
 
 const _fileId = 'wrf-11111111-1111-4111-8111-111111111111';
 
-Widget _scope(Map<String, dynamic> file, List<String> requested) =>
-    MaterialApp(
+Widget _scope(Map<String, dynamic> file, List<String> requested) => MaterialApp(
       home: Scaffold(
         body: AttachmentDownloadScope(
           load: (_) async => const [1, 2, 3],
@@ -64,7 +63,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('attachment-open')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('attachment-video-player')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('attachment-video-player')), findsOneWidget);
     expect(find.byKey(const ValueKey('media-failure')), findsOneWidget);
     expect(requested, [_fileId]);
   });

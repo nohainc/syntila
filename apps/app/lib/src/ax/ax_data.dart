@@ -1,5 +1,4 @@
 import 'mcp_worker_pin.dart';
-import 'ax_worker_visibility.dart';
 export 'ax_worker_visibility.dart';
 import 'ax_people.dart';
 import 'sync/ax_support.dart';
@@ -11,10 +10,7 @@ import 'ax_files.dart';
 import 'attachment_limits.dart' show AxAttachmentPolicy;
 export 'ax_files.dart';
 import 'ax_workflow_configuration.dart';
-import 'ax_mcp_inventory.dart';
 export 'ax_workflow_configuration.dart';
-import 'ax_workspace_member_access.dart';
-export 'ax_workspace_member_access.dart';
 import 'worker_usage.dart';
 export 'worker_usage.dart';
 import 'ax_thread_queue.dart';
@@ -43,7 +39,6 @@ export 'ax_input_delivery.dart';
 part 'ax_data/catalog_api.dart';
 part 'ax_data/thread_api.dart';
 part 'ax_data/auth_api.dart';
-part 'ax_data/workspace_api.dart';
 part 'ax_data/space_api.dart';
 part 'ax_data/read_model_api.dart';
 part 'ax_data/notes_api.dart';
@@ -194,8 +189,6 @@ abstract class _AxApiClientCore
     implements
         AxDataSource,
         AxConditionalReadCache,
-        AxWorkerIdentityFeatureSource,
-        AxWorkersUxFeatureSource,
         AxEligibleWorkersSource,
         AxSpaceWorkersSource,
         AxWorkerPersonShareSource,
@@ -531,24 +524,16 @@ class AxApiClient extends _AxApiClientCore
         _CatalogApi,
         _ThreadApi,
         _AuthApi,
-        _WorkspaceApi,
         _SpaceApi,
         _ReadModelApi,
         _NotesApi,
         _FilesApi
     implements
-        AxWorkerVisibilityDataSource,
         AxWorkflowConfigurationDataSource,
-        AxMcpInventoryDataSource,
         AxSpaceWorkflowConfigurationDataSource,
         AxWorkerUsageDataSource,
         AxWorkflowDefaultDataSource,
-        AxWorkflowWorkspaceDataSource,
-        AxSpaceAdditionalFolderDataSource,
         AxSpaceFolderDataSource,
-        AxWorkspaceMemberAccessDataSource,
-        AxWorkspacePersonAccessDataSource,
-        AxWorkspaceSharingDataSource,
         AxPeopleDataSource,
         AxPersonalSpaceDataSource,
         AxSupportDataSource,

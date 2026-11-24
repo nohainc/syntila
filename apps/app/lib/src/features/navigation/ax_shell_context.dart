@@ -213,11 +213,11 @@ class AxShellContext {
       }
     }
     if (workspaces.isEmpty) {
-      return 'No Workspaces';
+      return 'No Workers';
     }
     final online = onlineWorkspaceCount;
     final total = workspaces.length;
-    return '$online / $total ${total == 1 ? 'Workspace' : 'Workspaces'} online';
+    return '$online / $total ${total == 1 ? 'Worker' : 'Workers'} online';
   }
 
   ExecutionStatusTone get executionStatusTone {

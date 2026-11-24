@@ -1000,7 +1000,7 @@ class AxDesktopAuthIntentStatus {
   /// Resolve the application name from the server-controlled audience. The
   /// display label never trusts a caller-provided clientName.
   String? get applicationName => switch (audience) {
-        'syntila.desktop.management' => 'Syntila Workspace',
+        'syntila.desktop.management' => 'Syntila Connect',
         'syntila.profile-lab.management' => 'Syntila Profile Lab',
         _ => null,
       };
@@ -1164,7 +1164,7 @@ abstract interface class AxDataSource {
   Future<AxDesktopAuthIntentStatus> loadDesktopAuthIntentStatus(
       {required String intentId});
   Future<void> denyDesktopAuthIntent({required String intentId});
-  Future<List<AxWorkspace>> loadWorkspaces();
+  Future<List<AxWorkspace>> loadWorkspaces() async => const [];
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false});
   Future<AxSpace> loadSpace({required String spaceId});
   Future<List<AxThread>> loadSpaceThreads({
@@ -1306,62 +1306,17 @@ abstract interface class AxDataSource {
     required String messageId,
   }) async =>
       throw UnimplementedError('Discussion messages are not available');
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [];
 
-  /// Worker Instances (ADR-032); empty unless the `worker_identity` flag is on.
+  /// Worker Instances (ADR-032).
   Future<List<WorkerInstance>> loadWorkerInstances() async => const [];
   Future<List<AxBuiltinWorkflow>> loadBuiltinWorkflowCatalog() async =>
       const [];
-  Future<AxWorkspace> updateWorkspace({
-    required String workspaceId,
-    required String name,
-  });
-
-  /// Sets how many requests run at once on an owned Workspace.
-  Future<void> setWorkspaceParallelSlots({
-    required String workspaceId,
-    required int slots,
-  }) async =>
-      throw UnimplementedError('Parallel slots are not available');
-
-  /// Sets the owner's Space AI availability (chat / work) for a Workspace.
-  Future<void> setWorkspaceSpaceAiSharing({
-    required String workspaceId,
-    required bool allowChat,
-    required bool allowWork,
-  }) async =>
-      throw UnimplementedError('Space AI sharing is not available');
-  Future<List<AxWorkspaceMember>> loadWorkspaceMembers(
-      {required String workspaceId});
-  Future<List<AxWorkspaceInvitation>> loadWorkspaceInvitations(
-      {required String workspaceId});
-  Future<List<AxAuditEntry>> loadWorkspaceAudit({required String workspaceId});
-  Future<void> inviteWorkspaceMember({
-    required String workspaceId,
-    required String email,
-    required String role,
-  });
-  Future<void> changeWorkspaceMemberRole({
-    required String workspaceId,
-    required String userId,
-    required String role,
-  });
-  Future<void> setWorkspaceMemberStatus({
-    required String workspaceId,
-    required String userId,
-    required String status,
-  });
-  Future<void> expireWorkspaceInvitation({
-    required String workspaceId,
-    required String invitationId,
-  });
 
   /// Application bootstrap/recovery state, never a navigation loader.
   /// Space details and Threads are separate focused resource queries.
   Future<AxSnapshot> loadBootstrapState({String? spaceId, String? workspaceId});
   Future<void> controlRun(String runId, String command);
   Future<void> respondToRunPrompt(String runId, String response);
-  Future<void> revokeWorkspace({required String workspaceId});
 }
 
 /// A source that can hand out short-lived links to play Thread audio and

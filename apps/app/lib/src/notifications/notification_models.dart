@@ -280,7 +280,7 @@ AxNotification? notificationFromRealtimeEvent(
       AxNotificationKind.workflowRunNeedsApproval ||
       AxNotificationKind.approvalRequired =>
         'Action needed',
-      AxNotificationKind.workspaceOffline => 'Workspace offline',
+      AxNotificationKind.workspaceOffline => 'Worker offline',
       AxNotificationKind.workerCredentialProblem => 'Worker connection expired',
       AxNotificationKind.workerInstallFailed => 'Worker connection failed',
       AxNotificationKind.spaceInvitationReceived ||

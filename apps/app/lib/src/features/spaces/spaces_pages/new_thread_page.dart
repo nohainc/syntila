@@ -252,21 +252,6 @@ class _NewThreadPageState extends State<NewThreadPage> {
                               children: [
                                 if (_workflows != null &&
                                     !widget.space.isDirect)
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                        bottom: widget.space.role == 'owner'
-                                            ? _settingRowSpacing
-                                            : 0),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: _SpaceWorkspaceSelector(
-                                          configurations: _workflows!,
-                                          isOwner:
-                                              widget.space.role == 'owner'),
-                                    ),
-                                  ),
-                                if (_workflows != null &&
-                                    !widget.space.isDirect)
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: _SpaceFolderRow(

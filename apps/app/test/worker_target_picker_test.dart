@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/instance_workers.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
-import 'package:syntila_app/src/features/workspace/worker_target_picker.dart';
+import 'package:syntila_app/src/features/workers/worker_target_picker.dart';
 import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 
 WorkerInstance worker(

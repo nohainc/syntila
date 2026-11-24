@@ -173,7 +173,7 @@ void main() {
       semantics.dispose();
       await tester.tap(applicationMenu);
       await tester.pumpAndSettle();
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       for (final tooltip in find.byType(Tooltip).evaluate()) {
         expect(TooltipVisibility.of(tooltip), isFalse);
       }
@@ -1020,8 +1020,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
           find.descendant(
-              of: find.byType(MenuItemButton),
-              matching: find.text('Workspaces')),
+              of: find.byType(MenuItemButton), matching: find.text('Workers')),
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
@@ -1034,7 +1033,7 @@ void main() {
 
       // Tap Execution in Application menu
       await tester.tap(find.descendant(
-          of: find.byType(MenuItemButton), matching: find.text('Workspaces')));
+          of: find.byType(MenuItemButton), matching: find.text('Workers')));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
     });
@@ -1075,8 +1074,7 @@ void main() {
       expect(navigatedTo?.kind, AxRouteKind.profileSecurity);
       expect(
           find.descendant(
-              of: find.byType(MenuItemButton),
-              matching: find.text('Workspaces')),
+              of: find.byType(MenuItemButton), matching: find.text('Workers')),
           findsNothing);
 
       // Reset
@@ -1087,8 +1085,7 @@ void main() {
       expect(navigatedTo?.kind, AxRouteKind.profileSecurity);
       expect(
           find.descendant(
-              of: find.byType(MenuItemButton),
-              matching: find.text('Workspaces')),
+              of: find.byType(MenuItemButton), matching: find.text('Workers')),
           findsNothing);
 
       // Reset
@@ -1100,8 +1097,7 @@ void main() {
       expect(navigatedTo, isNull);
       expect(
           find.descendant(
-              of: find.byType(MenuItemButton),
-              matching: find.text('Workspaces')),
+              of: find.byType(MenuItemButton), matching: find.text('Workers')),
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
@@ -1209,7 +1205,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check items exist
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
       expect(find.text('Documentation'), findsNothing);
@@ -1220,7 +1216,7 @@ void main() {
       expect(find.text('Website'), findsNothing);
 
       // Click Execution
-      await tester.tap(find.text('Workspaces'));
+      await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
 
@@ -1798,9 +1794,9 @@ void main() {
       // Tapping Application menu opens menu with Workspaces
       await tester.tap(find.byTooltip('Application menu'));
       await tester.pumpAndSettle();
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       expect(find.text('Usage'), findsNothing);
-      await tester.tap(find.text('Workspaces'));
+      await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
     });
@@ -1856,14 +1852,14 @@ void main() {
         activeTaskCount: 0,
       );
 
-      // 1. Global context test: "2 / 3 Workspaces online"
+      // 1. Global context test: "2 / 3 Workers online"
       const globalContext = AxShellContext(
         navigation: AxNavigation.home(),
         spaces: [],
         workspaces: [macBook, buildServer, officeMac],
       );
 
-      expect(globalContext.executionStatusLabel, '2 / 3 Workspaces online');
+      expect(globalContext.executionStatusLabel, '2 / 3 Workers online');
       expect(globalContext.executionStatusTone, ExecutionStatusTone.usable);
 
       await tester.pumpWidget(
@@ -1883,14 +1879,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('2 / 3 Workspaces online'), findsOneWidget);
+      expect(find.text('2 / 3 Workers online'), findsOneWidget);
 
       // Tap execution status trigger to open popover
-      await tester.tap(find.text('2 / 3 Workspaces online'));
+      await tester.tap(find.text('2 / 3 Workers online'));
       await tester.pumpAndSettle();
 
       // Check Popover content
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       expect(find.text('2 / 3 Online'), findsOneWidget);
       expect(find.text('MacBook Pro'), findsOneWidget);
       expect(find.text('4 Workers ready'), findsOneWidget);
@@ -1899,8 +1895,8 @@ void main() {
       expect(find.text('Office Mac'), findsOneWidget);
       expect(find.text('Offline'), findsOneWidget);
 
-      // Tap Manage Workspaces in popover footer
-      await tester.tap(find.text('Manage Workspaces'));
+      // Tap Manage Workers in popover footer
+      await tester.tap(find.text('Manage Workers'));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
     });
@@ -1984,7 +1980,7 @@ void main() {
         spaces: [],
         workspaces: [],
       );
-      expect(emptyCtx.executionStatusLabel, 'No Workspaces');
+      expect(emptyCtx.executionStatusLabel, 'No Workers');
       expect(emptyCtx.executionStatusTone, ExecutionStatusTone.neutral);
     });
   });
@@ -2304,11 +2300,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Workspaces'), findsOneWidget);
-      expect(find.text('MacBook Pro'), findsOneWidget);
-      await tester.tap(find.text('Workspaces'));
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
-      expect(navigatedTo?.workspaceId, isNull);
+      expect(find.text('Workers'), findsOneWidget);
+      expect(find.text('MacBook Pro'), findsNothing);
     });
 
     testWidgets(
@@ -2358,14 +2351,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('0 / 1 Workspace online'), findsOneWidget);
+      expect(find.text('0 / 1 Worker online'), findsOneWidget);
       expect(degradedCtx.executionStatusTone, ExecutionStatusTone.degraded);
 
       // Tap to open popover
-      await tester.tap(find.text('0 / 1 Workspace online'));
+      await tester.tap(find.text('0 / 1 Worker online'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       expect(find.text('Build Server'), findsOneWidget);
       expect(find.text('Offline'), findsOneWidget);
     });
@@ -2866,7 +2859,7 @@ void main() {
       expect(
           find.textContaining('Team conversations, AI requests, and results'),
           findsOneWidget);
-      expect(find.textContaining('Syntila Workspace and the provider CLIs'),
+      expect(find.textContaining('Syntila Connect and the provider CLIs'),
           findsOneWidget);
       expect(find.textContaining('coordinates AI Workers across models'),
           findsNothing);

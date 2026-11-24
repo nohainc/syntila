@@ -73,7 +73,7 @@ class SearchPage extends StatelessWidget {
         },
       ),
       CommandPaletteAction(
-        title: 'Workspaces',
+        title: 'Workers',
         subtitle: 'Connected computers and assigned Worker profiles',
         icon: Icons.computer_outlined,
         category: 'Navigation',
@@ -176,7 +176,7 @@ class SearchPage extends StatelessWidget {
         title: workspace.name,
         subtitle: '${workspace.hostname} · ${workspace.status}',
         icon: Icons.computer_outlined,
-        category: 'Workspaces',
+        category: 'Workers',
         onSelect: () {
           onClearSearch();
           onNavigateTo(AxNavigation.workspaces(workspaceId: workspace.id));

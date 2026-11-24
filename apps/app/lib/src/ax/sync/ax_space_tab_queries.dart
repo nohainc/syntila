@@ -2,7 +2,6 @@ import '../ax_data.dart';
 import '../ax_models.dart';
 import 'ax_space_threads.dart';
 import 'ax_sync_engine.dart';
-import 'ax_owned_workspaces.dart';
 
 /// Tab resources register and fetch only when a consumer observes/ensures them.
 class AxSpaceTabQueries {
@@ -27,7 +26,6 @@ class AxSpaceTabQueries {
       key: AxQueryKey(['space', id, 'audit']),
       load: () async =>
           List.unmodifiable(await source.loadSpaceAudit(spaceId: id)));
-  late final ownedWorkspaces = ownedWorkspacesQuery(source);
 
   Future<void> refreshMembers(String id,
       {bool includeMembers = true, bool includeInvitations = true}) async {

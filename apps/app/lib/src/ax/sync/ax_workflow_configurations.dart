@@ -101,68 +101,12 @@ class AxWorkflowConfigurations {
     }
   }
 
-  AxQueryKey get workspaceKey =>
-      AxQueryKey(['workflow-workspace', spaceId ?? 'user']);
-  late final workspaceQuery = AxQuery<AxWorkflowWorkspaceSettings>(
-      key: workspaceKey,
-      staleTime: const Duration(minutes: 45),
-      load: () => (source as AxWorkflowWorkspaceDataSource)
-          .loadWorkflowWorkspace(spaceId: spaceId));
-  Future<AxWorkflowWorkspaceSettings> ensureWorkspace() =>
-      engine.ensure(workspaceQuery, policy: AxCachePolicy.cacheFirst);
-  Future<void> selectWorkspace(String? workspaceId) async {
-    if (_writeLease != null) {
-      throw StateError('A workflow update is already pending');
-    }
-    final epoch = _sessionEpoch;
-    final lease = Object();
-    _writeLease = lease;
-    try {
-      await engine.mutate(AxMutation<AxWorkflowWorkspaceSettings>(
-          query: workspaceQuery,
-          execute: () => (source as AxWorkflowWorkspaceDataSource)
-              .selectWorkflowWorkspace(
-                  spaceId: spaceId, workspaceId: workspaceId)));
-      if (epoch != _sessionEpoch) throw const AxMutationSuperseded();
-      // Space overrides of inheriting Spaces are reset on Cloud. Drop the old
-      // values before reloading so a successful reset cannot leave a stale
-      // Space default or disabled configuration visible while the new
-      // effective settings are fetched.
-      if (spaceId != null) {
-        engine.remove(queryKey);
-        engine.remove(defaultQuery.key);
-      }
-      // Refresh both resources independently. A transient configuration read
-      // failure must not prevent the default workflow from being updated.
-      await Future.wait<Object?>([refresh(), refreshDefault()]);
-      if (epoch != _sessionEpoch) throw const AxMutationSuperseded();
-      if (spaceId == null) {
-        // User configuration is per Workspace and stays valid, but the
-        // unscoped (selected Workspace) views now point elsewhere.
-        engine.invalidate(AxQueryKey(['space-workflow-configurations']),
-            prefix: true);
-        engine.invalidate(AxQueryKey(['workflow-workspace']), prefix: true);
-        engine.invalidate(AxQueryKey(['workflow-default']), prefix: true);
-        engine.invalidate(key);
-        await engine
-            .refreshStaleWhere((key) =>
-                key.startsWith(AxQueryKey(['space-workflow-configurations'])) ||
-                key.startsWith(AxQueryKey(['workflow-workspace'])) ||
-                key.startsWith(AxQueryKey(['workflow-default'])))
-            .then<void>((_) {}, onError: (Object _, StackTrace __) {});
-      }
-    } finally {
-      if (identical(_writeLease, lease)) _writeLease = null;
-    }
-  }
-
   int _sessionEpoch = 0;
   Object? _writeLease;
   void clear() {
     _sessionEpoch++;
     _writeLease = null;
     engine.remove(queryKey);
-    engine.remove(workspaceKey);
     engine.remove(defaultQuery.key);
     for (final child in _scoped.values) {
       child.clear();

@@ -94,15 +94,15 @@ class AxInputDelivery extends ChangeNotifier {
         files.where((file) => file.state == AxInputState.delivered).length;
     final failed = files.where((file) => file.state == AxInputState.failed);
     final header = failed.isNotEmpty
-        ? 'Files could not be delivered to the Workspace.'
-        : 'Delivering files to the Workspace ($ready/${files.length} ready)…';
+        ? 'Files could not be delivered to the Worker.'
+        : 'Delivering files to the Worker ($ready/${files.length} ready)…';
     final lines = files.map((file) {
       final retry = file.attempt > 1 ? ' (attempt ${file.attempt})' : '';
       return switch (file.state) {
         AxInputState.queued => '• ${file.name} — waiting to upload',
         AxInputState.uploading => '↑ ${file.name} — uploading$retry',
         AxInputState.uploaded =>
-          '↓ ${file.name} — downloading to the Workspace$retry',
+          '↓ ${file.name} — downloading to the Worker$retry',
         AxInputState.delivered => '✓ ${file.name} — ready',
         AxInputState.failed => '✗ ${file.name} — ${file.error ?? 'failed'}',
       };

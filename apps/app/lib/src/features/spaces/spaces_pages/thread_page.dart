@@ -19,7 +19,6 @@ class ThreadPage extends StatefulWidget {
     this.threadViewStateStore,
     this.catalogs,
     this.workflowConfigurations,
-    this.workerVisibilityPreferences,
     this.onManageWorkerVisibility,
     this.currentUserId,
     this.currentUserName,
@@ -52,7 +51,6 @@ class ThreadPage extends StatefulWidget {
   final AxThreadViewStateStore? threadViewStateStore;
   final AxSessionCatalogs? catalogs;
   final AxWorkflowConfigurations? workflowConfigurations;
-  final AxWorkerVisibilityPreferences? workerVisibilityPreferences;
   final void Function(String?)? onManageWorkerVisibility;
   final String? currentUserId;
   final String? currentUserName;
@@ -1056,10 +1054,6 @@ class _ThreadPageState extends State<ThreadPage>
   /// before the Worker Instances arrive, or before the Space owner's Workers
   /// load) re-binds the saved Worker to another one of the same type.
   bool get _workerListSettled {
-    if (!_catalogs.engine.peek(_catalogs.workers).hasData) return false;
-    final ux = _catalogs.engine.peek(_catalogs.workersUxEnabled);
-    if (!ux.hasData && ux.error == null) return false;
-    if (_workersUxEnabled != true) return true;
     final instances = _catalogs.engine.peek(_catalogs.workerInstances);
     if (!instances.hasData && instances.error == null) return false;
     return widget.space.isDirect ||
@@ -1736,63 +1730,32 @@ class _ThreadPageState extends State<ThreadPage>
     _watchReadStates();
   }
 
-  void _syncVisibility(List<AxWorker> workers) {
-    final root = widget.workerVisibilityPreferences;
-    if (root == null) return;
-    final ids = workers
-        .where((w) => !w.shared && w.workspaceId.isNotEmpty)
-        .map((w) => w.workspaceId)
-        .toSet();
-    for (final id in _visibilitySubscriptions.keys.toList()) {
-      if (!ids.contains(id)) _visibilitySubscriptions.remove(id)?.call();
-    }
-    for (final id in ids) {
-      if (_visibilitySubscriptions.containsKey(id)) continue;
-      final scoped = root.forWorkspace(id);
-      _visibilitySubscriptions[id] = scoped.engine.watch(scoped.query, (_) {
-        if (mounted) _updateState(() {});
-      }, fireImmediately: false);
-      unawaited(scoped
-          .ensure()
-          .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
-    }
-  }
-
   Map<String, AxWorkerVisibility> get _visibilityByWorkspace {
-    final root = widget.workerVisibilityPreferences;
-    final map = <String, AxWorkerVisibility>{
-      if (root != null)
-        for (final id in _visibilitySubscriptions.keys)
-          if (root.engine.peek(root.forWorkspace(id).query).data != null)
-            id: root.engine.peek(root.forWorkspace(id).query).data!,
-    };
-    if (_workersUxEnabled == true) {
-      final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
-      if (instances != null) {
-        map[''] = AxWorkerVisibility(
-          hiddenModels: {
-            for (final w in instances)
-              if (w.hiddenModels.isNotEmpty) w.id: w.hiddenModels,
-          },
-          hiddenEfforts: {
-            for (final w in instances)
-              if (w.hiddenEfforts.isNotEmpty) w.id: w.hiddenEfforts,
-          },
-        );
-      }
+    final map = <String, AxWorkerVisibility>{};
+    final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
+    if (instances != null) {
+      map[''] = AxWorkerVisibility(
+        hiddenModels: {
+          for (final w in instances)
+            if (w.hiddenModels.isNotEmpty) w.id: w.hiddenModels,
+        },
+        hiddenEfforts: {
+          for (final w in instances)
+            if (w.hiddenEfforts.isNotEmpty) w.id: w.hiddenEfforts,
+        },
+      );
     }
     return map;
   }
 
   void _applyWorkers(List<AxWorker> workers) {
     // Worker-first: the selector lists the owner's Worker Instances, the same
-    // set as the Workers page, instead of the legacy Workspace inventory.
+    // set as the Workers page.
     final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
-    if (_workersUxEnabled == true && instances != null) {
+    if (instances != null) {
       final own = workersFromInstances(workers, instances,
           sharedInstances:
               widget.space.isDirect ? const [] : _spaceOwnerWorkers);
-      _syncVisibility(own);
       _spaceWorkers = own;
       // Person Shares answer Chat only, in personal Threads and the viewer's
       // own Spaces.
@@ -1810,7 +1773,6 @@ class _ThreadPageState extends State<ThreadPage>
       _eligibleWorkers = own.where((worker) => worker.isReady).toList();
       return;
     }
-    _syncVisibility(workers);
     _spaceWorkers = workers
         .where((worker) => worker.workspaceId == _selectedWorkflowWorkspaceId)
         .toList();
@@ -1886,18 +1848,6 @@ class _ThreadPageState extends State<ThreadPage>
         });
       }
     }, fireImmediately: false);
-    _cancelWorkersUx?.call();
-    _workersUxEnabled = _catalogs.engine.peek(_catalogs.workersUxEnabled).data;
-    _cancelWorkersUx =
-        _catalogs.engine.watch(_catalogs.workersUxEnabled, (state) {
-      if (!mounted || state.data == _workersUxEnabled) return;
-      _updateComposerState(() {
-        _workersUxEnabled = state.data;
-        _applyWorkers(
-            _catalogs.engine.peek(_catalogs.workers).data ?? const []);
-        _reconcilePendingThreadViewState();
-      });
-    }, fireImmediately: false);
     _cancelWorkerInstances?.call();
     _cancelWorkerInstances =
         _catalogs.engine.watch(_catalogs.workerInstances, (state) {
@@ -1908,9 +1858,6 @@ class _ThreadPageState extends State<ThreadPage>
         _reconcilePendingThreadViewState();
       });
     }, fireImmediately: false);
-    _catalogs.engine
-        .ensure(_catalogs.workersUxEnabled)
-        .then<void>((_) {}, onError: (Object _, StackTrace __) {});
     _catalogs.engine
         .ensure(_catalogs.workerInstances)
         .then<void>((_) {}, onError: (Object _, StackTrace __) {});
@@ -2051,28 +1998,9 @@ class _ThreadPageState extends State<ThreadPage>
 
   void _subscribeWorkflowWorkspace() {
     _cancelWorkflowWorkspace?.call();
-    final cache = _workflowConfigurations;
-    if (cache == null) {
-      _selectedWorkflowWorkspaceId = null;
-      _workflowWorkspaceLoaded = false;
-      _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
-      return;
-    }
-    final state = cache.engine.peek(cache.workspaceQuery);
-    _selectedWorkflowWorkspaceId = state.data?.workspaceId;
-    _workflowWorkspaceLoaded = state.data != null;
+    _selectedWorkflowWorkspaceId = null;
+    _workflowWorkspaceLoaded = true;
     _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
-    _cancelWorkflowWorkspace =
-        cache.engine.watch(cache.workspaceQuery, (state) {
-      if (!mounted) return;
-      _updateState(() {
-        _selectedWorkflowWorkspaceId = state.data?.workspaceId;
-        _workflowWorkspaceLoaded = state.data != null;
-        _applyWorkers(
-            _catalogs.engine.peek(_catalogs.workers).data ?? const []);
-        _reconcilePendingThreadViewState();
-      });
-    });
   }
 
   Future<void> _loadWorkChoices() async {
@@ -2084,18 +2012,11 @@ class _ThreadPageState extends State<ThreadPage>
       return;
     }
     try {
-      await Future.wait([
-        catalogs.ensureWorkers(),
-        _workflowConfigurations?.ensureWorkspace() ?? Future.value(null),
-      ]);
+      await catalogs.ensureWorkers();
       if (!mounted) return;
       if (generation != _choicesGeneration || catalogs != _catalogs) return;
       if (spaceId != widget.space.id) return;
       _updateState(() {
-        _selectedWorkflowWorkspaceId = _workflowConfigurations?.engine
-            .peek(_workflowConfigurations!.workspaceQuery)
-            .data
-            ?.workspaceId;
         _applyWorkers(catalogs.engine.peek(catalogs.workers).data ?? const []);
         _reconcilePendingThreadViewState();
       });
@@ -2107,15 +2028,6 @@ class _ThreadPageState extends State<ThreadPage>
   @override
   void didUpdateWidget(ThreadPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.workerVisibilityPreferences !=
-        widget.workerVisibilityPreferences) {
-      for (final cancel in _visibilitySubscriptions.values) {
-        cancel();
-      }
-      _visibilitySubscriptions.clear();
-      _syncVisibility(
-          _catalogs.engine.peek(_catalogs.workers).data ?? const []);
-    }
     if (oldWidget.showAiHistory && !widget.showAiHistory) {
       _aiHistoryOpen = false;
       _aiHistoryMounted = false;

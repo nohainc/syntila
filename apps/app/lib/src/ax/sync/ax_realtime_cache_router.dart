@@ -203,7 +203,6 @@ class AxRealtimeCacheRouter {
       if (type == 'space.deleted') {
         engine.remove(AxQueryKey(['space', affected]), prefix: true);
         engine.remove(AxQueryKey(['space-workflow-configurations', affected]));
-        engine.remove(AxQueryKey(['workflow-workspace', affected]));
         engine.remove(AxQueryKey(['workflow-default', affected]));
         await engine.revalidateWhere((key) =>
             key == AxQueryKey(['spaces']) ||
@@ -215,7 +214,6 @@ class AxRealtimeCacheRouter {
               key.parts.length >= 2 &&
               key.parts[1] == affected) ||
           key == AxQueryKey(['space-workflow-configurations', affected]) ||
-          key == AxQueryKey(['workflow-workspace', affected]) ||
           key == AxQueryKey(['workflow-default', affected]) ||
           key == AxQueryKey(['spaces']) ||
           key == AxQueryKey(['archived-spaces']) ||
@@ -294,7 +292,6 @@ class AxRealtimeCacheRouter {
       key == AxQueryKey(['spaces']) ||
       (key.parts[0] == 'space' && key.parts.length >= 2) ||
       key.parts[0] == 'space-workflow-configurations' ||
-      key.parts[0] == 'workflow-workspace' ||
       key.parts[0] == 'workflow-default' ||
       (key.parts.length == 3 &&
           key.parts[0] == 'thread' &&

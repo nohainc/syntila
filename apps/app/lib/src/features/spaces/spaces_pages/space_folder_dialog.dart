@@ -339,13 +339,8 @@ class _SpaceFolderRowState extends State<_SpaceFolderRow> {
   Future<void> _load() async {
     final source = _source;
     final spaceId = _spaceId;
-    final Object configured = widget.configurations.source;
     if (!widget.isOwner || source == null || spaceId == null) return;
     try {
-      if (configured is! AxWorkersUxFeatureSource ||
-          !await configured.workersUxEnabled()) {
-        return;
-      }
       final state = await source.loadSpaceFolder(spaceId);
       if (mounted) {
         setState(() {

@@ -1,4 +1,3 @@
-import 'package:syntila_design/syntila_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
@@ -100,7 +99,6 @@ class OwnWorkersSource extends PermissionSource
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
           String spaceId) async =>
       const [];
-  @override
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => [
         _worker('space-worker', 'space-ws', shared: true),
         _worker('own-worker', 'own-ws'),
@@ -306,40 +304,4 @@ void main() {
     expect(find.text('Work workflow'), findsNothing);
     expect(tester.takeException(), isNull);
   });
-  for (final allowed in [true, false]) {
-    testWidgets(
-        'Chat offers only owned Workers outside the Space Workspace (allowed: $allowed)',
-        (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(MaterialApp(
-          home: Scaffold(
-              body: ThreadPage(
-        space: AxSpace(
-            id: 'S',
-            name: 'Space',
-            branch: '',
-            lastActivity: '',
-            role: 'collaborator',
-            permissions: AxSpacePermissions(chat: allowed)),
-        thread:
-            memberThread.copyWith(workConfig: {'defaultWorkflowId': 'chat'}),
-        dataSource: OwnWorkersSource(),
-        initialTab: 1,
-        onBackToSpace: () {},
-        onArchive: () {},
-      ))));
-      await tester.pumpAndSettle();
-      final selector = tester
-          .widget<ModelEffortSelector>(find.byType(ModelEffortSelector).first);
-      final ids = selector.catalog.workers.map((worker) => worker.id).toList();
-      expect(ids, contains('space-worker'));
-      expect(ids.contains('own-worker'), allowed);
-      expect(ids, isNot(contains('lent-worker')));
-      if (allowed) {
-        expect(selector.catalog.worker('own-worker')?.name,
-            'ChatGPT · Workspace own-ws');
-      }
-    });
-  }
 }

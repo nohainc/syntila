@@ -1345,48 +1345,9 @@ mixin _ThreadApi on _AxApiClientCore
     }
   }
 
-  @override
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async {
-    // Members also receive the Workers their Workspace owner shares with them.
-    final body = await _getJson(
-        Uri.parse('$baseUrl/workspace-workers?includeShared=true'));
-    return (body['workers'] as List? ?? const [])
-        .whereType<Map>()
-        .map((item) => AxWorker.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
-  }
-
-  @override
-  Future<bool> workerIdentityEnabled() async {
-    final features = await _getJson(Uri.parse('$baseUrl/features'));
-    return (features['flags'] as List? ?? const []).contains('worker_identity');
-  }
-
-  @override
-  Future<bool> workersUxEnabled() async {
-    final features = await _getJson(Uri.parse('$baseUrl/features'));
-    return (features['flags'] as List? ?? const []).contains('workers_ux');
-  }
-
-  bool? _workersUxCache;
-  DateTime? _workersUxCachedAt;
-
-  Future<bool> _workersUxCached() async {
-    final at = _workersUxCachedAt;
-    if (_workersUxCache != null &&
-        at != null &&
-        DateTime.now().difference(at) < const Duration(minutes: 5)) {
-      return _workersUxCache!;
-    }
-    final enabled = await workersUxEnabled();
-    _workersUxCache = enabled;
-    _workersUxCachedAt = DateTime.now();
-    return enabled;
-  }
-
-  /// Execution fields of a Work Request body. With Workers UX on, the
-  /// composer's selection is a Worker ID and travels as `workerId`; no
-  /// Workspace selection is sent (ADR-035). Otherwise the legacy selection.
+  /// Execution fields of a Work Request body. The composer's selection is a
+  /// Worker ID and travels as `workerId` (plus optional `model` and
+  /// `reasoningEffort`), or per-step `workerBindings` (ADR-035).
   Future<Map<String, dynamic>> _executionFields(
       Map<String, dynamic> selection) async {
     if (selection.isEmpty) return const {};
@@ -1396,7 +1357,6 @@ mixin _ThreadApi on _AxApiClientCore
       // Per-step choices travel as Worker bindings keyed by step. Implement's
       // request only runs the plan step; implement and verify are chosen when
       // the plan is approved (see approvePlan). Research binds every step.
-      if (!await _workersUxCached()) return const {};
       final implement = steps is Map && steps.containsKey('plan');
       final entries = steps is Map ? steps.entries : const <MapEntry>[];
       // Research binds each researcher by number, so the count must match.
@@ -1427,7 +1387,7 @@ mixin _ThreadApi on _AxApiClientCore
       };
     }
     final workerId = selection['workerId'];
-    if (workerId is String && workerId.isNotEmpty && await _workersUxCached()) {
+    if (workerId is String && workerId.isNotEmpty) {
       String? text(String key) {
         final value = selection[key];
         return value is String && value.isNotEmpty ? value : null;
@@ -1440,7 +1400,7 @@ mixin _ThreadApi on _AxApiClientCore
           'reasoningEffort': text('reasoningEffort'),
       };
     }
-    return {'executionSelection': selection};
+    return const {};
   }
 
   @override
@@ -1459,14 +1419,12 @@ mixin _ThreadApi on _AxApiClientCore
 
   @override
   Future<List<WorkerInstance>> loadSpaceWorkers(String spaceId) async {
-    if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(
         Uri.parse('$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/workers')));
   }
 
   @override
   Future<List<WorkerInstance>> loadWorkerInstances() async {
-    if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));
   }
 
@@ -1667,7 +1625,6 @@ mixin _ThreadApi on _AxApiClientCore
 
   @override
   Future<List<WorkerInstance>> loadWorkersSharedWithMe() async {
-    if (!await workerIdentityEnabled()) return const [];
     final body = await _getJson(Uri.parse('$baseUrl/workers/shared-with-me'));
     // The owner's name travels in the display name, so every picker shows
     // whose computer answers.

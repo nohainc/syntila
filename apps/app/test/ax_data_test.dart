@@ -541,23 +541,6 @@ void main() {
         ['Work: select this Worker\'s Workspace in the Space Workflows tab.']);
   });
 
-  test('Workspace list reads aggregate grant counts with one HTTP request',
-      () async {
-    final client = _ApiResponseClient({
-      '/api/workspaces': {
-        'workspaces': [
-          {'id': 'owned', 'name': 'Owned'},
-          {'id': 'legacy', 'name': 'Legacy'},
-          {'id': 'empty', 'name': 'Empty'},
-        ]
-      }
-    });
-    final api =
-        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
-    final values = await api.loadWorkspaces();
-    expect(values.map((w) => w.workerCount), [0, 0, 0]);
-    expect(client.requests, ['/api/workspaces']);
-  });
   test('single Work Request details retain identity and authored result',
       () async {
     final client = _JsonClient({
@@ -1065,7 +1048,7 @@ void main() {
     expect(client.requests, contains('/api/spaces'));
     expect(client.requests, isNot(contains('/api/spaces/space-1')));
     expect(client.requests, isNot(contains('/api/spaces/space-1/threads')));
-    expect(client.requests, contains('/api/workspaces'));
+    expect(client.requests, isNot(contains('/api/workspaces')));
     expect(client.requests, contains('/api/session'));
   });
 
@@ -1113,37 +1096,6 @@ void main() {
     expect(worker.workerTypeId, 'chatgpt');
     expect(worker.localConcurrencyLimit, 2);
     expect(worker.attentionReasonCode, isNull);
-  });
-
-  test('uses Workspace management routes for rename and invitations', () async {
-    final client = _JsonClient({
-      'workspace': {
-        'id': 'workspace-1',
-        'name': 'Updated Workspace',
-        'slug': 'updated-workspace',
-        'status': 'active',
-        'role': 'owner',
-      },
-    }, statusCode: 200);
-    final api = AxApiClient(
-      baseUrl: 'https://syntila.test/api',
-      client: client,
-    );
-
-    final workspace = await api.updateWorkspace(
-        workspaceId: 'workspace-1', name: 'Updated Workspace');
-    expect(workspace.name, 'Updated Workspace');
-    expect(client.lastRequest?.method, 'PATCH');
-    expect(client.lastRequest?.url.path, '/api/workspaces/workspace-1');
-
-    await api.inviteWorkspaceMember(
-        workspaceId: 'workspace-1',
-        email: 'member@example.test',
-        role: 'member');
-    expect(client.lastRequest?.method, 'POST');
-    expect(client.lastRequest?.url.path,
-        '/api/workspaces/workspace-1/invitations');
-    expect(jsonDecode(client.lastBody!)['email'], 'member@example.test');
   });
 
   test('does not send obsolete Workspace security headers', () async {

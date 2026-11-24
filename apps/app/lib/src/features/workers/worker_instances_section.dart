@@ -43,67 +43,53 @@ class WorkerInstancesSection extends StatelessWidget {
   final VoidCallback? onBackToList;
 
   @override
-  Widget build(BuildContext context) => AxQueryBuilder<bool>(
+  Widget build(BuildContext context) => AxQueryBuilder<List<WorkerInstance>>(
         engine: catalogs.engine,
-        query: catalogs.workerIdentityEnabled,
-        builder: (context, flag) {
-          if (flag.data != true) return const SizedBox.shrink();
-          return AxQueryBuilder<List<WorkerInstance>>(
-            engine: catalogs.engine,
-            query: catalogs.workerInstances,
-            builder: (context, state) => AxQueryBuilder<bool>(
-              engine: catalogs.engine,
-              query: catalogs.workersUxEnabled,
-              builder: (context, ux) => WorkerInstancesList(
-                workers: state.data,
-                error: state.error,
-                selectedWorkerId: selectedWorkerId,
-                onSelectWorker: onSelectWorker,
-                onBackToList: onBackToList,
-                shareSpaces: [
-                  for (final space in spaces)
-                    if (!space.archived &&
-                        space.kind != 'direct' &&
-                        (space.role == 'owner' || space.role == 'collaborator'))
-                      space
-                ],
-                currentUserId: currentUserId,
-                // A change was just made: supersede any load already in
-                // flight, which started before it and would show stale data.
-                onRefresh: () async {
-                  // Read the list now and apply it directly: the same
-                  // authoritative path local edits use, so a change made here
-                  // (add, enable, rename...) shows at once instead of waiting
-                  // for the shared reader to reuse or replace a load.
-                  final source = catalogs.source;
-                  if (source == null) {
-                    return catalogs.engine
-                        .refresh(catalogs.workerInstances, supersede: true);
-                  }
-                  final fresh = await source.loadWorkerInstances();
-                  catalogs.engine.update<List<WorkerInstance>>(
-                      catalogs.workerInstances,
-                      (_) => List.unmodifiable(fresh));
-                  return fresh;
-                },
-                onLocalUpdate: (transform) =>
-                    catalogs.engine.update<List<WorkerInstance>>(
-                  catalogs.workerInstances,
-                  (current) => List.unmodifiable(
-                      transform(current.data ?? const <WorkerInstance>[])),
-                ),
-                management: ux.data == true &&
-                        catalogs.source is AxWorkerManagementSource
-                    ? catalogs.source as AxWorkerManagementSource
-                    : null,
-                usageSource: ux.data == true &&
-                        catalogs.source is AxWorkerUsageDataSource
-                    ? catalogs.source as AxWorkerUsageDataSource
-                    : null,
-              ),
-            ),
-          );
-        },
+        query: catalogs.workerInstances,
+        builder: (context, state) => WorkerInstancesList(
+          workers: state.data,
+          error: state.error,
+          selectedWorkerId: selectedWorkerId,
+          onSelectWorker: onSelectWorker,
+          onBackToList: onBackToList,
+          shareSpaces: [
+            for (final space in spaces)
+              if (!space.archived &&
+                  space.kind != 'direct' &&
+                  (space.role == 'owner' || space.role == 'collaborator'))
+                space
+          ],
+          currentUserId: currentUserId,
+          // A change was just made: supersede any load already in
+          // flight, which started before it and would show stale data.
+          onRefresh: () async {
+            // Read the list now and apply it directly: the same
+            // authoritative path local edits use, so a change made here
+            // (add, enable, rename...) shows at once instead of waiting
+            // for the shared reader to reuse or replace a load.
+            final source = catalogs.source;
+            if (source == null) {
+              return catalogs.engine
+                  .refresh(catalogs.workerInstances, supersede: true);
+            }
+            final fresh = await source.loadWorkerInstances();
+            catalogs.engine.update<List<WorkerInstance>>(
+                catalogs.workerInstances, (_) => List.unmodifiable(fresh));
+            return fresh;
+          },
+          onLocalUpdate: (transform) =>
+              catalogs.engine.update<List<WorkerInstance>>(
+            catalogs.workerInstances,
+            (current) => List.unmodifiable(
+                transform(current.data ?? const <WorkerInstance>[])),
+          ),
+          management: catalogs.source is AxWorkerManagementSource
+              ? catalogs.source as AxWorkerManagementSource
+              : null,
+          usageSource: catalogs.source is AxWorkerUsageDataSource
+              ? catalogs.source as AxWorkerUsageDataSource
+              : null,
+        ),
       );
 }
 

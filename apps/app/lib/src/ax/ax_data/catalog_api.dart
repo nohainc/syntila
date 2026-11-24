@@ -39,48 +39,32 @@ mixin _CatalogApi on _AxApiClientCore {
     return _configurationResponse(response);
   }
 
-  Future<AxMcpInventory?> loadMcpInventory(String workspaceId) async {
-    final body = await _getJson(Uri.parse(
-        '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/mcp-inventory'));
-    return AxMcpInventory.fromResponse(body);
-  }
-
-  Future<Map<String, dynamic>> executeMcpAction(
-    String workspaceId, {
-    required String action,
-    required String serverId,
-    String? displayName,
-    String? endpoint,
-    String? tokenEnv,
-    bool? insecureLoopback,
-    String? workerTypeId,
-    String? acceptHash,
+  Future<AxWorkerUsageReport> readWorkerUsage({
+    required String workspaceId,
+    required String workerId,
   }) async {
     final response = await client.post(
-      Uri.parse(
-          '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/mcp-action'),
+      Uri.parse('$baseUrl/workers/${Uri.encodeComponent(workerId)}/usage'),
       headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({
-        'actionId': 'act-${DateTime.now().microsecondsSinceEpoch}',
-        'action': action,
-        'serverId': serverId,
-        if (displayName != null) 'displayName': displayName,
-        if (endpoint != null) 'endpoint': endpoint,
-        if (tokenEnv != null) 'tokenEnv': tokenEnv,
-        if (insecureLoopback != null) 'insecureLoopback': insecureLoopback,
-        if (workerTypeId != null) 'workerTypeId': workerTypeId,
-        if (acceptHash != null) 'acceptHash': acceptHash,
-      }),
+      body: '{}',
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final errorBody = (jsonDecode(response.body) as Map?);
-      final message = errorBody?['error'] as String? ??
-          'MCP action failed (${response.statusCode})';
-      final code = errorBody?['code'] as String?;
-      throw AxApiException(message,
-          statusCode: response.statusCode, code: code);
+    Object? body;
+    try {
+      body = jsonDecode(response.body);
+    } on FormatException {
+      body = null;
     }
-    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    if (body is Map && body['status'] is String) {
+      return AxWorkerUsageReport.fromJson(Map<String, dynamic>.from(body));
+    }
+    final message = body is Map && body['error'] is String
+        ? body['error'] as String
+        : 'Usage request failed (${response.statusCode})';
+    return AxWorkerUsageReport(
+        status: 'error',
+        errorMessage: response.statusCode == 404
+            ? 'Only the Worker owner can read this Worker\'s usage.'
+            : message);
   }
 
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
@@ -236,49 +220,6 @@ mixin _CatalogApi on _AxApiClientCore {
     }
   }
 
-  String _workflowWorkspaceUrl(String? spaceId) => spaceId == null
-      ? '$baseUrl/user/workflow-workspace'
-      : '$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/workflow-workspace';
-  Future<AxWorkflowWorkspaceSettings> loadWorkflowWorkspace(
-          {String? spaceId}) async =>
-      AxWorkflowWorkspaceSettings.fromJson(
-          await _getJson(Uri.parse(_workflowWorkspaceUrl(spaceId))));
-  Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId}) async {
-    final response = await client.put(Uri.parse(_workflowWorkspaceUrl(spaceId)),
-        headers: _headers(contentType: 'application/json'),
-        body: jsonEncode({'workspaceId': workspaceId, 'confirmReset': true}));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-          'Workspace selection failed (${response.statusCode}): ${response.body}',
-          statusCode: response.statusCode);
-    }
-    return AxWorkflowWorkspaceSettings.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
-
-  String _additionalFoldersUrl(String spaceId) =>
-      '$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/additional-folders';
-
-  Future<AxSpaceAdditionalFolders> loadSpaceAdditionalFolders(
-          String spaceId) async =>
-      AxSpaceAdditionalFolders.fromJson(
-          await _getJson(Uri.parse(_additionalFoldersUrl(spaceId))));
-
-  Future<AxSpaceAdditionalFolders> saveSpaceAdditionalFolders(
-      String spaceId, List<String> folderIds) async {
-    final response = await client.put(Uri.parse(_additionalFoldersUrl(spaceId)),
-        headers: _headers(contentType: 'application/json'),
-        body: jsonEncode({'folderIds': folderIds}));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-          'Folder update failed (${response.statusCode}): ${response.body}',
-          statusCode: response.statusCode);
-    }
-    return AxSpaceAdditionalFolders.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
-
   @override
   Future<List<AxDeviceFolder>> loadDeviceFolders() async {
     final body = await _getJson(Uri.parse('$baseUrl/device-folders'));
@@ -362,160 +303,6 @@ mixin _CatalogApi on _AxApiClientCore {
     return body is Map ? (body['spaces'] as num?)?.toInt() ?? 0 : 0;
   }
 
-  String _memberAccessUrl(String workspaceId) =>
-      '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/member-access';
-
-  Future<AxWorkspaceMemberAccess> loadWorkspaceMemberAccess(
-          String workspaceId) async =>
-      AxWorkspaceMemberAccess.fromJson(
-          await _getJson(Uri.parse(_memberAccessUrl(workspaceId))));
-
-  Future<AxWorkspaceMemberAccess> saveWorkspaceMemberAccess(
-      String workspaceId, AxWorkspaceMemberAccess access) async {
-    final response = await client.put(Uri.parse(_memberAccessUrl(workspaceId)),
-        headers: _headers(contentType: 'application/json'),
-        body: jsonEncode(access.toJson()));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-          'Member access update failed (${response.statusCode}): ${response.body}',
-          statusCode: response.statusCode);
-    }
-    return AxWorkspaceMemberAccess.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
-
-  Uri _personAccessUri(String workspaceId, String userId) => Uri.parse(
-      '${_memberAccessUrl(workspaceId)}/people/${Uri.encodeComponent(userId)}');
-
-  AxPersonAccess _personAccessResponse(http.Response response) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-          'Person access failed (${response.statusCode}): ${response.body}',
-          statusCode: response.statusCode);
-    }
-    return AxPersonAccess.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
-
-  Future<AxPersonAccess> loadPersonAccess(
-          String workspaceId, String userId) async =>
-      AxPersonAccess.fromJson(
-          await _getJson(_personAccessUri(workspaceId, userId)));
-
-  Future<AxPersonAccess> savePersonAccess(String workspaceId, String userId,
-          AxWorkspaceMemberAccess access) async =>
-      _personAccessResponse(
-          await client.put(_personAccessUri(workspaceId, userId),
-              headers: _headers(contentType: 'application/json'),
-              body: jsonEncode({
-                if (access.mode != null) 'mode': access.mode,
-                'workers': {
-                  for (final entry in access.workers.entries)
-                    entry.key: entry.value.toJson(),
-                },
-              })));
-
-  Future<AxPersonAccess> resetPersonAccess(
-          String workspaceId, String userId) async =>
-      _personAccessResponse(await client
-          .delete(_personAccessUri(workspaceId, userId), headers: _headers()));
-
-  Future<void> _sharingSend(String method, String path,
-      [Object? body, String? idempotencyKey]) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final headers = {
-      ..._headers(contentType: 'application/json'),
-      if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
-    };
-    Future<http.Response> send() => method == 'PUT'
-        ? client.put(uri, headers: headers, body: jsonEncode(body))
-        : client.post(uri,
-            headers: headers, body: body == null ? null : jsonEncode(body));
-    final response = await _retryOnceWithKey(idempotencyKey, send);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      Object? error;
-      try {
-        error = jsonDecode(response.body);
-      } on FormatException {
-        error = null;
-      }
-      if (error is Map && error['code'] is String && error['error'] is String) {
-        throw AxApiException(error['error'] as String,
-            statusCode: response.statusCode, code: error['code'] as String);
-      }
-      throw AxApiException(
-          'Sharing request failed (${response.statusCode}): ${response.body}',
-          statusCode: response.statusCode);
-    }
-  }
-
-  String _workspacePath(String workspaceId) =>
-      '/workspaces/${Uri.encodeComponent(workspaceId)}';
-
-  Future<List<AxPersonWithAccess>> loadPeopleWithAccess(
-      String workspaceId) async {
-    final body = await _getJson(
-        Uri.parse('$baseUrl${_workspacePath(workspaceId)}/people-with-access'));
-    return [
-      for (final item in (body['people'] as List? ?? const []))
-        AxPersonWithAccess.fromJson(Map<String, dynamic>.from(item as Map)),
-    ];
-  }
-
-  Future<List<AxSharedWorkspaceInvitation>> loadSharedWorkspaceInvitations(
-      String workspaceId) async {
-    final body = await _getJson(
-        Uri.parse('$baseUrl${_workspacePath(workspaceId)}/invitations'));
-    return [
-      for (final item in (body['invitations'] as List? ?? const []))
-        AxSharedWorkspaceInvitation.fromJson(
-            Map<String, dynamic>.from(item as Map)),
-    ];
-  }
-
-  Future<void> createWorkspaceInvitation(String workspaceId, String email) =>
-      _sharingSend('POST', '${_workspacePath(workspaceId)}/invitations',
-          {'email': email}, newAxIdempotencyKey());
-
-  Future<void> revokeWorkspaceInvitation(
-          String workspaceId, String invitationId) =>
-      _sharingSend('POST',
-          '${_workspacePath(workspaceId)}/invitations/${Uri.encodeComponent(invitationId)}/revoke');
-
-  Future<void> revokePersonGrant(String workspaceId, String userId) => _sharingSend(
-      'POST',
-      '${_workspacePath(workspaceId)}/person-grants/${Uri.encodeComponent(userId)}/revoke');
-
-  Future<void> setPersonQuota(String workspaceId, String userId, int limit) =>
-      _sharingSend(
-          'PUT',
-          '${_workspacePath(workspaceId)}/person-grants/${Uri.encodeComponent(userId)}/quota',
-          {'maxConcurrentRequests': limit});
-
-  Future<void> setPersonRunTimeLimit(
-          String workspaceId, String userId, int? seconds) =>
-      _sharingSend(
-          'PUT',
-          '${_workspacePath(workspaceId)}/person-grants/${Uri.encodeComponent(userId)}/quota',
-          {'maxRunSecondsPerMonth': seconds});
-
-  Future<List<AxMyWorkspaceInvitation>> loadMyWorkspaceInvitations() async {
-    final body = await _getJson(Uri.parse('$baseUrl/workspace-invitations'));
-    return [
-      for (final item in (body['invitations'] as List? ?? const []))
-        AxMyWorkspaceInvitation.fromJson(
-            Map<String, dynamic>.from(item as Map)),
-    ];
-  }
-
-  Future<void> acceptWorkspaceInvitation(String invitationId) => _sharingSend(
-      'POST',
-      '/workspace-invitations/${Uri.encodeComponent(invitationId)}/accept');
-
-  Future<void> declineWorkspaceInvitation(String invitationId) => _sharingSend(
-      'POST',
-      '/workspace-invitations/${Uri.encodeComponent(invitationId)}/decline');
-
   AxUserWorkflowConfiguration _configurationResponse(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AxApiException(
@@ -535,6 +322,9 @@ mixin _CatalogApi on _AxApiClientCore {
     }
     return (jsonDecode(response.body) as Map)['defaultWorkflowId'] as String;
   }
+
+  @override
+  Future<List<AxWorkspace>> loadWorkspaces() async => const [];
 
   @override
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) async {

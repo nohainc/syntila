@@ -48,19 +48,4 @@ mixin _ReadModelApi on _AxApiClientCore {
           statusCode: result.statusCode);
     }
   }
-
-  @override
-  Future<void> revokeWorkspace({required String workspaceId}) async {
-    final response = await client.delete(
-      Uri.parse('$baseUrl/workspaces/$workspaceId'),
-      headers: _headers(),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail = response.body.trim();
-      throw AxApiException(
-        'Workspace revoke failed (${response.statusCode})${detail.isEmpty ? '' : ': $detail'}',
-        statusCode: response.statusCode,
-      );
-    }
-  }
 }

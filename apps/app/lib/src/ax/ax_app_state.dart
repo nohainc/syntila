@@ -308,7 +308,6 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
         unreadNotificationCount: unreadNotificationCount,
         unreadNotifications: store.unreadNotifications,
         invitationsListenable: store.invitations,
-        workspaceInvitationsListenable: store.workspaceInvitations,
         isDarkTheme: _themeMode == ThemeMode.dark ||
             (_themeMode == ThemeMode.system &&
                 Theme.of(context).brightness == Brightness.dark),
@@ -449,7 +448,6 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     store = AxStore(widget.dataSource);
     store.spaces.addListener(_restoreSidebarExpansion);
     store.invitations.addListener(_onInvitationsChanged);
-    store.workspaceInvitations.addListener(_onInvitationsChanged);
     store.people.incomingInvitations.addListener(_onInvitationsChanged);
     _searchQueryController.addListener(_onSearchQueryChanged);
     browserNavigation = widget.browserNavigation ?? createAxBrowserNavigation();
@@ -507,7 +505,6 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     _desktopAuthStatusTimer?.cancel();
     store.spaces.removeListener(_restoreSidebarExpansion);
     store.invitations.removeListener(_onInvitationsChanged);
-    store.workspaceInvitations.removeListener(_onInvitationsChanged);
     store.people.incomingInvitations.removeListener(_onInvitationsChanged);
     _searchQueryController.removeListener(_onSearchQueryChanged);
     _searchQueryController.dispose();
@@ -549,27 +546,12 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   }
 
   Future<void> _createSpace() async {
-    final source = widget.dataSource;
     AxSpace? created;
-    // With Workers UX on a Space does not choose a Workspace (ADR-035).
-    final workersUx = source is AxWorkersUxFeatureSource
-        ? await (source as AxWorkersUxFeatureSource)
-            .workersUxEnabled()
-            .then((value) => value, onError: (Object _) => false)
-        : false;
     final values = await showCreateSpaceDialog(
       navigatorKey.currentContext ?? context,
-      showWorkspace: !workersUx,
-      loadWorkspaces: () async => source is AxWorkflowWorkspaceDataSource
-          ? (await (source as AxWorkflowWorkspaceDataSource)
-                  .loadWorkflowWorkspace())
-              .workspaces
-          : const <AxWorkflowWorkspace>[],
       // The dialog stays open on failure and shows the problems itself.
-      create: (values) async => created = await store.collaboration.createSpace(
-          name: values.name,
-          description: values.description,
-          workspaceId: values.workspaceId),
+      create: (values) async => created = await store.collaboration
+          .createSpace(name: values.name, description: values.description),
     );
     final space = created;
     if (values == null || space == null || !mounted) return;

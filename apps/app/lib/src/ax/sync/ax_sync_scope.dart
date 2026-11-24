@@ -43,11 +43,9 @@ class AxSyncScope {
                     .contains(p[2])));
     final workflow = p.length == 2 &&
         (p[0] == 'space-workflow-configurations' ||
-            (p[0] == 'workflow-workspace' && p[1] != 'user') ||
             (p[0] == 'workflow-default' && p[1] != 'user'));
-    final userWorkflow = p.length == 2 &&
-        ((p[0] == 'workflow-workspace' && p[1] == 'user') ||
-            (p[0] == 'workflow-default' && p[1] == 'user'));
+    final userWorkflow =
+        p.length == 2 && (p[0] == 'workflow-default' && p[1] == 'user');
     final discussion =
         p.length == 3 && (p[0] == 'thread') && p[2] == 'discussion';
     final work = p.length == 3 && (p[0] == 'thread') && p[2] == 'work-requests';

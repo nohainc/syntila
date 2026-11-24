@@ -101,7 +101,7 @@ class AxWorkerUsageController extends ChangeNotifier {
     } on Object {
       result = const AxWorkerUsageReport(
         status: 'error',
-        errorMessage: 'Usage could not be read. Check that the Workspace is '
+        errorMessage: 'Usage could not be read. Check that the Worker is '
             'online, then try again.',
       );
     }

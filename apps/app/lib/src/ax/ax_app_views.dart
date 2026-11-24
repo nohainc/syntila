@@ -27,7 +27,6 @@ extension _AxAppViews on _AxAppStateMixin {
   Widget _homeView() => AxDeferredListenableBuilder(
       listenable: Listenable.merge([
         store.homeChanges,
-        store.workspaceInvitations,
         store.people.incomingInvitations,
       ]),
       builder: (context, _) => _HomeThreadCollection(
@@ -80,8 +79,7 @@ extension _AxAppViews on _AxAppStateMixin {
                           'Worker needs attention',
                         AxNotificationKind.workerInstallFailed =>
                           'Worker install failed',
-                        AxNotificationKind.workspaceOffline =>
-                          'Workspace offline',
+                        AxNotificationKind.workspaceOffline => 'Worker offline',
                         AxNotificationKind.threadCompleted ||
                         AxNotificationKind.workflowRunCompleted ||
                         AxNotificationKind.completed =>
@@ -131,16 +129,11 @@ extension _AxAppViews on _AxAppStateMixin {
                     isOffline: store.lifecycle.isOffline,
                     onAcceptInvitation: _acceptInvitation,
                     onDeclineInvitation: _declineInvitation,
-                    workspaceInvitations: store.workspaceInvitations.value,
                     personInvitations: store.people.incomingInvitations.value,
                     onAcceptPersonInvitation: (invite) =>
                         unawaited(_acceptPersonInvitation(invite)),
                     onDeclinePersonInvitation: (invite) =>
                         unawaited(_declinePersonInvitation(invite)),
-                    onAcceptWorkspaceInvitation: (invite) =>
-                        unawaited(_acceptWorkspaceInvitation(invite)),
-                    onDeclineWorkspaceInvitation: (invite) =>
-                        unawaited(_declineWorkspaceInvitation(invite)),
                     run: executionSnapshot.run,
                     openFindingCount: executionSnapshot.findings
                         .where(
@@ -247,10 +240,6 @@ extension _AxAppViews on _AxAppStateMixin {
         return ThreadPage(
           onManageWorkerVisibility: (workspaceId) =>
               _navigateTo(AxNavigation.workspaces(workspaceId: workspaceId)),
-          workerVisibilityPreferences:
-              widget.dataSource is AxWorkerVisibilityDataSource
-                  ? store.workerVisibilityPreferences
-                  : null,
           catalogs: store.catalogs,
           workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
               engine: store.syncEngine, spaceId: space.id),
@@ -378,127 +367,15 @@ extension _AxAppViews on _AxAppStateMixin {
         builder: (context, _) => _searchCollections(index + 1, build));
   }
 
-  List<AxWorkspace> _workspaceCards() =>
-      store.workspaces.items.map((workspace) {
-        final inventoryCount = workspaceWorkers
-            .where((worker) =>
-                worker.workspaceId == workspace.id &&
-                worker.status != 'removed')
-            .length;
-        return workspace.copyWith(
-          workerCount: workspaceWorkerInventoryLoaded
-              ? inventoryCount
-              : workspace.workerCount,
-          lastSeen: workspace.lastSeen,
-        );
-      }).toList(growable: false);
-
-  Widget _workspacesView() => AxQueryBuilder<bool>(
-      engine: store.syncEngine,
-      query: store.catalogs.workersUxEnabled,
-      builder: (context, state) {
-        if (state.data == null) {
-          return state.error == null
-              ? const Center(child: CircularProgressIndicator())
-              : const Center(
-                  child: Text('Could not load Workers. Please try again.'));
-        }
-        return state.data == true
-            ? WorkerInstancesSection(
-                catalogs: store.catalogs,
-                selectedWorkerId: navigation.workspaceId,
-                onSelectWorker: (id) =>
-                    _navigateTo(AxNavigation.workspaces(workspaceId: id)),
-                onBackToList: () =>
-                    _navigateTo(const AxNavigation.workspaces()),
-                spaces: store.spaces.items,
-                currentUserId: store.auth.viewer?.id,
-              )
-            : _legacyWorkspacesView();
-      });
-
-  Widget _legacyWorkspacesView() => ListenableBuilder(
-      listenable: store.workspaces,
-      builder: (context, _) => AxQueryBuilder<List<AxWorker>>(
-          engine: store.syncEngine,
-          query: store.catalogs.workers,
-          builder: (context, _) => AxQueryBuilder<List<AxPerson>>(
-              engine: store.syncEngine,
-              query: store.people.query,
-              builder: (context, peopleState) => WorkspacesPage(
-                    people: peopleState.data ?? const <AxPerson>[],
-                    workspaces: _workspaceCards(),
-                    workspaceWorkers: workspaceWorkers,
-                    sharingRefresh: store.workspaceInvitationRevision,
-                    onSetParallelSlots: (workspace, slots) =>
-                        store.workspaces.setParallelSlots(workspace.id, slots),
-                    onSpaceAiSharingChanged: (workspaceId,
-                            {bool? allowChat, bool? allowWork}) =>
-                        store.workspaces.setSpaceAiSharing(workspaceId,
-                            allowChat: allowChat ?? false,
-                            allowWork: allowWork ?? false),
-                    workerUsageSource:
-                        widget.dataSource is AxWorkerUsageDataSource
-                            ? widget.dataSource as AxWorkerUsageDataSource
-                            : null,
-                    initialWorkspaceId: navigation.workspaceId,
-                    workflowCatalogs: store.catalogs,
-                    workflowConfigurations: store.workflowConfigurations,
-                    workerVisibilityPreferences:
-                        widget.dataSource is AxWorkerVisibilityDataSource
-                            ? store.workerVisibilityPreferences
-                            : null,
-                    viewerEmail: store.auth.viewer?.email,
-                    memberAccessSource: widget.dataSource
-                            is AxWorkspaceMemberAccessDataSource
-                        ? widget.dataSource as AxWorkspaceMemberAccessDataSource
-                        : null,
-                    personAccessSource: widget.dataSource
-                            is AxWorkspacePersonAccessDataSource
-                        ? widget.dataSource as AxWorkspacePersonAccessDataSource
-                        : null,
-                    sharingSource:
-                        widget.dataSource is AxWorkspaceSharingDataSource
-                            ? widget.dataSource as AxWorkspaceSharingDataSource
-                            : null,
-                    accountPlanSource:
-                        widget.dataSource is AxAccountPlanDataSource
-                            ? widget.dataSource as AxAccountPlanDataSource
-                            : null,
-                    onLeaveShared:
-                        widget.dataSource is AxWorkspaceSharingDataSource
-                            ? (workspace) async {
-                                try {
-                                  await (widget.dataSource
-                                          as AxWorkspaceSharingDataSource)
-                                      .revokePersonGrant(workspace.id, 'me');
-                                  await Future.wait([
-                                    store.workspaces.list(),
-                                    store.catalogs.refreshWorkers(),
-                                  ]);
-                                  if (mounted) {
-                                    _showSnackBar(
-                                        'Access to ${workspace.name} revoked.');
-                                  }
-                                } catch (error) {
-                                  if (mounted) _showSnackBar(error.toString());
-                                }
-                              }
-                            : null,
-                    onRevoke: (workspace) async {
-                      try {
-                        await store.workspaces.revoke(workspace.id);
-                        await store.workspaces.list();
-                        if (mounted) {
-                          _showSnackBar('Workspace unregisters from Cloud.');
-                        }
-                      } catch (error) {
-                        if (mounted) {
-                          _showSnackBar(error.toString());
-                        }
-                      }
-                    },
-                  ))));
+  Widget _workspacesView() => WorkerInstancesSection(
+        catalogs: store.catalogs,
+        selectedWorkerId: navigation.workspaceId,
+        onSelectWorker: (id) =>
+            _navigateTo(AxNavigation.workspaces(workspaceId: id)),
+        onBackToList: () => _navigateTo(const AxNavigation.workspaces()),
+        spaces: store.spaces.items,
+        currentUserId: store.auth.viewer?.id,
+      );
 
   Widget _accountProviderIcon(BuildContext context, String providerId,
       {double size = 24}) {

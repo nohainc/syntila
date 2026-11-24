@@ -156,15 +156,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Workspaces'), findsWidgets);
-      expect(find.text('Workers'), findsNothing);
+      expect(find.text('Workers'), findsWidgets);
+      expect(find.text('Workspaces'), findsNothing);
       expect(find.text('Profile & Security'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'Workspaces');
+      await tester.enterText(find.byType(TextField), 'Workers');
       await tester.pumpAndSettle();
 
-      expect(find.text('Workspaces'), findsWidgets);
-      expect(find.text('Workers'), findsNothing);
+      expect(find.text('Workers'), findsWidgets);
+      expect(find.text('Workspaces'), findsNothing);
 
       await tester.tap(find.byType(ListTile).first);
       await tester.pumpAndSettle();

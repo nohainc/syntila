@@ -3,9 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/features/profile/account_plan.dart';
 import 'package:syntila_app/src/features/profile/subscription_page.dart';
-import 'package:syntila_app/src/features/workspace/workspace_sharing_section.dart';
-
-import 'workspace_sharing_test.dart' show PlanSource, SharingSource;
 
 class _PlanSource implements AxAccountPlanDataSource {
   @override
@@ -142,7 +139,7 @@ void main() {
         findsOneWidget);
     expect(
         find.bySemanticsLabel(RegExp(
-            r'Share a Workspace with a person\. Free: Not included\. Syntila Plus: Included\.')),
+            r'Share a Worker with a person\. Free: Not included\. Syntila Plus: Included\.')),
         findsOneWidget);
     handle.dispose();
   });
@@ -170,21 +167,4 @@ void main() {
       }
     });
   }
-
-  testWidgets('a locked Plus feature links to the plans', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: SingleChildScrollView(
-                child: WorkspaceSharingSection(
-                    workspaceId: 'w',
-                    source: SharingSource(),
-                    planSource: PlanSource(AxAccountPlan.free))))));
-    await tester.pumpAndSettle();
-    await tester.tap(find.descendant(
-        of: find.byKey(const ValueKey('sharing-requires-paid')),
-        matching: find.text('View plans')));
-    await tester.pumpAndSettle();
-    expect(find.text('Compare plans'), findsOneWidget);
-    expect(_currentPlanText(tester), isNot(contains('Current plan')));
-  });
 }

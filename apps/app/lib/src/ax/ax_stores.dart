@@ -1,9 +1,7 @@
 import 'ax_work_activity.dart';
-import 'sync/ax_worker_visibility_preferences.dart';
 import 'sync/ax_people.dart';
 import 'sync/ax_archived_spaces.dart';
 import 'sync/ax_workflow_configurations.dart';
-import 'sync/ax_mcp_inventories.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -22,7 +20,6 @@ import 'sync/ax_work_realtime_sync.dart';
 import 'sync/ax_realtime_cache_router.dart';
 import 'sync/ax_session_catalogs.dart';
 import 'sync/ax_space_tab_queries.dart';
-import 'sync/ax_owned_workspaces.dart';
 import 'sync/ax_collaboration_mutations.dart';
 import 'sync/ax_lifecycle_sync.dart';
 
@@ -209,52 +206,7 @@ class AxStore {
         auth = AuthStore(dataSource),
         runs = RunStore(dataSource) {
     invitations.addListener(_updateUnreadNotifications);
-    workspaceInvitations.addListener(_updateUnreadNotifications);
     people.incomingInvitations.addListener(_updateUnreadNotifications);
-  }
-
-  /// Workspace invitations addressed to the signed-in person, surfaced in the
-  /// Inbox like Space invitations.
-  final ValueNotifier<List<AxMyWorkspaceInvitation>> workspaceInvitations =
-      ValueNotifier(const []);
-
-  /// Bumped when a Workspace invitation the viewer sent or received changes,
-  /// so open sharing views reload without a page refresh.
-  final ValueNotifier<int> workspaceInvitationRevision = ValueNotifier(0);
-
-  Future<void>? _workspaceInvitationsFlight;
-
-  /// Concurrent callers (bootstrap, realtime catch-up) share one request.
-  Future<void> refreshWorkspaceInvitations() =>
-      _workspaceInvitationsFlight ??= _loadWorkspaceInvitations()
-          .whenComplete(() => _workspaceInvitationsFlight = null);
-
-  Future<void> _loadWorkspaceInvitations() async {
-    final AxDataSource raw = dataSource;
-    if (raw is! AxWorkspaceSharingDataSource) return;
-    final source = raw as AxWorkspaceSharingDataSource;
-    try {
-      workspaceInvitations.value = await source.loadMyWorkspaceInvitations();
-    } catch (_) {
-      // Optional; a failed check simply shows nothing.
-    }
-  }
-
-  Future<void> declineWorkspaceInvitation(
-      AxMyWorkspaceInvitation invite) async {
-    final AxDataSource raw = dataSource;
-    if (raw is! AxWorkspaceSharingDataSource) return;
-    final source = raw as AxWorkspaceSharingDataSource;
-    await source.declineWorkspaceInvitation(invite.id);
-    await refreshWorkspaceInvitations();
-  }
-
-  Future<void> acceptWorkspaceInvitation(AxMyWorkspaceInvitation invite) async {
-    final AxDataSource raw = dataSource;
-    if (raw is! AxWorkspaceSharingDataSource) return;
-    final source = raw as AxWorkspaceSharingDataSource;
-    await source.acceptWorkspaceInvitation(invite.id);
-    await refreshWorkspaceInvitations();
   }
 
   final AxReadCacheBackend? _readCacheBackend;
@@ -459,7 +411,6 @@ class AxStore {
   void _updateUnreadNotifications() {
     unreadNotifications.value = notifications.where((n) => !n.read).length +
         invitations.items.length +
-        workspaceInvitations.value.length +
         people.incomingInvitations.value.length;
   }
 
@@ -480,10 +431,7 @@ class AxStore {
     topBarChanges.dispose();
     profileSecurityChanges.dispose();
     invitations.removeListener(_updateUnreadNotifications);
-    workspaceInvitations.removeListener(_updateUnreadNotifications);
     people.incomingInvitations.removeListener(_updateUnreadNotifications);
-    workspaceInvitations.dispose();
-    workspaceInvitationRevision.dispose();
     invitations.dispose();
     lifecycle.dispose();
     lifecycleNotice.dispose();
@@ -491,10 +439,8 @@ class AxStore {
     threadViewState.dispose();
     workActivity.dispose();
     workflowConfigurations.clear();
-    workerVisibilityPreferences.clear();
     people.clear();
     archivedSpaces.clear();
-    mcpInventories.clear();
     _disposed = true;
     _sessionGeneration++;
     spaces.dispose();
@@ -516,12 +462,8 @@ class AxStore {
       UserInvitationsStore(dataSource, engine: syncEngine);
   late final people = AxPeople(dataSource, engine: syncEngine);
   late final archivedSpaces = AxArchivedSpaces(dataSource, engine: syncEngine);
-  late final workerVisibilityPreferences =
-      AxWorkerVisibilityPreferences(dataSource, engine: syncEngine);
   late final workflowConfigurations =
       AxWorkflowConfigurations(dataSource, engine: syncEngine);
-  late final AxMcpInventories mcpInventories =
-      AxMcpInventories(dataSource, engine: syncEngine);
   late final AxSessionCatalogs catalogs =
       AxSessionCatalogs(dataSource, engine: syncEngine);
   late final AxSpaceTabQueries spaceTabs =
@@ -599,10 +541,8 @@ class AxStore {
     }
     lifecycle.reset();
     workflowConfigurations.clear();
-    workerVisibilityPreferences.clear();
     people.clear();
     archivedSpaces.clear();
-    mcpInventories.clear();
     unawaited(persistence.clearUser());
     _sessionGeneration++;
     spaces.clear();
@@ -689,89 +629,12 @@ class SpaceStore extends ValueNotifier<List<AxSpace>> {
 }
 
 class WorkspaceStore extends ValueNotifier<List<AxWorkspace>> {
-  WorkspaceStore(this.source, {AxSyncEngine? engine})
-      : engine = engine ?? AxSyncEngine(),
-        super(const []) {
-    _cancel = this.engine.watch(
-        query, (state) => value = state.data ?? const [],
-        fireImmediately: true);
-  }
-  final AxSyncEngine engine;
-  late final void Function() _cancel;
-  late final query = ownedWorkspacesQuery(source);
+  WorkspaceStore(this.source, {AxSyncEngine? engine}) : super(const []);
   final AxDataSource source;
-  int _generation = 0;
-  bool _disposed = false;
-  void clear() {
-    _generation++;
-    _listFlight = null;
-    engine.remove(query.key);
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    _generation++;
-    _cancel();
-    engine.remove(query.key);
-    super.dispose();
-  }
-
+  void clear() => value = const [];
   List<AxWorkspace> get items => value;
-
-  void replace(List<AxWorkspace> items) {
-    if (!listEquals(value, items)) {
-      engine.update(query, (_) => List.unmodifiable(items));
-    }
-  }
-
-  Future<List<AxWorkspace>>? _listFlight;
-
-  /// Concurrent callers share one in-flight request.
-  Future<List<AxWorkspace>> list() =>
-      _listFlight ??= _list().whenComplete(() => _listFlight = null);
-
-  Future<List<AxWorkspace>> _list() async {
-    final generation = ++_generation;
-    final value = await source.loadWorkspaces();
-    if (!_disposed && generation == _generation) replace(value);
-    return value;
-  }
-
-  Future<void> revoke(String workspaceId) =>
-      source.revokeWorkspace(workspaceId: workspaceId);
-
-  Future<void> setParallelSlots(String workspaceId, int slots) async {
-    await source.setWorkspaceParallelSlots(
-        workspaceId: workspaceId, slots: slots);
-    replace(items
-        .map((workspace) => workspace.id == workspaceId
-            ? workspace.copyWith(parallelSlots: slots)
-            : workspace)
-        .toList());
-  }
-
-  Future<void> setSpaceAiSharing(
-    String workspaceId, {
-    required bool allowChat,
-    required bool allowWork,
-  }) async {
-    await source.setWorkspaceSpaceAiSharing(
-        workspaceId: workspaceId, allowChat: allowChat, allowWork: allowWork);
-    replace(items
-        .map((workspace) => workspace.id == workspaceId
-            ? workspace.copyWith(spaceAiChat: allowChat, spaceAiWork: allowWork)
-            : workspace)
-        .toList());
-  }
-
-  Future<void> update(String workspaceId, String name) async {
-    final updated =
-        await source.updateWorkspace(workspaceId: workspaceId, name: name);
-    replace(items
-        .map((workspace) => workspace.id == workspaceId ? updated : workspace)
-        .toList());
-  }
+  void replace(List<AxWorkspace> items) => value = List.unmodifiable(items);
+  Future<List<AxWorkspace>> list() async => const [];
 }
 
 class RunStore {

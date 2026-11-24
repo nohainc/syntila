@@ -18,21 +18,6 @@ class AxSessionCatalogs {
   static final workflowKey = AxQueryKey(['workflow-catalog']);
   static final workersKey = AxQueryKey(['workers']);
   static final workerInstancesKey = AxQueryKey(['worker-instances']);
-  static final workerIdentityEnabledKey =
-      AxQueryKey(['worker-identity-enabled']);
-  static final workersUxEnabledKey = AxQueryKey(['workers-ux-enabled']);
-  late final workersUxEnabled = AxQuery<bool>(
-      key: workersUxEnabledKey,
-      staleTime: const Duration(minutes: 5),
-      load: () async => source is AxWorkersUxFeatureSource
-          ? (source as AxWorkersUxFeatureSource).workersUxEnabled()
-          : false);
-  late final workerIdentityEnabled = AxQuery<bool>(
-      key: workerIdentityEnabledKey,
-      staleTime: const Duration(minutes: 5),
-      load: () async => source is AxWorkerIdentityFeatureSource
-          ? (source as AxWorkerIdentityFeatureSource).workerIdentityEnabled()
-          : false);
   late final workflows = AxQuery<List<AxBuiltinWorkflow>>(
       key: workflowKey,
       staleTime: const Duration(minutes: 45),
@@ -42,8 +27,7 @@ class AxSessionCatalogs {
   late final workers = AxQuery<List<AxWorker>>(
       key: workersKey,
       staleTime: const Duration(seconds: 30),
-      load: () async => List.unmodifiable(
-          await source?.loadWorkspaceWorkerInventory() ?? const <AxWorker>[]));
+      load: () async => const <AxWorker>[]);
 
   late final workerInstances = AxQuery<List<WorkerInstance>>(
       key: workerInstancesKey,

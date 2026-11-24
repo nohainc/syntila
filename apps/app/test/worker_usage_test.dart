@@ -197,8 +197,7 @@ void main() {
         baseUrl: 'https://cloud.test/api',
         client: MockClient((request) async {
           expect(request.method, 'POST');
-          expect(request.url.path,
-              '/api/workspaces/workspace-1/workers/worker-1/usage');
+          expect(request.url.path, '/api/workers/worker-1/usage');
           return response;
         }),
       );

@@ -543,88 +543,8 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   Future<void> clearThreadChatHistory({required String threadId}) async {}
 
   @override
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [];
-
-  @override
   Future<List<AxBuiltinWorkflow>> loadBuiltinWorkflowCatalog() async =>
       const [];
-
-  @override
-  Future<AxWorkspace> updateWorkspace({
-    required String workspaceId,
-    required String name,
-  }) async =>
-      AxWorkspace(
-        id: workspaceId,
-        name: name,
-        slug: name.toLowerCase().replaceAll(' ', '-'),
-        status: 'active',
-        role: 'owner',
-      );
-
-  @override
-  Future<void> setWorkspaceParallelSlots({
-    required String workspaceId,
-    required int slots,
-  }) async {}
-
-  @override
-  Future<void> setWorkspaceSpaceAiSharing({
-    required String workspaceId,
-    required bool allowChat,
-    required bool allowWork,
-  }) async {}
-
-  @override
-  Future<List<AxWorkspaceMember>> loadWorkspaceMembers(
-          {required String workspaceId}) async =>
-      const [
-        AxWorkspaceMember(
-          userId: 'user-1',
-          displayName: 'User One',
-          email: 'user@example.test',
-          role: 'owner',
-          status: 'active',
-          createdAt: 'Today',
-        ),
-      ];
-
-  @override
-  Future<List<AxWorkspaceInvitation>> loadWorkspaceInvitations(
-          {required String workspaceId}) async =>
-      const [];
-
-  @override
-  Future<List<AxAuditEntry>> loadWorkspaceAudit(
-          {required String workspaceId}) async =>
-      const [];
-
-  @override
-  Future<void> inviteWorkspaceMember({
-    required String workspaceId,
-    required String email,
-    required String role,
-  }) async {}
-
-  @override
-  Future<void> changeWorkspaceMemberRole({
-    required String workspaceId,
-    required String userId,
-    required String role,
-  }) async {}
-
-  @override
-  Future<void> setWorkspaceMemberStatus({
-    required String workspaceId,
-    required String userId,
-    required String status,
-  }) async {}
-
-  @override
-  Future<void> expireWorkspaceInvitation({
-    required String workspaceId,
-    required String invitationId,
-  }) async {}
 
   @override
   Future<AxSnapshot> loadBootstrapState(
@@ -636,9 +556,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
 
   @override
   Future<void> respondToRunPrompt(String runId, String response) async {}
-
-  @override
-  Future<void> revokeWorkspace({required String workspaceId}) async {}
 
   @override
   Future<List<AxSpaceInvitation>> loadCurrentUserInvitations() async =>

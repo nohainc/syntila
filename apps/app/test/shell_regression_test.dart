@@ -144,7 +144,7 @@ void main() {
       expect(find.byTooltip('Application menu'), findsOneWidget); // ⋯ menu
 
       expect(find.text('Workflows'), findsNothing);
-      expect(find.text('Workspaces'), findsNothing);
+      expect(find.text('Workers'), findsNothing);
 
       // FORBIDDEN permanent sidebar items:
       expect(find.text('Home'), findsNothing);
@@ -272,7 +272,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify all required items are present in the menu
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
       expect(find.text('Downloads'), findsNothing);
@@ -281,10 +281,10 @@ void main() {
       expect(find.text('Log out'), findsOneWidget);
 
       final labels = [
+        'Workers',
         'People',
         'Files',
         'Notes',
-        'Workspaces',
         'Archived Spaces',
         'Settings',
         'Message Syntila',
@@ -306,7 +306,7 @@ void main() {
 
       // Verify destructive / action callbacks:
       // 1. Workspaces
-      await tester.tap(find.text('Workspaces'));
+      await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
       expect(navigated, const AxNavigation.workspaces());
 
@@ -522,12 +522,12 @@ void main() {
       // Open menu via button tap
       await tester.tap(find.byTooltip('Application menu'));
       await tester.pumpAndSettle();
-      expect(find.text('Workspaces'), findsOneWidget);
+      expect(find.text('Workers'), findsOneWidget);
 
       // Tap outside to dismiss
       await tester.tapAt(const Offset(400, 400));
       await tester.pumpAndSettle();
-      expect(find.text('Workspaces'), findsNothing);
+      expect(find.text('Workers'), findsNothing);
     });
 
     testWidgets('sidebar items and interactive widgets are focusable',

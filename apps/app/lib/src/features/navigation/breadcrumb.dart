@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../navigation/ax_navigation.dart';
-import '../../ax/sync/ax_query_builder.dart';
 import 'ax_shell_context.dart';
 
 /// Route-aware breadcrumb widget for Syntila HUD.
@@ -23,19 +22,8 @@ class AppBreadcrumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final catalogs = shellContext.catalogs;
-    if (shellContext.navigation.kind == AxRouteKind.workspaces &&
-        catalogs != null) {
-      return AxQueryBuilder<bool>(
-        engine: catalogs.engine,
-        query: catalogs.workersUxEnabled,
-        builder: (context, state) {
-          if (state.data == null) return const SizedBox.shrink();
-          return state.data == true
-              ? _breadcrumbText('Workers', isCurrent: true)
-              : _legacy(context);
-        },
-      );
+    if (shellContext.navigation.kind == AxRouteKind.workspaces) {
+      return _breadcrumbText('Workers', isCurrent: true);
     }
     return _legacy(context);
   }

@@ -98,8 +98,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(
         delivery.summary('wr'),
-        'Delivering files to the Workspace (0/2 ready)…\n'
-        '↓ a.txt — downloading to the Workspace (attempt 2)\n'
+        'Delivering files to the Worker (0/2 ready)…\n'
+        '↓ a.txt — downloading to the Worker (attempt 2)\n'
         '↑ b.txt — uploading');
     gate.complete();
     delivery.clear();

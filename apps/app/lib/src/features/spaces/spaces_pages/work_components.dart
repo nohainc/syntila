@@ -33,7 +33,7 @@ String _executionFailureMessage(String? code, {String? validationMessage}) =>
       'model_not_supported' =>
         'The selected model is not available for this worker. Choose another model and retry.',
       'permission_denied' =>
-        'The worker’s local provider denied a tool action. Review its permissions on the Workspace, then retry the failed step.',
+        'The worker’s local provider denied a tool action. Review its permissions in Connect, then retry the failed step.',
       'quota_exhausted' =>
         'The provider’s usage limit has been reached. Wait for the limit to reset or choose another worker, then retry.',
       'provider_unavailable' =>

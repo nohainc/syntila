@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:syntila_app/src/features/workspace/worker_instances_section.dart';
+import 'package:syntila_app/src/features/workers/worker_instances_section.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/mcp_worker_pin.dart';
@@ -89,17 +89,7 @@ void main() {
           'k': 'secret'
         });
   });
-  testWidgets('only loads and shows Workers when the identity flag is enabled',
-      (tester) async {
-    final source = _IdentitySource(false);
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-      body: WorkerInstancesSection(catalogs: AxSessionCatalogs(source)),
-    )));
-    await tester.pumpAndSettle();
-    expect(find.text('Workers'), findsNothing);
-    expect(source.loads, 0);
-
+  testWidgets('loads and shows Workers', (tester) async {
     final enabled = _IdentitySource(true);
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(

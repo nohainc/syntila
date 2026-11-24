@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
-import 'package:syntila_app/src/ax/ax_people.dart';
-import 'package:syntila_app/src/features/workspace/worker_person_shares_section.dart';
+import 'package:syntila_app/src/features/workers/worker_person_shares_section.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 
 class _Source implements AxWorkerPersonShareSource, AxPeopleDataSource {
@@ -37,7 +36,7 @@ class _Source implements AxWorkerPersonShareSource, AxPeopleDataSource {
   }
 
   @override
-  Future<List<AxPerson>> loadPeople() async => [
+  Future<List<AxPerson>> loadPeople() async => const [
         AxPerson(
           userId: 'bob',
           displayName: 'Bob',

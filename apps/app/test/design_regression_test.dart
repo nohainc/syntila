@@ -10,7 +10,6 @@ import 'package:syntila_app/src/features/navigation/ax_shell_context.dart';
 import 'package:syntila_app/src/features/common/syntila_code_block.dart';
 import 'package:syntila_app/src/features/common/syntila_markdown_body.dart';
 import 'package:syntila_app/src/features/spaces/spaces_pages.dart';
-import 'package:syntila_app/src/features/workspace/workspaces_page.dart';
 
 import 'ax_fixture_data.dart';
 
@@ -404,54 +403,6 @@ This is standard body paragraph text with **bold** and `inline_code`.
       // Thread tabs and panes render
       expect(find.text('Conversation'), findsAtLeastNWidgets(1));
       expect(find.text('AI History'), findsAtLeastNWidgets(1));
-    });
-
-    // 8. Worker Card
-    testWidgets(
-        'WorkspacesPage renders worker list with readiness badge and theme tokens',
-        (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: SyntilaBrand.darkTheme(),
-          home: const Scaffold(
-            body: WorkspacesPage(
-              workspaces: [
-                AxWorkspace(
-                  id: 'ws-mac',
-                  name: 'MacBook Pro M3',
-                  hostname: 'macbook.local',
-                  appVersion: '8.0.0',
-                  status: 'online',
-                  workerCount: 2,
-                  activeTaskCount: 0,
-                  role: 'owner',
-                ),
-              ],
-              workspaceWorkers: [
-                AxWorker(
-                  id: 'worker-codex',
-                  workspaceId: 'ws-mac',
-                  workspaceName: 'MacBook Pro M3',
-                  displayName: 'Codex CLI Worker',
-                  workerTypeId: 'chatgpt',
-                  status: 'ready',
-                  readinessState: 'ready',
-                  localConcurrencyLimit: 4,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('MacBook Pro M3'), findsWidgets);
-      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
-      expect(find.byKey(const Key('workspace-worker-row-worker-codex')),
-          findsOneWidget);
     });
 
     // 9. Key Shared Components Use Theme Tokens (No Hardcoded Breakages)

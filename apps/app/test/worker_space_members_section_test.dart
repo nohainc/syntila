@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
-import 'package:syntila_app/src/features/workspace/worker_space_members_section.dart';
+import 'package:syntila_app/src/features/workers/worker_space_members_section.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 
 AxWorkerSpaceMemberAccess _member(String id, String name,

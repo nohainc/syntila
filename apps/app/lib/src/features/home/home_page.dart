@@ -5,7 +5,6 @@ import '../../ax/ax_people.dart';
 import '../../brand.dart';
 import '../../ax/worker_presentation.dart';
 import '../invitations/invitation_card.dart';
-import '../../ax/ax_workspace_member_access.dart';
 import 'home_analytics.dart';
 
 export 'home_analytics.dart';
@@ -34,9 +33,6 @@ class HomePage extends StatelessWidget {
     this.isOffline = false,
     this.onAcceptInvitation,
     this.onDeclineInvitation,
-    this.workspaceInvitations = const [],
-    this.onAcceptWorkspaceInvitation,
-    this.onDeclineWorkspaceInvitation,
     this.personInvitations = const [],
     this.onAcceptPersonInvitation,
     this.onDeclinePersonInvitation,
@@ -76,9 +72,6 @@ class HomePage extends StatelessWidget {
   final bool isOffline;
   final ValueChanged<AxSpaceInvitation>? onAcceptInvitation;
   final ValueChanged<AxSpaceInvitation>? onDeclineInvitation;
-  final List<AxMyWorkspaceInvitation> workspaceInvitations;
-  final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
-  final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
   final List<AxPerson> personInvitations;
   final ValueChanged<AxPerson>? onAcceptPersonInvitation;
   final ValueChanged<AxPerson>? onDeclinePersonInvitation;
@@ -120,9 +113,6 @@ class HomePage extends StatelessWidget {
           isOffline: isOffline,
           onAcceptInvitation: onAcceptInvitation,
           onDeclineInvitation: onDeclineInvitation,
-          workspaceInvitations: workspaceInvitations,
-          onAcceptWorkspaceInvitation: onAcceptWorkspaceInvitation,
-          onDeclineWorkspaceInvitation: onDeclineWorkspaceInvitation,
           personInvitations: personInvitations,
           onAcceptPersonInvitation: onAcceptPersonInvitation,
           onDeclinePersonInvitation: onDeclinePersonInvitation,
@@ -336,7 +326,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Connect Syntila Workspace to make local Workers available to your Spaces.',
+                  'Connect Syntila Connect to make local Workers available to your Spaces.',
                   style: TextStyle(
                     fontSize: 13,
                     color: colorScheme.onSurfaceVariant,
@@ -348,7 +338,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('Connect Workspace →'),
+                  child: const Text('Connect Worker →'),
                 ),
               ],
             );
@@ -377,7 +367,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Connect Syntila Workspace to make local Workers available to your Spaces.',
+                      'Connect Syntila Connect to make local Workers available to your Spaces.',
                       style: TextStyle(
                         fontSize: 13,
                         color: colorScheme.onSurfaceVariant,
@@ -392,7 +382,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
-                child: const Text('Connect Workspace →'),
+                child: const Text('Connect Worker →'),
               ),
             ],
           );
@@ -652,9 +642,6 @@ class EstablishedUserHome extends StatelessWidget {
     this.isOffline = false,
     this.onAcceptInvitation,
     this.onDeclineInvitation,
-    this.workspaceInvitations = const [],
-    this.onAcceptWorkspaceInvitation,
-    this.onDeclineWorkspaceInvitation,
     this.personInvitations = const [],
     this.onAcceptPersonInvitation,
     this.onDeclinePersonInvitation,
@@ -691,9 +678,6 @@ class EstablishedUserHome extends StatelessWidget {
   final bool isOffline;
   final ValueChanged<AxSpaceInvitation>? onAcceptInvitation;
   final ValueChanged<AxSpaceInvitation>? onDeclineInvitation;
-  final List<AxMyWorkspaceInvitation> workspaceInvitations;
-  final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
-  final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
   final List<AxPerson> personInvitations;
   final ValueChanged<AxPerson>? onAcceptPersonInvitation;
   final ValueChanged<AxPerson>? onDeclinePersonInvitation;
@@ -808,9 +792,8 @@ class EstablishedUserHome extends StatelessWidget {
     } catch (_) {
       effectiveAttentionItems = const [];
     }
-    final hasAttentionItems = effectiveAttentionItems.isNotEmpty ||
-        workspaceInvitations.isNotEmpty ||
-        personInvitations.isNotEmpty;
+    final hasAttentionItems =
+        effectiveAttentionItems.isNotEmpty || personInvitations.isNotEmpty;
     final authorizedSpaceIds = spaces.map((p) => p.id).toSet();
     final isRunAuthorized = run != null &&
         (run!.spaceId == null ||
@@ -902,9 +885,6 @@ class EstablishedUserHome extends StatelessWidget {
               spaces: spaces,
               onAcceptInvitation: onAcceptInvitation,
               onDeclineInvitation: onDeclineInvitation,
-              workspaceInvitations: workspaceInvitations,
-              onAcceptWorkspaceInvitation: onAcceptWorkspaceInvitation,
-              onDeclineWorkspaceInvitation: onDeclineWorkspaceInvitation,
               personInvitations: personInvitations,
               onAcceptPersonInvitation: onAcceptPersonInvitation,
               onDeclinePersonInvitation: onDeclinePersonInvitation,
@@ -1377,9 +1357,6 @@ class _ForYouSection extends StatelessWidget {
     List<AxSpace>? spaces,
     this.onAcceptInvitation,
     this.onDeclineInvitation,
-    this.workspaceInvitations = const [],
-    this.onAcceptWorkspaceInvitation,
-    this.onDeclineWorkspaceInvitation,
     this.personInvitations = const [],
     this.onAcceptPersonInvitation,
     this.onDeclinePersonInvitation,
@@ -1400,9 +1377,6 @@ class _ForYouSection extends StatelessWidget {
   final List<AxSpace> spaces;
   final ValueChanged<AxSpaceInvitation>? onAcceptInvitation;
   final ValueChanged<AxSpaceInvitation>? onDeclineInvitation;
-  final List<AxMyWorkspaceInvitation> workspaceInvitations;
-  final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
-  final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
   final List<AxPerson> personInvitations;
   final ValueChanged<AxPerson>? onAcceptPersonInvitation;
   final ValueChanged<AxPerson>? onDeclinePersonInvitation;
@@ -1433,14 +1407,12 @@ class _ForYouSection extends StatelessWidget {
     final pendingSpaceInvitations =
         invitations.where((invite) => invite.status == 'pending').toList();
     // Invitations are never truncated; other items fill the rest of the cap.
-    final invitationCount = pendingSpaceInvitations.length +
-        workspaceInvitations.length +
-        personInvitations.length;
+    final invitationCount =
+        pendingSpaceInvitations.length + personInvitations.length;
     final items =
         eligibleItems.take((4 - invitationCount).clamp(0, 4)).toList();
     if (items.isEmpty &&
         pendingSpaceInvitations.isEmpty &&
-        workspaceInvitations.isEmpty &&
         personInvitations.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1479,16 +1451,6 @@ class _ForYouSection extends StatelessWidget {
             invitedBy: invite.displayName,
             onDecline: () => onDeclinePersonInvitation?.call(invite),
             onAccept: () => onAcceptPersonInvitation?.call(invite),
-          ),
-        for (final invite in workspaceInvitations)
-          AxInvitationCard(
-            key: ValueKey('home-workspace-invitation-${invite.id}'),
-            icon: Icons.computer_outlined,
-            title: invite.workspaceName,
-            badge: 'WORKSPACE',
-            invitedBy: invite.ownerName,
-            onDecline: () => onDeclineWorkspaceInvitation?.call(invite),
-            onAccept: () => onAcceptWorkspaceInvitation?.call(invite),
           ),
         for (final invite in pendingSpaceInvitations)
           AxInvitationCard(
@@ -1556,7 +1518,7 @@ class _ForYouItemTile extends StatelessWidget {
       AxHomeAttentionType.approvalRequired => 'Approval required',
       AxHomeAttentionType.executionFailed => 'Failed execution',
       AxHomeAttentionType.workerProblem => 'Worker needs attention',
-      AxHomeAttentionType.workspaceProblem => 'Workspace offline',
+      AxHomeAttentionType.workspaceProblem => 'Worker offline',
       AxHomeAttentionType.executionCompleted => 'Completed',
     };
   }

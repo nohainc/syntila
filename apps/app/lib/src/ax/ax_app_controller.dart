@@ -361,7 +361,7 @@ extension _AxAppController on _AxAppStateMixin {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Team conversations, AI requests, and results stay together in one place. Choose how Workers handle tasks through Workflows, and run AI work on your own machines with Syntila Workspace and the provider CLIs you already use.',
+                'Team conversations, AI requests, and results stay together in one place. Choose how Workers handle tasks through Workflows, and run AI work on your own machines with Syntila Connect and the provider CLIs you already use.',
                 style: TextStyle(fontSize: 12.5, height: 1.45),
               ),
               const SizedBox(height: 16),
@@ -536,41 +536,18 @@ extension _AxAppController on _AxAppStateMixin {
       }
       return;
     }
-    if (type == 'workspace_invitation.updated') {
-      // Invitee: the Inbox list. Owner: the open sharing section, and any
-      // newly lent Workspace once the invitee accepts.
-      store.workspaceInvitationRevision.value++;
-      try {
-        await Future.wait<void>([
-          store.refreshWorkspaceInvitations(),
-          store.workspaces.list(),
-        ]);
-      } catch (error) {
-        _reportRefreshFailure(error);
-      }
-      return;
-    }
     if ((workspaceId == null || workspaceId.isEmpty) &&
-        !type.startsWith('space.') &&
-        type != 'space_workspace_grant.updated') {
+        !type.startsWith('space.')) {
       return;
     }
     try {
-      if (type.startsWith('workspace.')) {
-        await Future.wait(
-            [store.workspaces.list(), store.catalogs.refreshWorkers()]);
-        return;
-      }
       if (type.startsWith('worker.inventory.')) {
         // The cache router owns invalidation; the shared query updates consumers.
         return;
       }
       if (type.startsWith('space.invitation.') ||
-          type.startsWith('space.invitation.') ||
           type.startsWith('invitation.') ||
-          type.startsWith('workspace.invitation.') ||
-          type.startsWith('space.') ||
-          type == 'space_workspace_grant.updated') {
+          type.startsWith('space.')) {
         // AxRealtimeCacheRouter already revalidates Spaces and invitations
         // for Space-scoped events; superseding its read would repeat them.
         final routed =
@@ -579,7 +556,6 @@ extension _AxAppController on _AxAppStateMixin {
         await Future.wait([
           if (!routed) store.spaces.refresh(),
           if (!routed) store.invitations.refresh(),
-          store.refreshWorkspaceInvitations(),
         ]);
         if (!mounted) return;
         return;
@@ -687,8 +663,6 @@ extension _AxAppController on _AxAppStateMixin {
 
   Set<String> _currentInvitationIds() => {
         for (final invite in store.invitations.value) 'space:${invite.id}',
-        for (final invite in store.workspaceInvitations.value)
-          'workspace:${invite.id}',
         for (final invite in store.people.incomingInvitations.value)
           'person:${invite.invitationId}',
       };
@@ -718,11 +692,6 @@ extension _AxAppController on _AxAppStateMixin {
           'space.invitation.received',
           '${invite.invitedByDisplay} invited you to '
               '${invite.spaceName.isNotEmpty ? invite.spaceName : 'a Space'}');
-    }
-    for (final invite in store.workspaceInvitations.value) {
-      if (known.contains('workspace:${invite.id}')) continue;
-      announce('workspace:${invite.id}', 'workspace.invitation.received',
-          '${invite.ownerName} invited you to use ${invite.workspaceName}');
     }
     for (final invite in store.people.incomingInvitations.value) {
       if (known.contains('person:${invite.invitationId}')) continue;
@@ -884,38 +853,6 @@ extension _AxAppController on _AxAppStateMixin {
     }
   }
 
-  Future<void> _acceptWorkspaceInvitation(
-      AxMyWorkspaceInvitation invite) async {
-    try {
-      await store.acceptWorkspaceInvitation(invite);
-      await Future.wait([
-        store.workspaces.list(),
-        store.catalogs.refreshWorkers(),
-      ]);
-      if (!mounted) return;
-      _showSnackBar('You can now use ${invite.workspaceName}.');
-      _navigateTo(const AxNavigation.workspaces());
-    } catch (error) {
-      if (mounted) {
-        _showSnackBar('Failed to accept invitation: $error',
-            type: ToastType.error);
-      }
-    }
-  }
-
-  Future<void> _declineWorkspaceInvitation(
-      AxMyWorkspaceInvitation invite) async {
-    try {
-      await store.declineWorkspaceInvitation(invite);
-      if (mounted) _showSnackBar('Invitation declined.');
-    } catch (error) {
-      if (mounted) {
-        _showSnackBar('Failed to decline invitation: $error',
-            type: ToastType.error);
-      }
-    }
-  }
-
   Widget _invitationCard(
     BuildContext context, {
     required IconData icon,
@@ -990,15 +927,12 @@ extension _AxAppController on _AxAppStateMixin {
     Widget buildInbox(BuildContext context) => ListenableBuilder(
           listenable: Listenable.merge([
             store.invitations,
-            store.workspaceInvitations,
             store.people.incomingInvitations,
           ]),
           builder: (context, _) {
             final pendingInvitations = store.invitations.items;
-            final workspaceInvitations = store.workspaceInvitations.value;
             final personInvitations = store.people.incomingInvitations.value;
             final isEmpty = pendingInvitations.isEmpty &&
-                workspaceInvitations.isEmpty &&
                 personInvitations.isEmpty &&
                 notifications.isEmpty;
             // Keep desktop notifications beside their sidebar entry point.
@@ -1086,7 +1020,6 @@ extension _AxAppController on _AxAppStateMixin {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (pendingInvitations.isNotEmpty ||
-                                workspaceInvitations.isNotEmpty ||
                                 personInvitations.isNotEmpty) ...[
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
@@ -1113,21 +1046,6 @@ extension _AxAppController on _AxAppStateMixin {
                                   onAccept: () => unawaited(
                                       _acceptPersonInvitation(invite)),
                                 ),
-                              for (final invite in workspaceInvitations)
-                                _invitationCard(
-                                  context,
-                                  icon: Icons.computer_outlined,
-                                  title: invite.workspaceName,
-                                  badge: 'WORKSPACE',
-                                  invitedBy: invite.ownerName,
-                                  onDecline: () => unawaited(
-                                      _declineWorkspaceInvitation(invite)),
-                                  onAccept: () {
-                                    Navigator.of(context).pop();
-                                    unawaited(
-                                        _acceptWorkspaceInvitation(invite));
-                                  },
-                                ),
                               for (final invite in pendingInvitations)
                                 _invitationCard(
                                   context,
@@ -1149,7 +1067,6 @@ extension _AxAppController on _AxAppStateMixin {
                             ],
                             if (notifications.isNotEmpty) ...[
                               if (pendingInvitations.isNotEmpty ||
-                                  workspaceInvitations.isNotEmpty ||
                                   personInvitations.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
@@ -1703,10 +1620,8 @@ extension _AxAppController on _AxAppStateMixin {
       unawaited(store.people
           .ensure()
           .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
-      unawaited(Future.wait<void>([
-        store.invitations.refresh(),
-        store.refreshWorkspaceInvitations(),
-      ]).then<void>((_) => _knownInvitationIds ??= _currentInvitationIds(),
+      unawaited(store.invitations.refresh().then<void>(
+          (_) => _knownInvitationIds ??= _currentInvitationIds(),
           onError: (Object _, StackTrace __) {}));
       optimisticRunStatus = null;
       if (showSpinner) {

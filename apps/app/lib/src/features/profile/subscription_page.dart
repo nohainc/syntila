@@ -54,18 +54,18 @@ const _benefitGroups = <(String, List<_Benefit>)>[
       _Benefit('Implement', _notIncluded, _included,
           'Plans and verifies work in phases. The requester needs Plus.'),
       _Benefit('AI tasks running at once', '1', _noPlanLimit,
-          'Across all Spaces. Workspace and provider limits still apply.'),
+          'Across all Spaces. Worker and provider limits still apply.'),
     ]
   ),
   (
-    'Workspaces',
+    'Workers',
     [
-      _Benefit('Personal Workspaces', '1', _noPlanLimit,
-          'Machines connected to run AI work.'),
+      _Benefit('Personal Workers', '1', _noPlanLimit,
+          'Workers connected to run AI work.'),
       _Benefit('Share Workers with Space members', _included, _included,
           'Space members can use your Workers for Chat and Work in those Spaces.'),
-      _Benefit('Share a Workspace with a person', _notIncluded, _included,
-          'Invite someone to use your Workspace in any of their Spaces. Only you need Plus.'),
+      _Benefit('Share a Worker with a person', _notIncluded, _included,
+          'Invite someone to use your Worker in any of their Spaces. Only you need Plus.'),
     ]
   ),
   (
@@ -383,7 +383,7 @@ class _Comparison extends StatelessWidget {
                 Icon(
                     switch (title) {
                       'AI work' => Icons.auto_awesome_outlined,
-                      'Workspaces' => Icons.devices_outlined,
+                      'Workers' => Icons.devices_outlined,
                       'Collaboration' => Icons.groups_outlined,
                       _ => Icons.folder_outlined,
                     },
@@ -410,7 +410,7 @@ class _Comparison extends StatelessWidget {
                 Icon(Icons.all_inclusive,
                     size: 18, color: theme.colorScheme.onSurfaceVariant),
                 Text(
-                    'No limit set by the plan. Other limits, such as your Workspace\'s capacity, still apply.',
+                    'No limit set by the plan. Other limits, such as your Worker\'s capacity, still apply.',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ],
