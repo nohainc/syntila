@@ -1,4 +1,4 @@
-name: Workspace / All platforms / GitHub Release
+name: Connect / All platforms / GitHub Release
 
 on:
   workflow_dispatch:

@@ -1,10 +1,10 @@
-name: Workspace / Windows / Release
+name: Connect / Windows / Release
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the signed installer as a GitHub Release (main and passing CI required)
+        description: Publish the installer and portable archive as a GitHub Release (main and passing CI required)
         type: boolean
         default: false
       release_notes:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-workspace-release
+  group: windows-connect-release
   cancel-in-progress: false
 
 jobs:
@@ -31,11 +31,11 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read Workspace version
+      - name: Read Connect version
         id: version
         run: |
           set -euo pipefail
-          version="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
+          version="$(awk '/^version:/ {print $2; exit}' apps/connect/pubspec.yaml)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Require successful CI for this commit
@@ -45,15 +45,16 @@ jobs:
         run: bash scripts/ci/require-ci-success.sh
 
   build:
-    name: Build, sign, and test Windows installer
+    name: Build and package Windows Connect (installer + portable zip)
     needs: require-ci
     runs-on: windows-2022
-    environment: workspace-windows-release
+    environment: connect-windows-release
     timeout-minutes: 75
     env:
-      SYNTILA_WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
+      SYNTILA_CONNECT_VERSION: ${{ needs.require-ci.outputs.version }}
       # Releases never fall back to the compile-only CI trust root.
-      SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+      SYNTILA_PROFILE_TRUST_ROOTS: ${{ vars.SYNTILA_PROFILE_TRUST_ROOTS || vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+      SYNTILA_UPDATE_KEYS: ${{ vars.SYNTILA_UPDATE_KEYS || '' }}
       SYNTILA_WINDOWS_SIGNING: ${{ vars.SYNTILA_WINDOWS_SIGNING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,8 +64,13 @@ jobs:
       - name: Require release configuration
         shell: pwsh
         run: |
-          if (-not $env:SYNTILA_RELEASE_TRUST_KEYS_JSON) { throw 'vars.SYNTILA_RELEASE_TRUST_KEYS_JSON is required.' }
-          if ($env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) { throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx.' }
+          if (-not $env:SYNTILA_PROFILE_TRUST_ROOTS) { throw 'vars.SYNTILA_PROFILE_TRUST_ROOTS (or vars.SYNTILA_RELEASE_TRUST_KEYS_JSON) is required.' }
+          if ('${{ inputs.publish }}' -eq 'true' -and $env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) {
+            throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx when publishing.'
+          }
+          if ($env:SYNTILA_WINDOWS_SIGNING -and $env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) {
+            throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx.'
+          }
       - name: Install pinned Inno Setup compiler
         shell: pwsh
         run: |
@@ -104,31 +110,27 @@ jobs:
           $path = Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx'
           [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:CERTIFICATE_PFX))
           "SYNTILA_WINDOWS_CERTIFICATE_PATH=$path" >> $env:GITHUB_ENV
-      - name: Validate Windows runtime and CLI shims
+      - name: Run Connect CLI tests
         shell: pwsh
         run: |
-          Push-Location apps/workspace
+          Push-Location apps/connect
           dart pub get
-          dart test test/windows_runtime_test.dart
+          dart test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
-          Push-Location packages/syntila_cli_worker_runtime
-          dart pub get
-          dart test test/windows_cli_shim_test.dart test/windows_process_job_test.dart
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Pop-Location
-      - name: Build Windows release bundle
-        shell: bash
-        run: bash scripts/build-workspace-windows.sh --prod
-      - name: Check Workspace GUI icon
+      - name: Build Windows Connect bundle and portable archive
+        shell: pwsh
+        run: ./scripts/build-connect-windows.ps1 -Production
+      - name: Check Connect GUI icon
         shell: pwsh
         run: |
-          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/syntila/windows/release/gui/syntila-workspace-gui.exe'
+          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/connect/windows/release/syntila_connect_gui.exe'
           Add-Type -AssemblyName System.Drawing
           $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($gui)
-          if ($null -eq $icon) { throw 'Workspace GUI executable has no icon.' }
+          if ($null -eq $icon) { throw 'Connect GUI executable has no icon.' }
           $icon.Dispose()
-      - name: Sign every bundled executable and library
+      - name: Sign bundled executables and refresh portable archive
+        if: vars.SYNTILA_WINDOWS_SIGNING != ''
         shell: pwsh
         env:
           SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
@@ -139,20 +141,12 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
           SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          $bundle = Join-Path $PWD 'dist/syntila/windows/release'
+          $bundle = Join-Path $PWD 'dist/connect/windows/release'
           ./scripts/sign-workspace-windows.ps1 -Bundle $bundle
           ./scripts/sign-workspace-windows.ps1 -Bundle $bundle -VerifyOnly
-          $archive = "dist/syntila/Syntila-Workspace-$env:SYNTILA_WORKSPACE_VERSION-windows-x64.zip"
+          $archive = "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip"
           Compress-Archive -Path "$bundle/*" -DestinationPath $archive -Force
-      - name: Validate signed service lifecycle
-        shell: pwsh
-        working-directory: apps/workspace
-        env:
-          SYNTILA_TEST_WINDOWS_SERVICE: ${{ github.workspace }}\dist\syntila\windows\release\syntila.exe
-        run: |
-          dart test test/windows_service_lifecycle_test.dart test/windows_service_manager_test.dart
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build signed installer
+      - name: Build Inno Setup installer
         shell: pwsh
         env:
           SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
@@ -162,15 +156,21 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
           SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: ./scripts/package-workspace-windows.ps1 -Compiler "$env:RUNNER_TEMP/inno-setup/ISCC.exe" -Sign
-      - name: Test signed install, upgrade and uninstall
+        run: |
+          $compiler = "$env:RUNNER_TEMP/inno-setup/ISCC.exe"
+          if ($env:SYNTILA_WINDOWS_SIGNING) {
+            ./scripts/package-connect-windows.ps1 -Compiler $compiler -Sign
+          } else {
+            ./scripts/package-connect-windows.ps1 -Compiler $compiler
+          }
+      - name: Test install, upgrade and uninstall
         shell: pwsh
-        run: ./scripts/test-workspace-windows-installer.ps1
+        run: ./scripts/test-connect-windows-installer.ps1
       - name: Write checksums
         shell: pwsh
         run: |
-          $files = @(Get-Item "dist/syntila/installer/Syntila-Workspace-$env:SYNTILA_WORKSPACE_VERSION-windows-x64-Setup.exe",
-                             "dist/syntila/Syntila-Workspace-$env:SYNTILA_WORKSPACE_VERSION-windows-x64.zip")
+          $files = @(Get-Item "dist/connect/installer/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-Setup.exe",
+                             "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip")
           New-Item -ItemType Directory -Force dist/windows-release | Out-Null
           $files | Copy-Item -Destination dist/windows-release
           $files | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
@@ -179,10 +179,10 @@ jobs:
         if: always()
         shell: pwsh
         run: Remove-Item (Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx') -ErrorAction SilentlyContinue
-      - name: Retain signed release candidate
+      - name: Retain release candidate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: syntila-workspace-windows-x64-release
+          name: syntila-connect-windows-x64-release
           path: dist/windows-release/*
           if-no-files-found: error
 
@@ -191,17 +191,17 @@ jobs:
     if: inputs.publish
     needs: build
     runs-on: ubuntu-24.04
-    environment: workspace-windows-release
+    environment: connect-windows-release
     timeout-minutes: 10
     permissions:
       contents: write
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Download signed candidate
+      - name: Download release candidate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name syntila-workspace-windows-x64-release --dir release
+        run: gh run download "$GITHUB_RUN_ID" --name syntila-connect-windows-x64-release --dir release
       - name: Verify checksums and create immutable release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -210,11 +210,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd release && sha256sum -c SHA256SUMS)
-          tag="workspace-windows-v$VERSION"
+          tag="connect-windows-v$VERSION"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; Windows releases are immutable." >&2
             exit 1
           fi
           gh release create "$tag" release/* --target "$GITHUB_SHA" \
-            --title "Syntila Workspace $VERSION for Windows" \
-            --notes "${NOTES:-Signed Syntila Workspace $VERSION for Windows x64.}"
+            --title "Syntila Connect $VERSION for Windows" \
+            --notes "${NOTES:-Signed Syntila Connect $VERSION for Windows x64 (installer and portable archive).}"

@@ -69,26 +69,26 @@ describe("CI acceptance orchestration", () => {
     }
   });
 
-  it("uses the public Workspace platform builders in build and release workflows", () => {
+  it("uses the public Connect and Workspace platform builders in build and release workflows", () => {
     for (const [workflow, command] of [
       ["release-linux.yml", "bash scripts/build-workspace-linux.sh --prod"],
       ["release-macos.yml", "bash scripts/build-workspace-macos.sh --prod"],
-      ["release-windows.yml", "bash scripts/build-workspace-windows.sh --prod"],
+      ["release-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],
     ]) {
       expect(source(`.github/workflows/${workflow}`)).toContain(command);
     }
   });
 
-  it("derives every Workspace release version from the checked-out pubspec", () => {
-    for (const workflow of [
-      "release-linux.yml",
-      "release-macos.yml",
-      "release-windows.yml",
-      "promote-workspace-release.yml",
+  it("derives every release version from the checked-out pubspec", () => {
+    for (const [workflow, pubspec] of [
+      ["release-linux.yml", "apps/workspace/pubspec.yaml"],
+      ["release-macos.yml", "apps/workspace/pubspec.yaml"],
+      ["release-windows.yml", "apps/connect/pubspec.yaml"],
+      ["promote-workspace-release.yml", "apps/workspace/pubspec.yaml"],
     ]) {
       const content = source(`.github/workflows/${workflow}`);
       expect(content).toContain(
-        "awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml",
+        `awk '/^version:/ {print $2; exit}' ${pubspec}`,
       );
       expect(content).not.toContain("inputs.version");
     }

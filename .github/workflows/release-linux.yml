@@ -1,4 +1,4 @@
-name: Workspace / Linux / Release
+name: Connect / Linux / Release
 
 on:
   workflow_dispatch:

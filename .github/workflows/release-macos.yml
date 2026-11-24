@@ -1,4 +1,4 @@
-name: Workspace / macOS / Release
+name: Connect / macOS / Release
 
 on:
   workflow_dispatch:
