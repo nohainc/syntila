@@ -96,7 +96,6 @@ void main() {
           lead: '',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: ''),
       dataSource: ActivitySource(),
       realtimeEvents: events.stream,
@@ -152,7 +151,6 @@ void main() {
           lead: '',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: ''),
       dataSource: data,
       // List rows identify the requester by name only.
@@ -216,7 +214,6 @@ void main() {
             lead: '',
             status: 'active',
             brief: '',
-            primaryWorkspace: '',
             queueStatus: ''),
         dataSource: data,
         realtimeEvents: events.stream,

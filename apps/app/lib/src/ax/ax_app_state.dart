@@ -12,9 +12,9 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   // Spaces whose stored `sidebarExpanded` has been applied this session, so
   // later refreshes never override a manual expand/collapse.
   final Set<String> _sidebarRestoredSpaceIds = <String>{};
-  List<AxWorker> get workspaceWorkers =>
+  List<AxWorker> get workerInventory =>
       store.syncEngine.peek(store.catalogs.workers).data ?? const [];
-  bool get workspaceWorkerInventoryLoaded =>
+  bool get workerInventoryLoaded =>
       store.syncEngine.peek(store.catalogs.workers).hasData;
   final authNameController = TextEditingController();
   final authEmailController = TextEditingController();
@@ -235,7 +235,6 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
         store.spaces.items.where((space) => space.id == id).firstOrNull;
   }
 
-  List<AxWorkspace> get workspaces => store.workspaces.items;
   AxTask? get selectedTask => executionSnapshot.tasks
       .where((task) => task.id == selectedTaskId)
       .firstOrNull;
@@ -291,7 +290,6 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     return true;
   }
 
-  String? get executionWorkspaceId => executionSnapshot.workspaceId;
   int get unreadNotificationCount =>
       notifications.where((notification) => !notification.read).length;
   AxShellContext get _shellContext => AxShellContext(
@@ -299,12 +297,11 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
         catalogs: store.catalogs,
         spaces: store.spaces.items,
         spaceListenable: store.spaces,
-        workspaceListenable: store.workspaces,
         spaceThreads: store.spaceThreads,
         selectedSpace: selectedSpace,
         selectedThread: selectedThread,
         selectedRun: executionSnapshot.run,
-        workspaces: store.workspaces.items,
+        workers: workerInventory,
         unreadNotificationCount: unreadNotificationCount,
         unreadNotifications: store.unreadNotifications,
         invitationsListenable: store.invitations,
@@ -459,7 +456,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
       expandedSpaceIds.add(navigation.spaceId!);
     }
     _desktopAuthIntentId = _intentIdFromNavigation(navigation);
-    if (!_isCanonicalWorkspaceUri(initialUri, navigation.toUri())) {
+    if (!_isCanonicalUri(initialUri, navigation.toUri())) {
       browserNavigation.replace(navigation.toUri());
     }
     navigationSubscription =

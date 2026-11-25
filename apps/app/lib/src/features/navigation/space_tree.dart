@@ -107,11 +107,9 @@ class SpaceTree extends StatelessWidget {
   Widget _buildContent(BuildContext context) {
     Widget content(BuildContext context) {
       final invitations = shellContext.invitationsListenable;
-      final workspaceInvitations = shellContext.workspaceInvitationsListenable;
       return ListenableBuilder(
         listenable: Listenable.merge([
           if (invitations != null) invitations,
-          if (workspaceInvitations != null) workspaceInvitations,
         ]),
         builder: (context, _) => _tree(context),
       );
@@ -128,10 +126,8 @@ class SpaceTree extends StatelessWidget {
   }
 
   Widget _tree(BuildContext context) {
-    final invitationCount = spaceIdFilter == null
-        ? shellContext.invitations.length +
-            shellContext.workspaceInvitationCount
-        : 0;
+    final invitationCount =
+        spaceIdFilter == null ? shellContext.invitations.length : 0;
     // Each group lists its pinned Spaces first, then the rest.
     List<AxSpace> group(List<AxSpace> spaces) {
       final visible = spaces

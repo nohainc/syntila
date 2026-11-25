@@ -15,7 +15,6 @@ const thread = AxThread(
     lead: '',
     status: 'archived',
     brief: '',
-    primaryWorkspace: '',
     queueStatus: '');
 
 class Source extends AxFixtureDataSource {

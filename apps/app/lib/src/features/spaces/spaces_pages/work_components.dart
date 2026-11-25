@@ -9,27 +9,26 @@ String _modelDisplayName(String? modelId, {AxWorker? worker}) {
       modelId;
 }
 
-// Execution diagnostics remain in Workspace/Engine logs, not conversation text.
+// Execution diagnostics remain in Engine logs, not conversation text.
 String _executionFailureMessage(String? code, {String? validationMessage}) =>
     switch (code) {
       'context_limit_exceeded' =>
         'This conversation no longer fits the AI model’s context window. Retry to compact the Worker session or to clear AI History.',
       'session_resume_failed' =>
         'The worker could not continue the previous conversation. Please retry your request.',
-      'worker_not_ready' =>
-        'The selected worker is not ready on its workspace.',
+      'worker_not_ready' => 'The selected worker is not ready on its computer.',
       'additional_folders_unsupported' =>
         'This worker cannot use the Space’s additional folders yet. Detach them from the Space or choose another worker, then retry.',
       'space_folder_exists' => 'Retry to choose whether to use it.',
       'cli_not_found' ||
       'provider_tool_unavailable' =>
-        'The worker needs to be set up on its workspace before it can respond.',
+        'The worker needs to be set up on its computer before it can respond.',
       'authentication_required' ||
       'provider_authentication_required' =>
-        'Sign in to the worker on its workspace, then retry your request.',
+        'Sign in to the worker on its computer, then retry your request.',
       'unsupported_cli_version' ||
       'unsupported_provider_tool_version' =>
-        'Update the worker on its workspace, then retry your request.',
+        'Update the worker on its computer, then retry your request.',
       'model_not_supported' =>
         'The selected model is not available for this worker. Choose another model and retry.',
       'permission_denied' =>
@@ -248,7 +247,7 @@ class _WorkComposer extends StatelessWidget {
   final AxUserWorkflowConfiguration? implementConfiguration;
 
   /// The user's per-step choices for Implement (plan, implement, verify),
-  /// keyed by step; a step without an entry uses the Workspace workflow.
+  /// keyed by step; a step without an entry uses the default workflow.
   final Map<String, Map<String, dynamic>> stepExecutionSelections;
   final int? researcherCount;
   final ValueChanged<int>? onResearcherCountChanged;

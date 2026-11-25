@@ -22,7 +22,7 @@ class AppBreadcrumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (shellContext.navigation.kind == AxRouteKind.workspaces) {
+    if (shellContext.navigation.kind == AxRouteKind.workers) {
       return _breadcrumbText('Workers', isCurrent: true);
     }
     return _legacy(context);
@@ -104,24 +104,24 @@ class AppBreadcrumb extends StatelessWidget {
       AxRouteKind.archivedSpaces => [
           _breadcrumbText('Archived Spaces', isCurrent: true)
         ],
-      AxRouteKind.workspaces => nav.workspaceId != null
+      AxRouteKind.workers => nav.workerId != null
           ? [
               _breadcrumbLink(
-                'Workspaces',
-                () => onNavigateTo(const AxNavigation.workspaces()),
+                'Workers',
+                () => onNavigateTo(const AxNavigation.workers()),
               ),
               _divider(),
               _breadcrumbText(
-                shellContext.workspaces
-                        .where((w) => w.id == nav.workspaceId)
+                shellContext.workers
+                        .where((w) => w.id == nav.workerId)
                         .firstOrNull
-                        ?.name ??
-                    'Workspace',
+                        ?.displayName ??
+                    'Worker',
                 isCurrent: true,
               ),
             ]
           : [
-              _breadcrumbText('Workspaces', isCurrent: true),
+              _breadcrumbText('Workers', isCurrent: true),
             ],
       AxRouteKind.profileSecurity => [
           _breadcrumbText(compact ? 'Profile' : 'Profile & Security',

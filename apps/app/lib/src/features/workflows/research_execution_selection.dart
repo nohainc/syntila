@@ -290,7 +290,7 @@ class ResearchExecutionSelection extends StatelessWidget {
                   if (selectorBuilder == null) ...[
                     const SizedBox(height: 12),
                     Text(
-                        'To change these selections, open the Workspace’s Workflows tab and edit ${implement ? 'Implement' : 'Research'}.'),
+                        'To change these selections, use the Worker picker in the composer to change the Worker for ${implement ? 'Implement' : 'Research'}.'),
                   ],
                 ],
               ),

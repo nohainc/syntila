@@ -21,7 +21,6 @@ const _thread = AxThread(
   lead: '',
   status: 'active',
   brief: '',
-  primaryWorkspace: '',
   queueStatus: '',
 );
 
@@ -45,7 +44,6 @@ void main() {
                 lead: '',
                 status: 'archived',
                 brief: '',
-                primaryWorkspace: '',
                 queueStatus: ''),
           ]
         },

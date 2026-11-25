@@ -71,8 +71,6 @@ void main() {
         tester,
         const AxAccountPlan(
             isPaid: false,
-            ownedWorkspaces: 1,
-            workspaceLimit: 1,
             attachmentStorageBytes: 1000000000,
             attachmentMaxFileBytes: 10000000));
     final current = _currentPlanText(tester);

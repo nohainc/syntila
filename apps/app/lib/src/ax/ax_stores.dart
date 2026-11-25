@@ -187,14 +187,6 @@ class _AxDeferredListenableBuilderState
 }
 
 /// Focused Cloud-backed stores. The API remains the source of truth.
-/// A newer refresh or a cleared session replaced this Workspace recovery's
-/// results. It is an expected outcome, not a failure to report to the user.
-class AxRecoverySupersededException implements Exception {
-  const AxRecoverySupersededException();
-  @override
-  String toString() => 'Workspace recovery superseded';
-}
-
 class AxStore {
   AxStore(this.dataSource,
       {AxReadCacheBackend? readCacheBackend,
@@ -268,7 +260,7 @@ class AxStore {
   final executionChanges = AxViewSignal();
   late final homeChanges = AxCoalescedListenable([
     spaces,
-    workspaces,
+    workerInventory,
     executionChanges,
     invitations,
     unreadNotifications,
@@ -276,7 +268,7 @@ class AxStore {
     productUpdatesNotifier,
   ]);
   late final topBarChanges = AxCoalescedListenable([
-    workspaces,
+    workerInventory,
     executionChanges,
     realtimeStatus,
   ]);
@@ -384,7 +376,6 @@ class AxStore {
     runs.replace(value.run);
     final previous = _execution;
     _execution = AxSnapshot(
-      workspaceId: value.workspaceId,
       activeRunId: value.activeRunId,
       run: value.run,
       spaces: const [],
@@ -396,7 +387,6 @@ class AxStore {
       synthesisDecision: value.synthesisDecision,
     );
     if (previous.run != value.run ||
-        previous.workspaceId != value.workspaceId ||
         previous.activeRunId != value.activeRunId ||
         !listEquals(previous.tasks, value.tasks) ||
         !listEquals(previous.findings, value.findings) ||
@@ -444,7 +434,7 @@ class AxStore {
     _disposed = true;
     _sessionGeneration++;
     spaces.dispose();
-    workspaces.dispose();
+    workerInventory.dispose();
     executionChanges.dispose();
     realtimeStatus.dispose();
     unreadNotifications.dispose();
@@ -497,43 +487,6 @@ class AxStore {
             reconcileNewest: true, reconcileAll: true);
       });
 
-  /// Existing HTTP APIs expose user-wide lists. Merge only the affected
-  /// Workspace into retained state; no bootstrap or route selection is involved.
-  Future<({AxWorkspace? workspace, List<AxWorker> workers})>
-      resynchronizeWorkspace(String id) async {
-    final stateQuery = AxQuery<AxWorkspace?>(
-        key: AxQueryKey(['execution_workspace', id, 'state']),
-        load: () async {
-          final values = await dataSource.loadWorkspaces();
-          for (final value in values) {
-            if (value.id == id) return value;
-          }
-          return null;
-        });
-    final results = await Future.wait<Object?>([
-      syncEngine.refresh<AxWorkspace?>(stateQuery),
-      catalogs.refreshWorkers(),
-    ]);
-    final workspace = results[0] as AxWorkspace?;
-    final workers = results[1] as List<AxWorker>;
-    // Cleared/superseded recovery cannot update the legacy view projection.
-    if (_disposed ||
-        !syncEngine.peek(stateQuery).hasData ||
-        !identical(syncEngine.peek(stateQuery).data, workspace) ||
-        !identical(syncEngine.peek(catalogs.workers).data, workers)) {
-      throw const AxRecoverySupersededException();
-    }
-    workspaces.replace([
-      for (final item in workspaces.items)
-        if (item.id != id) item,
-      if (workspace != null) workspace,
-    ]);
-    return (
-      workspace: workspace,
-      workers: workers.where((worker) => worker.workspaceId == id).toList()
-    );
-  }
-
   void clearServerState() {
     final source = dataSource;
     if (source is AxConditionalReadCache) {
@@ -546,7 +499,6 @@ class AxStore {
     unawaited(persistence.clearUser());
     _sessionGeneration++;
     spaces.clear();
-    workspaces.clear();
     security.value = null;
     securityError.value = null;
     pendingRunPrompt.value = null;
@@ -564,19 +516,17 @@ class AxStore {
   }
 
   final AuthStore auth;
-  late final WorkspaceStore workspaces =
-      WorkspaceStore(dataSource, engine: syncEngine);
+  late final WorkerInventoryStore workerInventory =
+      WorkerInventoryStore(syncEngine, catalogs.workers);
   late final SpaceStore spaces = SpaceStore(dataSource, engine: syncEngine);
   late final collaboration =
       AxCollaborationMutations(dataSource, engine: syncEngine);
   final RunStore runs;
 
   /// Bootstrap/recovery only; navigation uses focused queries.
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     final generation = _sessionGeneration;
-    final loaded = await dataSource.loadBootstrapState(
-        spaceId: spaceId, workspaceId: workspaceId);
+    final loaded = await dataSource.loadBootstrapState(spaceId: spaceId);
     if (_disposed || generation != _sessionGeneration) {
       throw StateError('Bootstrap superseded');
     }
@@ -585,7 +535,6 @@ class AxStore {
             .map((space) => space.copyWith(threads: const []))
             .toList());
     spaces.replace(snapshot.spaces);
-    workspaces.replace(snapshot.workspaces);
     auth.replace(snapshot.viewer);
     replaceExecution(snapshot);
     return snapshot;
@@ -628,13 +577,22 @@ class SpaceStore extends ValueNotifier<List<AxSpace>> {
   Future<List<AxSpace>> refresh() => engine.refresh(query, supersede: true);
 }
 
-class WorkspaceStore extends ValueNotifier<List<AxWorkspace>> {
-  WorkspaceStore(this.source, {AxSyncEngine? engine}) : super(const []);
-  final AxDataSource source;
-  void clear() => value = const [];
-  List<AxWorkspace> get items => value;
-  void replace(List<AxWorkspace> items) => value = List.unmodifiable(items);
-  Future<List<AxWorkspace>> list() async => const [];
+/// The Worker inventory as a listenable, so the shell status follows the
+/// shared Workers query.
+class WorkerInventoryStore extends ValueNotifier<List<AxWorker>> {
+  WorkerInventoryStore(AxSyncEngine engine, AxQuery<List<AxWorker>> query)
+      : super(const []) {
+    _cancel = engine.watch(query, (state) => value = state.data ?? const [],
+        fireImmediately: true);
+  }
+  void Function()? _cancel;
+
+  @override
+  void dispose() {
+    _cancel?.call();
+    _cancel = null;
+    super.dispose();
+  }
 }
 
 class RunStore {

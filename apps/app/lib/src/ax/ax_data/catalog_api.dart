@@ -324,8 +324,6 @@ mixin _CatalogApi on _AxApiClientCore {
   }
 
   @override
-  Future<List<AxWorkspace>> loadWorkspaces() async => const [];
-
   @override
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) async {
     final uri = Uri.parse('$baseUrl/spaces').replace(

@@ -350,18 +350,15 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  test('Space/Workspace list writes do not notify the execution projection',
-      () {
+  test('Space list writes do not notify the execution projection', () {
     final store = AxStore(SelectiveSource());
     var executionUpdates = 0;
     store.executionChanges.addListener(() => executionUpdates++);
     final fixture = axFixtureSnapshot();
     store.spaces.replace(fixture.spaces);
-    store.workspaces.replace(fixture.workspaces);
     store.replaceExecution(fixture);
     final previous = executionUpdates;
     store.spaces.replace([store.spaces.items.first.copyWith(name: 'Renamed')]);
-    store.workspaces.replace([]);
     expect(executionUpdates, previous);
     expect(store.spaces.items.first.name, 'Renamed');
     store.dispose();
@@ -373,14 +370,11 @@ void main() {
     final fixture = axFixtureSnapshot();
     final renamed = fixture.spaces.first.copyWith(name: 'Cached space');
     store.spaces.replace([renamed]);
-    store.workspaces.replace(fixture.workspaces);
     store.auth.replace(fixture.viewer);
     store.replaceExecution(fixture);
     expect(store.spaces.items.single.name, 'Cached space');
-    expect(store.workspaces.items, fixture.workspaces);
     expect(store.auth.viewer, fixture.viewer);
     expect(store.execution.spaces, isEmpty);
-    expect(store.execution.workspaces, isEmpty);
     expect(store.execution.viewer, isNull);
     expect(() => store.execution.tasks.clear(), throwsUnsupportedError);
     store.dispose();
@@ -392,11 +386,9 @@ void main() {
     final loaded = await store.loadBootstrapState();
     expect(store.spaces.items.map((space) => space.id),
         loaded.spaces.map((space) => space.id));
-    expect(store.workspaces.items, loaded.workspaces);
     expect(store.auth.viewer, loaded.viewer);
     expect(store.spaces.items.every((space) => space.threads.isEmpty), isTrue);
     expect(store.execution.spaces, isEmpty);
-    expect(store.execution.workspaces, isEmpty);
     store.dispose();
   });
 
@@ -404,23 +396,17 @@ void main() {
     final source = PendingLists();
     final store = AxStore(source);
     final spaces = store.spaces.refresh();
-    final workspaces = store.workspaces.list();
     store.clearServerState();
     source.spaces.complete(axFixtureSnapshot().spaces);
-    source.workspaces.complete(axFixtureSnapshot().workspaces);
-    await Future.wait([spaces, workspaces]);
+    await spaces;
     expect(store.spaces.items, isEmpty);
-    expect(store.workspaces.items, isEmpty);
     store.dispose();
   });
 }
 
 class PendingLists extends AxFixtureDataSource {
   final spaces = Completer<List<AxSpace>>();
-  final workspaces = Completer<List<AxWorkspace>>();
   @override
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) =>
       spaces.future;
-  @override
-  Future<List<AxWorkspace>> loadWorkspaces() => workspaces.future;
 }

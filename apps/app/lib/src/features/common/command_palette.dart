@@ -26,7 +26,7 @@ class CommandPaletteDialog extends StatefulWidget {
   const CommandPaletteDialog({
     super.key,
     List<AxSpace>? spaces,
-    required this.workspaces,
+    required this.workers,
     Map<String, List<AxThread>>? threadsBySpace,
     this.run,
     ValueChanged<String>? onSelectSpace,
@@ -39,7 +39,7 @@ class CommandPaletteDialog extends StatefulWidget {
   static void _noopString(String _) {}
 
   final List<AxSpace> spaces;
-  final List<AxWorkspace> workspaces;
+  final List<AxWorker> workers;
   final Map<String, List<AxThread>> threadsBySpace;
   final AxRun? run;
   final ValueChanged<String> onSelectSpace;
@@ -92,7 +92,7 @@ class _CommandPaletteDialogState extends State<CommandPaletteDialog> {
         category: 'Navigation',
         onSelect: () {
           if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-          widget.onNavigateTo(const AxNavigation.workspaces());
+          widget.onNavigateTo(const AxNavigation.workers());
         },
       ),
       CommandPaletteAction(
@@ -168,17 +168,15 @@ class _CommandPaletteDialogState extends State<CommandPaletteDialog> {
       ));
     }
 
-    // Add Workspaces
-    for (final workspace in widget.workspaces) {
+    for (final worker in widget.workers) {
       actions.add(CommandPaletteAction(
-        title: 'Workspace: ${workspace.name}',
-        subtitle: '${workspace.hostname} · ${workspace.status}',
+        title: 'Worker: ${worker.displayName}',
+        subtitle: worker.status,
         icon: Icons.computer_outlined,
-        category: 'Workspaces',
+        category: 'Workers',
         onSelect: () {
           if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-          widget
-              .onNavigateTo(AxNavigation.workspaces(workspaceId: workspace.id));
+          widget.onNavigateTo(AxNavigation.workers(workerId: worker.id));
         },
       ));
     }

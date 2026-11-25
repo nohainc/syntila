@@ -29,7 +29,6 @@ void main() {
     lead: 'Vitalii',
     status: 'running',
     brief: 'Redesign login and session flow',
-    primaryWorkspace: 'MacBook Pro',
     queueStatus: 'Running',
   );
 
@@ -40,7 +39,6 @@ void main() {
     lead: 'Vitalii',
     status: 'idle',
     brief: 'Background task scheduling',
-    primaryWorkspace: 'MacBook Pro',
     queueStatus: 'Idle',
   );
 
@@ -50,16 +48,6 @@ void main() {
     branch: 'main',
     lastActivity: 'today',
     threads: [wsRunning, wsIdle],
-  );
-
-  const testWorkspace = AxWorkspace(
-    id: 'worker-1',
-    name: 'MacBook Pro',
-    hostname: 'macbook-pro.local',
-    status: 'connected',
-    appVersion: '1.0.0',
-    workerCount: 3,
-    activeTaskCount: 1,
   );
 
   const baseShellContext = AxShellContext(
@@ -73,7 +61,6 @@ void main() {
     expandedSpaceIds: {'p-1'},
     viewerDisplayName: 'Vitalii Noha',
     viewerEmail: 'vitalii@syntila',
-    workspaces: [testWorkspace],
   );
 
   Widget wrapWithMaterial(Widget child, {ThemeData? theme}) {
@@ -174,7 +161,6 @@ void main() {
         expandedSpaceIds: const {'p-1'},
         viewerDisplayName: 'Vitalii Noha',
         viewerEmail: 'vitalii@syntila',
-        workspaces: const [testWorkspace],
         unreadNotifications: unreadNotifier,
       );
 
@@ -308,7 +294,7 @@ void main() {
       // 1. Workspaces
       await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
-      expect(navigated, const AxNavigation.workspaces());
+      expect(navigated, const AxNavigation.workers());
 
       // Re-open and test Archived Spaces
       await tester.tap(find.byTooltip('Application menu'));

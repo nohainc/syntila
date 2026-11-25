@@ -95,13 +95,11 @@ extension _AxAppController on _AxAppStateMixin {
       final accountSecurityLoad = navigation.kind == AxRouteKind.profileSecurity
           ? _loadAccountSecurity()
           : null;
-      // Bootstrap already reads the Workspace list; reuse it instead of a
-      // separate list request, and fetch only if bootstrap did not complete.
       unawaited(_loadAttachmentPolicy());
-      final bootstrapped = await _loadBootstrapState(showSpinner: !hydrated);
+      await _loadBootstrapState(showSpinner: !hydrated);
       if (mounted && store.auth.session?.authenticated == true) {
         if (mounted && store.auth.session?.authenticated == true) {
-          await _loadWorkspaces(fetch: !bootstrapped);
+          await _startWorkerInventoryAndRealtime();
         }
       }
       if (accountSecurityLoad != null) await accountSecurityLoad;
@@ -389,14 +387,13 @@ extension _AxAppController on _AxAppStateMixin {
     );
   }
 
-  Future<void> _loadWorkspaces({bool fetch = true}) async {
+  Future<void> _startWorkerInventoryAndRealtime() async {
     try {
-      if (fetch) await store.workspaces.list();
       if (!mounted) return;
       try {
         await store.catalogs.ensureWorkers();
       } catch (_) {
-        // Workspace inventory remains independently optional during registration.
+        // The Worker inventory remains independently optional during registration.
       }
       _startRealtime();
     } catch (_) {
@@ -404,9 +401,8 @@ extension _AxAppController on _AxAppStateMixin {
     }
   }
 
-  /// A superseded recovery means a newer refresh already holds fresher data.
   void _reportRefreshFailure(Object error) {
-    if (error is AxRecoverySupersededException || !mounted) return;
+    if (!mounted) return;
     _showSnackBar('Live update refresh failed: $error');
   }
 
@@ -491,20 +487,14 @@ extension _AxAppController on _AxAppStateMixin {
 
   Future<void> _recoverRealtimeScope(
       AxSyncScope scope, Future<void> routed, int generation) async {
-    Future<void> workspaceRecovery() async {
-      if (scope.kind == 'execution_workspace' && scope.id != null) {
-        await store.resynchronizeWorkspace(scope.id!);
-      } else if (scope.kind == 'user') {
-        await Future.wait([
-          _refreshRealtimeFeatures('space.updated'),
-          _refreshRealtimeFeatures('workspace.updated'),
-          _refreshRealtimeFeatures('workspace_invitation.updated'),
-        ]);
+    Future<void> userRecovery() async {
+      if (scope.kind == 'user') {
+        await _refreshRealtimeFeatures('space.updated');
       }
     }
 
     try {
-      await Future.wait([routed, workspaceRecovery()]);
+      await Future.wait([routed, userRecovery()]);
       // The shared Work router receives the same transport frame, independently
       // of rendering. Wait for that recovery without delivering it twice.
       await store.workRealtime.pendingRecovery;
@@ -524,7 +514,6 @@ extension _AxAppController on _AxAppStateMixin {
 
   Future<void> _refreshRealtimeFeatures(String type,
       {Map<String, dynamic>? event}) async {
-    final workspaceId = executionWorkspaceId;
     if (type.startsWith('product.update.') ||
         type.startsWith('product_update.')) {
       final payload = event?['payload'];
@@ -536,10 +525,7 @@ extension _AxAppController on _AxAppStateMixin {
       }
       return;
     }
-    if ((workspaceId == null || workspaceId.isEmpty) &&
-        !type.startsWith('space.')) {
-      return;
-    }
+    if (!type.startsWith('space.')) return;
     try {
       if (type.startsWith('worker.inventory.')) {
         // The cache router owns invalidation; the shared query updates consumers.
@@ -561,7 +547,7 @@ extension _AxAppController on _AxAppStateMixin {
         return;
       }
       // Execution events are reconciled by the shared Work router, never by
-      // reloading Spaces, Workspaces, authentication, or bootstrap state.
+      // reloading Spaces, authentication, or bootstrap state.
     } catch (error) {
       _reportRefreshFailure(error);
     }
@@ -634,7 +620,7 @@ extension _AxAppController on _AxAppStateMixin {
     _updateNotifications(() => notifications.removeWhere(matches));
   }
 
-  /// "Space › Thread" (or the Workspace) the notification is about, from the
+  /// "Space › Thread" the notification is about, from the
   /// names already loaded; null when none is known yet.
   String? _notificationPlace(AxNotification n) {
     String? spaceName;
@@ -651,13 +637,6 @@ extension _AxAppController on _AxAppStateMixin {
       if (spaceName != null && spaceName.trim().isNotEmpty) spaceName,
       if (threadName != null && threadName.trim().isNotEmpty) threadName,
     ];
-    if (parts.isEmpty && n.workspaceId != null) {
-      for (final workspace in store.workspaces.items) {
-        if (workspace.id == n.workspaceId && workspace.name.isNotEmpty) {
-          return workspace.name;
-        }
-      }
-    }
     return parts.isEmpty ? null : parts.join(' › ');
   }
 
@@ -1107,7 +1086,7 @@ extension _AxAppController on _AxAppStateMixin {
                                             .workflowRunCompleted ||
                                         AxNotificationKind.completed =>
                                           Icons.check_circle_outline,
-                                        AxNotificationKind.workspaceOffline =>
+                                        AxNotificationKind.workerOffline =>
                                           Icons.cloud_off_outlined,
                                         AxNotificationKind
                                               .workerCredentialProblem =>
@@ -1198,14 +1177,8 @@ extension _AxAppController on _AxAppStateMixin {
         if (spaceId != null) {
           _navigateTo(AxNavigation.space(spaceId));
         }
-      case AxNotificationTarget.workspaces:
-      case AxNotificationTarget.workspace:
-        final workspaceId = notification.workspaceId ??
-            workspaceWorkers
-                .where((worker) => worker.id == notification.workerId)
-                .map((worker) => worker.workspaceId)
-                .firstOrNull;
-        _navigateTo(AxNavigation.workspaces(workspaceId: workspaceId));
+      case AxNotificationTarget.workers:
+        _navigateTo(AxNavigation.workers(workerId: notification.workerId));
       case null:
         break;
     }
@@ -1229,7 +1202,6 @@ extension _AxAppController on _AxAppStateMixin {
       'format': 'syntila-run-diagnostics-v1',
       'diagnosticSchemaVersion': 1,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'workspaceId': executionSnapshot.workspaceId,
       'spaceId': selectedSpaceId,
       'runId': run.id,
       'status': run.status.name,
@@ -1256,7 +1228,6 @@ extension _AxAppController on _AxAppStateMixin {
   }
 
   void _startRealtime() {
-    final workspaceId = executionWorkspaceId;
     if (!realtimeStarted) {
       realtimeStarted = true;
       final authApiUrl =
@@ -1272,7 +1243,6 @@ extension _AxAppController on _AxAppStateMixin {
       unawaited(
         realtimeClient.connect(
           realtimeEndpointForApi(apiBaseUrl),
-          workspaceId,
         ),
       );
     }
@@ -1280,7 +1250,6 @@ extension _AxAppController on _AxAppStateMixin {
       spaceId: selectedSpaceId,
       threadId: navigation.threadId,
       runId: navigation.runId,
-      executionWorkspaceId: workspaceId,
     ));
   }
 
@@ -1599,10 +1568,10 @@ extension _AxAppController on _AxAppStateMixin {
     }
   }
 
-  /// Returns true when the bootstrap snapshot (Spaces, Workspaces, viewer)
+  /// Returns true when the bootstrap snapshot (Spaces, viewer)
   /// was loaded and applied.
   Future<bool> _loadBootstrapState(
-      {String? spaceId, String? workspaceId, bool showSpinner = true}) async {
+      {String? spaceId, bool showSpinner = true}) async {
     if (store.auth.session?.authenticated != true) return false;
     final resolvedSpaceId = spaceId;
     if (showSpinner) {
@@ -1614,8 +1583,7 @@ extension _AxAppController on _AxAppStateMixin {
       });
     }
     try {
-      final loaded = await store.loadBootstrapState(
-          spaceId: resolvedSpaceId, workspaceId: workspaceId);
+      final loaded = await store.loadBootstrapState(spaceId: resolvedSpaceId);
       if (!mounted) return false;
       unawaited(store.people
           .ensure()
@@ -1702,10 +1670,10 @@ extension _AxAppController on _AxAppStateMixin {
             _applySpaceNavigation();
           });
         }
-        final bootstrapped = await _loadBootstrapState(showSpinner: !hydrated);
+        await _loadBootstrapState(showSpinner: !hydrated);
         if (mounted && store.auth.session?.authenticated == true) {
           if (mounted && store.auth.session?.authenticated == true) {
-            await _loadWorkspaces(fetch: !bootstrapped);
+            await _startWorkerInventoryAndRealtime();
           }
         }
       }
@@ -1737,7 +1705,7 @@ extension _AxAppController on _AxAppStateMixin {
   void _onBrowserNavigation(Uri uri) {
     final next = AxNavigation.fromUri(uri);
     final canonicalUri = next.toUri();
-    if (!_isCanonicalWorkspaceUri(uri, canonicalUri)) {
+    if (!_isCanonicalUri(uri, canonicalUri)) {
       browserNavigation.replace(canonicalUri);
     }
     if (next == navigation) return;
@@ -1757,11 +1725,10 @@ extension _AxAppController on _AxAppStateMixin {
       spaceId: next.spaceId ?? selectedSpaceId,
       threadId: next.threadId,
       runId: next.runId,
-      executionWorkspaceId: executionWorkspaceId,
     ));
   }
 
-  bool _isCanonicalWorkspaceUri(Uri actual, Uri canonical) =>
+  bool _isCanonicalUri(Uri actual, Uri canonical) =>
       actual.path == canonical.path &&
       mapEquals(actual.queryParameters, canonical.queryParameters);
 
@@ -1801,7 +1768,6 @@ extension _AxAppController on _AxAppStateMixin {
       spaceId: next.spaceId ?? selectedSpaceId,
       threadId: next.threadId,
       runId: next.runId,
-      executionWorkspaceId: executionWorkspaceId,
     ));
   }
 

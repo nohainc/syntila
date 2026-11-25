@@ -451,7 +451,6 @@ void main() {
                       lead: '',
                       status: 'active',
                       brief: '',
-                      primaryWorkspace: '',
                       queueStatus: ''),
                   dataSource: source,
                   workHistoryCache: cache,

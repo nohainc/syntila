@@ -441,17 +441,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
       Uri.parse('https://accounts.example.test/link/$provider');
 
   @override
-  Future<List<AxWorkspace>> loadWorkspaces() async => const [
-        AxWorkspace(
-          id: 'workspace-fixture',
-          name: 'Fixture Workspace',
-          slug: 'fixture-workspace',
-          status: 'active',
-          role: 'owner',
-        ),
-      ];
-
-  @override
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) async =>
       axFixtureSnapshot().spaces;
 
@@ -504,7 +493,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
         lead: 'You',
         status: 'active',
         brief: '',
-        primaryWorkspace: 'Not selected',
         queueStatus: 'Idle',
       );
 
@@ -523,7 +511,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
         lead: 'You',
         status: status ?? 'active',
         brief: '',
-        primaryWorkspace: 'Not selected',
         queueStatus: 'Idle',
         workConfig: workConfig ??
             const {
@@ -547,8 +534,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
       const [];
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-          {String? spaceId, String? workspaceId}) async =>
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async =>
       axFixtureSnapshot();
 
   @override
@@ -596,8 +582,7 @@ class EmptyWorkspaceFixtureDataSource extends AxFixtureDataSource {
   bool hasSpace = false;
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     return _snapshot();
   }
 

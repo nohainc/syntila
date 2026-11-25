@@ -22,7 +22,6 @@ const thread = AxThread(
     lead: '',
     status: 'active',
     brief: '',
-    primaryWorkspace: '',
     queueStatus: '',
     hasActiveWork: true);
 

@@ -206,7 +206,6 @@ void main() {
                     lead: '',
                     status: 'active',
                     brief: '',
-                    primaryWorkspace: '',
                     queueStatus: '')
               ]
             },
@@ -780,7 +779,7 @@ void main() {
       );
       expect(homeContext.isNavActive(const AxNavigation.home()), isTrue);
       expect(homeContext.isNavActive(const AxNavigation.spaces()), isFalse);
-      expect(homeContext.isNavActive(const AxNavigation.workspaces()), isFalse);
+      expect(homeContext.isNavActive(const AxNavigation.workers()), isFalse);
 
       const spaceContext = AxShellContext(
         navigation: AxNavigation.space('space-1'),
@@ -864,7 +863,7 @@ void main() {
           reason: '$nav should NOT activate Home',
         );
         expect(
-          ctx.isNavActive(const AxNavigation.workspaces()),
+          ctx.isNavActive(const AxNavigation.workers()),
           isFalse,
           reason: '$nav should NOT activate Workspaces',
         );
@@ -872,10 +871,10 @@ void main() {
 
       // Workspaces route
       const workspaceCtx = AxShellContext(
-        navigation: AxNavigation.workspaces(),
+        navigation: AxNavigation.workers(),
         spaces: [],
       );
-      expect(workspaceCtx.isNavActive(const AxNavigation.workspaces()), isTrue);
+      expect(workspaceCtx.isNavActive(const AxNavigation.workers()), isTrue);
       expect(workspaceCtx.isNavActive(const AxNavigation.spaces()), isFalse);
       expect(workspaceCtx.isNavActive(const AxNavigation.home()), isFalse);
 
@@ -905,7 +904,6 @@ void main() {
           lead: 'Vitalii',
           status: 'running',
           brief: 'Redesign login flow',
-          primaryWorkspace: 'MacBook Pro',
           queueStatus: 'Running',
         ),
       ],
@@ -922,20 +920,6 @@ void main() {
         spaces: [testSpace],
         threadsBySpace: {testSpace.id: testSpace.threads},
         selectedSpace: testSpace,
-        workspaces: [
-          const AxWorkspace(
-            id: 'worker-1',
-            name: 'MacBook Pro',
-            hostname: 'vitalii-mac',
-            status: 'online',
-            platform: 'macOS',
-            architecture: 'arm64',
-            appVersion: '0.6.0',
-            lastSeen: 'just now',
-            workerCount: 2,
-            activeTaskCount: 1,
-          ),
-        ],
         viewerDisplayName: 'Vitalii Noha',
         viewerEmail: 'vitalii@example.com',
         expandedSpaceIds: {'space-1'},
@@ -1035,7 +1019,7 @@ void main() {
       await tester.tap(find.descendant(
           of: find.byType(MenuItemButton), matching: find.text('Workers')));
       await tester.pumpAndSettle();
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
     });
 
     testWidgets(
@@ -1218,7 +1202,7 @@ void main() {
       // Click Execution
       await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
 
       // Reopen and check About Syntila
       await tester.tap(find.byTooltip('Application menu'));
@@ -1250,7 +1234,6 @@ void main() {
             lead: 'Vitalii',
             status: 'active',
             brief: 'Active task',
-            primaryWorkspace: 'MacBook Pro',
             queueStatus: 'Idle',
           ),
           AxThread(
@@ -1260,7 +1243,6 @@ void main() {
             lead: 'Vitalii',
             status: 'archived',
             brief: 'Archived task',
-            primaryWorkspace: 'MacBook Pro',
             queueStatus: 'Done',
           ),
         ],
@@ -1312,13 +1294,12 @@ void main() {
           lead: 'Vitalii',
           status: 'running',
           brief: 'Redesign login flow',
-          primaryWorkspace: 'MacBook Pro',
           queueStatus: 'Running',
         ),
       ],
     );
 
-    testWidgets('renders breadcrumbs, search affordance, and workspace status',
+    testWidgets('renders breadcrumbs, search affordance, and Worker status',
         (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -1335,19 +1316,17 @@ void main() {
         spaces: const [testSpace],
         selectedSpace: testSpace,
         selectedThread: testSpace.threads.first,
-        workspaces: const [
-          AxWorkspace(
+        workers: const [
+          AxWorker(
             id: 'worker-1',
-            name: 'MacBook Pro',
-            hostname: 'vitalii-mac',
-            status: 'online',
-            platform: 'macOS',
-            architecture: 'arm64',
-            appVersion: '0.6.0',
-            lastSeen: 'just now',
-            workerCount: 2,
-            activeTaskCount: 1,
-          ),
+            workspaceId: '',
+            workspaceName: '',
+            workerTypeId: 'codex',
+            displayName: 'MacBook Pro',
+            status: 'ready',
+            readinessState: 'ready',
+            localConcurrencyLimit: 1,
+          )
         ],
         unreadNotificationCount: 3,
       );
@@ -1376,8 +1355,8 @@ void main() {
       // Check Search affordance (desktop)
       expect(find.text('Search or jump to...'), findsOneWidget);
 
-      // Check Workspace status button
-      expect(find.text('MacBook Pro · Online'), findsOneWidget);
+      // Check Worker status button
+      expect(find.text('1 / 1 Worker online'), findsOneWidget);
 
       // Check Notification badge
       expect(find.text('3'), findsOneWidget);
@@ -1798,11 +1777,10 @@ void main() {
       expect(find.text('Usage'), findsNothing);
       await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
     });
 
-    testWidgets(
-        'Workspaces status popover opens and displays workspaces and workers',
+    testWidgets('Workers status popover opens and displays Workers',
         (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -1813,50 +1791,42 @@ void main() {
 
       AxNavigation? navigatedTo;
 
-      const macBook = AxWorkspace(
+      const macBook = AxWorker(
         id: 'worker-1',
-        name: 'MacBook Pro',
-        hostname: 'vitalii-mac',
-        status: 'online',
-        platform: 'macOS',
-        architecture: 'arm64',
-        appVersion: '0.6.0',
-        lastSeen: 'just now',
-        workerCount: 4,
-        activeTaskCount: 1,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'MacBook Pro',
+        status: 'ready',
+        readinessState: 'ready',
+        localConcurrencyLimit: 1,
       );
-
-      const buildServer = AxWorkspace(
+      const buildServer = AxWorker(
         id: 'worker-2',
-        name: 'Build Server',
-        hostname: 'build-srv',
-        status: 'online',
-        platform: 'Linux',
-        architecture: 'x64',
-        appVersion: '0.6.0',
-        lastSeen: 'just now',
-        workerCount: 6,
-        activeTaskCount: 0,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'Build Server',
+        status: 'ready',
+        readinessState: 'ready',
+        localConcurrencyLimit: 1,
       );
-
-      const officeMac = AxWorkspace(
+      const officeMac = AxWorker(
         id: 'worker-3',
-        name: 'Office Mac',
-        hostname: 'office-mac',
-        status: 'offline',
-        platform: 'macOS',
-        architecture: 'arm64',
-        appVersion: '0.6.0',
-        lastSeen: '2 hours ago',
-        workerCount: 0,
-        activeTaskCount: 0,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'Office Mac',
+        status: 'needs_attention',
+        readinessState: 'test_failed',
+        localConcurrencyLimit: 1,
       );
 
       // 1. Global context test: "2 / 3 Workers online"
       const globalContext = AxShellContext(
         navigation: AxNavigation.home(),
         spaces: [],
-        workspaces: [macBook, buildServer, officeMac],
+        workers: [macBook, buildServer, officeMac],
       );
 
       expect(globalContext.executionStatusLabel, '2 / 3 Workers online');
@@ -1889,96 +1859,67 @@ void main() {
       expect(find.text('Workers'), findsOneWidget);
       expect(find.text('2 / 3 Online'), findsOneWidget);
       expect(find.text('MacBook Pro'), findsOneWidget);
-      expect(find.text('4 Workers ready'), findsOneWidget);
       expect(find.text('Build Server'), findsOneWidget);
-      expect(find.text('6 Workers ready'), findsOneWidget);
       expect(find.text('Office Mac'), findsOneWidget);
-      expect(find.text('Offline'), findsOneWidget);
+      expect(find.text('Ready'), findsNWidgets(2));
+      expect(find.text('Needs attention'), findsOneWidget);
 
       // Tap Manage Workers in popover footer
       await tester.tap(find.text('Manage Workers'));
       await tester.pumpAndSettle();
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
     });
 
     test('AxShellContext derives correct tone and label across states', () {
-      const macBook = AxWorkspace(
+      const ready = AxWorker(
         id: 'worker-1',
-        name: 'MacBook Pro',
-        hostname: 'vitalii-mac',
-        status: 'online',
-        platform: 'macOS',
-        architecture: 'arm64',
-        appVersion: '0.6.0',
-        lastSeen: 'just now',
-        workerCount: 4,
-        activeTaskCount: 1,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'MacBook Pro',
+        status: 'ready',
+        readinessState: 'ready',
+        localConcurrencyLimit: 1,
       );
-      const officeMacOffline = AxWorkspace(
+      const broken = AxWorker(
         id: 'worker-3',
-        name: 'Office Mac',
-        hostname: 'office-mac',
-        status: 'offline',
-        platform: 'macOS',
-        architecture: 'arm64',
-        appVersion: '0.6.0',
-        lastSeen: 'yesterday',
-        workerCount: 0,
-        activeTaskCount: 0,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'Office Mac',
+        status: 'needs_attention',
+        readinessState: 'test_failed',
+        localConcurrencyLimit: 1,
       );
 
-      // Thread context: targeted workspace online
-      const wsCtxOnline = AxShellContext(
-        navigation: AxNavigation.thread('space-1', 'ws-1'),
+      const mixed = AxShellContext(
+        navigation: AxNavigation.home(),
         spaces: [],
-        selectedThread: AxThread(
-          id: 'ws-1',
-          spaceId: 'space-1',
-          name: 'Authentication redesign',
-          lead: 'Vitalii',
-          status: 'running',
-          brief: 'Redesign login flow',
-          primaryWorkspace: 'MacBook Pro',
-          queueStatus: 'Running',
-        ),
-        workspaces: [macBook, officeMacOffline],
+        workers: [ready, broken],
       );
-      expect(wsCtxOnline.executionStatusLabel, 'MacBook Pro · Online');
-      expect(wsCtxOnline.executionStatusTone, ExecutionStatusTone.usable);
+      expect(mixed.executionStatusLabel, '1 / 2 Workers online');
+      expect(mixed.executionStatusTone, ExecutionStatusTone.usable);
 
-      // Thread context: targeted workspace offline
-      const wsCtxOffline = AxShellContext(
-        navigation: AxNavigation.thread('space-1', 'ws-2'),
+      const noneReady = AxShellContext(
+        navigation: AxNavigation.home(),
         spaces: [],
-        selectedThread: AxThread(
-          id: 'ws-2',
-          spaceId: 'space-1',
-          name: 'Core refactor',
-          lead: 'Vitalii',
-          status: 'running',
-          brief: 'Refactoring core',
-          primaryWorkspace: 'Office Mac',
-          queueStatus: 'Running',
-        ),
-        workspaces: [macBook, officeMacOffline],
+        workers: [broken],
       );
-      expect(wsCtxOffline.executionStatusLabel, 'Office Mac · Offline');
-      expect(wsCtxOffline.executionStatusTone, ExecutionStatusTone.failed);
+      expect(noneReady.executionStatusLabel, '0 / 1 Worker online');
+      expect(noneReady.executionStatusTone, ExecutionStatusTone.failed);
 
       // Reconnecting / stale state
       const staleCtx = AxShellContext(
         navigation: AxNavigation.home(),
         spaces: [],
-        workspaces: [macBook],
+        workers: [ready],
         realtimeStale: true,
       );
       expect(staleCtx.executionStatusTone, ExecutionStatusTone.degraded);
 
-      // Empty workspaces state
       const emptyCtx = AxShellContext(
         navigation: AxNavigation.home(),
         spaces: [],
-        workspaces: [],
       );
       expect(emptyCtx.executionStatusLabel, 'No Workers');
       expect(emptyCtx.executionStatusTone, ExecutionStatusTone.neutral);
@@ -1999,7 +1940,6 @@ void main() {
           lead: 'Vitalii',
           status: 'running',
           brief: 'Optimizing worker loop',
-          primaryWorkspace: 'MacBook Pro',
           queueStatus: 'Running',
         ),
         AxThread(
@@ -2009,7 +1949,6 @@ void main() {
           lead: 'Vitalii',
           status: 'queued',
           brief: 'Queue worker tasks',
-          primaryWorkspace: 'MacBook Pro',
           queueStatus: 'Queued',
         ),
         AxThread(
@@ -2019,7 +1958,6 @@ void main() {
           lead: 'Vitalii',
           status: 'failed',
           brief: 'Failed run',
-          primaryWorkspace: 'MacBook Pro',
           queueStatus: 'Failed',
         ),
       ],
@@ -2033,8 +1971,8 @@ void main() {
         AxNavigation.space('p-1'),
         AxNavigation.thread('p-1', 'ws-running'),
         AxNavigation.run('p-1', 'run-1', threadId: 'ws-running'),
-        AxNavigation.workspaces(),
-        AxNavigation.workspaces(),
+        AxNavigation.workers(),
+        AxNavigation.workers(),
         AxNavigation.profileSecurity(),
       ];
 
@@ -2266,21 +2204,22 @@ void main() {
       await tester.tap(find.text('Syntila Core'));
       expect(navigatedTo?.kind, AxRouteKind.space);
 
-      // Test 1c: Workspace route -> "Workspaces / Workspace Name"
-      const testWs = AxWorkspace(
+      // Test 1c: Worker route -> "Workers / Worker Name"
+      const testWorker = AxWorker(
         id: 'ws-mac',
-        name: 'MacBook Pro',
-        hostname: 'macbook-pro',
-        status: 'online',
-        appVersion: '1.0.0',
-        workerCount: 0,
-        activeTaskCount: 0,
+        workspaceId: '',
+        workspaceName: '',
+        workerTypeId: 'codex',
+        displayName: 'MacBook Pro',
+        status: 'ready',
+        readinessState: 'ready',
+        localConcurrencyLimit: 1,
       );
-      final workspaceContext = AxShellContext(
-        navigation: const AxNavigation.workspace('ws-mac'),
+      final workerContext = AxShellContext(
+        navigation: const AxNavigation.worker('ws-mac'),
         spaces: [spaceA],
         threadsBySpace: {spaceA.id: spaceA.threads},
-        workspaces: [testWs],
+        workers: [testWorker],
       );
 
       await tester.pumpWidget(
@@ -2288,7 +2227,7 @@ void main() {
           theme: SyntilaBrand.darkTheme(),
           home: Scaffold(
             body: AxTopBar(
-              shellContext: workspaceContext,
+              shellContext: workerContext,
               onNavigateTo: (nav) => navigatedTo = nav,
               onOpenCommandPalette: () {},
               onToggleTheme: () {},
@@ -2304,8 +2243,7 @@ void main() {
       expect(find.text('MacBook Pro'), findsNothing);
     });
 
-    testWidgets(
-        'Workspaces status popover shows degraded/reconnecting and failed status',
+    testWidgets('Workers status popover shows degraded and failed status',
         (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -2317,19 +2255,17 @@ void main() {
       const degradedCtx = AxShellContext(
         navigation: AxNavigation.home(),
         spaces: [],
-        workspaces: [
-          AxWorkspace(
+        workers: [
+          AxWorker(
             id: 'worker-1',
-            name: 'Build Server',
-            hostname: 'build-srv',
-            status: 'offline',
-            platform: 'Linux',
-            architecture: 'x86_64',
-            appVersion: '0.6.0',
-            lastSeen: '10m ago',
-            workerCount: 0,
-            activeTaskCount: 0,
-          ),
+            workspaceId: '',
+            workspaceName: '',
+            workerTypeId: 'codex',
+            displayName: 'Build Server',
+            status: 'needs_attention',
+            readinessState: 'test_failed',
+            localConcurrencyLimit: 1,
+          )
         ],
         realtimeStale: true,
       );
@@ -2360,7 +2296,7 @@ void main() {
 
       expect(find.text('Workers'), findsOneWidget);
       expect(find.text('Build Server'), findsOneWidget);
-      expect(find.text('Offline'), findsOneWidget);
+      expect(find.text('Needs attention'), findsOneWidget);
     });
 
     testWidgets(
@@ -2513,7 +2449,6 @@ void main() {
             lead: 'Vitalii',
             status: 'running',
             brief: 'Redesign login flow',
-            primaryWorkspace: 'MacBook Pro',
             queueStatus: 'Running',
           ),
           AxThread(
@@ -2523,7 +2458,6 @@ void main() {
             lead: 'Vitalii',
             status: 'idle',
             brief: 'Landing page work',
-            primaryWorkspace: 'MacBook Pro',
             queueStatus: 'Idle',
           ),
           AxThread(
@@ -2533,7 +2467,6 @@ void main() {
             lead: 'Vitalii',
             status: 'queued',
             brief: 'Scheduler updates',
-            primaryWorkspace: 'MacBook Pro',
             queueStatus: 'Queued',
           ),
         ],
@@ -2594,7 +2527,6 @@ void main() {
         lead: 'Vitalii',
         status: 'running',
         brief: 'Redesign login flow',
-        primaryWorkspace: 'MacBook Pro',
         queueStatus: 'Running',
       );
 
@@ -2695,7 +2627,6 @@ void main() {
         lead: 'Vitalii',
         status: 'running',
         brief: 'Redesign login flow',
-        primaryWorkspace: 'MacBook Pro',
         queueStatus: 'Running',
       );
 
@@ -3227,11 +3158,9 @@ class _SignUpOtpFixture extends AxFixtureDataSource {
   @override
   Future<AxSnapshot> loadBootstrapState({
     String? spaceId,
-    String? workspaceId,
   }) async {
     final base = await super.loadBootstrapState(
       spaceId: spaceId,
-      workspaceId: workspaceId,
     );
     return base.copyWith(spaces: _spaces);
   }
@@ -3257,7 +3186,6 @@ class _SpaceScopedFixture extends AxFixtureDataSource {
           lead: 'Test',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: 'Idle')
     ];
   }
@@ -3365,10 +3293,8 @@ class _InvitationTestFixture extends AxFixtureDataSource {
   ];
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
-    final base = await super
-        .loadBootstrapState(spaceId: spaceId, workspaceId: workspaceId);
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
+    final base = await super.loadBootstrapState(spaceId: spaceId);
     return base.copyWith(spaces: initialSpaces);
   }
 

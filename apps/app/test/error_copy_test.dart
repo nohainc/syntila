@@ -9,8 +9,7 @@ import 'ax_fixture_data.dart';
 
 class _FailedReadModels extends AxFixtureDataSource {
   @override
-  Future<AxSnapshot> loadBootstrapState(
-          {String? spaceId, String? workspaceId}) async =>
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async =>
       throw const AxApiException(
           'Read model failed for /api/spaces/test/threads (400): ambiguous column name: updated_at');
 }

@@ -348,7 +348,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
         body: Center(
           child: Semantics(
             liveRegion: true,
-            label: 'Loading your Syntila workspace',
+            label: 'Loading Syntila',
             child: Card(
               margin: const EdgeInsets.all(24),
               child: Padding(
@@ -358,7 +358,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
                   children: [
                     const CircularProgressIndicator(),
                     const SizedBox(height: 18),
-                    Text('Loading your workspace',
+                    Text('Loading Syntila',
                         style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 6),
                     const Text(
@@ -838,7 +838,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
           child: _RecoveryPanel(
             icon: Icons.cloud_off_rounded,
             title: 'Syntila could not load live data',
-            happened: loadError ?? 'The workspace connection did not respond.',
+            happened: loadError ?? 'The connection did not respond.',
             safe: 'Your existing work is safe. No new work was started.',
             nextStep: 'Check your connection, then try again.',
             retrying: isReconnecting,
@@ -1040,9 +1040,8 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                                   ? _runDetailsView(compact)
                                                   : _homeView(),
                                               maxWidth: navigation.kind ==
-                                                          AxRouteKind
-                                                              .workspaces &&
-                                                      navigation.workspaceId !=
+                                                          AxRouteKind.workers &&
+                                                      navigation.workerId !=
                                                           null
                                                   ? _viewPreferences
                                                       .textSize.detailPageWidth

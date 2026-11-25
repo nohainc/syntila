@@ -7,13 +7,11 @@ Future<String> Function()? realtimeTicketProvider;
 
 abstract interface class RealtimeClient {
   Stream<Map<String, dynamic>> get events;
-  Future<void> connect(Uri endpoint, [String? workspaceId]);
-  Future<void> setWorkspace(String workspaceId);
+  Future<void> connect(Uri endpoint);
   Future<void> setScopes({
     String? spaceId,
     String? threadId,
     String? runId,
-    String? executionWorkspaceId,
   });
   Future<void> close();
 }
@@ -25,16 +23,13 @@ class _StubRealtimeClient implements RealtimeClient {
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   @override
-  Future<void> connect(Uri endpoint, [String? workspaceId]) async {}
+  Future<void> connect(Uri endpoint) async {}
 
-  @override
-  Future<void> setWorkspace(String workspaceId) async {}
   @override
   Future<void> setScopes({
     String? spaceId,
     String? threadId,
     String? runId,
-    String? executionWorkspaceId,
   }) async {}
 
   @override

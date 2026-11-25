@@ -37,7 +37,6 @@ extension _AxAppViews on _AxAppStateMixin {
               query: store.catalogs.workers,
               builder: (context, workers) => HomePage(
                     spaces: store.spaces.items,
-                    workspaces: store.workspaces.items,
                     workers: workers.data ?? const [],
                     invitations: store.invitations.items,
                     productUpdates: store.productUpdates,
@@ -56,8 +55,8 @@ extension _AxAppViews on _AxAppStateMixin {
                         AxNotificationKind.workerCredentialProblem ||
                         AxNotificationKind.workerInstallFailed =>
                           AxAttentionKind.workerProblem,
-                        AxNotificationKind.workspaceOffline =>
-                          AxAttentionKind.workspaceProblem,
+                        AxNotificationKind.workerOffline =>
+                          AxAttentionKind.workerOffline,
                         AxNotificationKind.threadCompleted ||
                         AxNotificationKind.workflowRunCompleted ||
                         AxNotificationKind.completed =>
@@ -79,7 +78,7 @@ extension _AxAppViews on _AxAppStateMixin {
                           'Worker needs attention',
                         AxNotificationKind.workerInstallFailed =>
                           'Worker install failed',
-                        AxNotificationKind.workspaceOffline => 'Worker offline',
+                        AxNotificationKind.workerOffline => 'Worker offline',
                         AxNotificationKind.threadCompleted ||
                         AxNotificationKind.workflowRunCompleted ||
                         AxNotificationKind.completed =>
@@ -99,7 +98,7 @@ extension _AxAppViews on _AxAppStateMixin {
                           'Inspect →',
                         AxNotificationKind.workerCredentialProblem => 'Fix →',
                         AxNotificationKind.workerInstallFailed => 'Fix →',
-                        AxNotificationKind.workspaceOffline => 'Connect →',
+                        AxNotificationKind.workerOffline => 'Connect →',
                         AxNotificationKind.threadCompleted ||
                         AxNotificationKind.workflowRunCompleted ||
                         AxNotificationKind.completed =>
@@ -139,8 +138,8 @@ extension _AxAppViews on _AxAppStateMixin {
                         .where(
                             (finding) => finding.status == FindingStatus.open)
                         .length,
-                    onOpenWorkspaces: () =>
-                        _navigateTo(const AxNavigation.workspaces()),
+                    onOpenWorkers: () =>
+                        _navigateTo(const AxNavigation.workers()),
                     onOpenSpace: (spaceId) =>
                         _navigateTo(AxNavigation.space(spaceId)),
                     onOpenThread: (spaceId, threadId) =>
@@ -239,7 +238,7 @@ extension _AxAppViews on _AxAppStateMixin {
         }
         return ThreadPage(
           onManageWorkerVisibility: (workspaceId) =>
-              _navigateTo(AxNavigation.workspaces(workspaceId: workspaceId)),
+              _navigateTo(AxNavigation.workers(workerId: workspaceId)),
           catalogs: store.catalogs,
           workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
               engine: store.syncEngine, spaceId: space.id),
@@ -339,7 +338,7 @@ extension _AxAppViews on _AxAppStateMixin {
                       ? _searchQuery
                       : _searchQueryController.text.trim(),
                   spaces: store.spaces.items,
-                  workspaces: store.workspaces.items,
+                  workers: workerInventory,
                   run: executionSnapshot.run,
                   threadsBySpace: {
                     for (final space in store.spaces.items)
@@ -367,12 +366,11 @@ extension _AxAppViews on _AxAppStateMixin {
         builder: (context, _) => _searchCollections(index + 1, build));
   }
 
-  Widget _workspacesView() => WorkerInstancesSection(
+  Widget _workersView() => WorkerInstancesSection(
         catalogs: store.catalogs,
-        selectedWorkerId: navigation.workspaceId,
-        onSelectWorker: (id) =>
-            _navigateTo(AxNavigation.workspaces(workspaceId: id)),
-        onBackToList: () => _navigateTo(const AxNavigation.workspaces()),
+        selectedWorkerId: navigation.workerId,
+        onSelectWorker: (id) => _navigateTo(AxNavigation.workers(workerId: id)),
+        onBackToList: () => _navigateTo(const AxNavigation.workers()),
         spaces: store.spaces.items,
         currentUserId: store.auth.viewer?.id,
       );

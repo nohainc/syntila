@@ -117,14 +117,9 @@ class InvitationsE2eDataSource extends AxFixtureDataSource {
       [];
 
   @override
-  Future<List<AxWorkspace>> loadWorkspaces() async => [];
-
-  @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     return AxSnapshot(
       spaces: spaces,
-      workspaces: const [],
       tasks: const [],
       findings: const [],
       events: const [],

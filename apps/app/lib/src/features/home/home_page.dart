@@ -13,11 +13,10 @@ class HomePage extends StatelessWidget {
   const HomePage({
     super.key,
     List<AxSpace>? spaces,
-    required this.workspaces,
     required this.workers,
     required this.run,
     required this.openFindingCount,
-    required this.onOpenWorkspaces,
+    required this.onOpenWorkers,
     ValueChanged<String>? onOpenSpace,
     required this.onOpenRun,
     VoidCallback? onCreateSpace,
@@ -52,11 +51,10 @@ class HomePage extends StatelessWidget {
   static void _noopVoid() {}
 
   final List<AxSpace> spaces;
-  final List<AxWorkspace> workspaces;
   final List<AxWorker> workers;
   final AxRun? run;
   final int openFindingCount;
-  final VoidCallback onOpenWorkspaces;
+  final VoidCallback onOpenWorkers;
   final ValueChanged<String> onOpenSpace;
   final void Function(String spaceId, String runId) onOpenRun;
   final VoidCallback onCreateSpace;
@@ -91,7 +89,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) => isNewUser
       ? NewUserHome(
           onCreateSpace: onCreateSpace,
-          onOpenWorkspaces: onOpenWorkspaces,
+          onOpenWorkers: onOpenWorkers,
           invitations: invitations,
           isOffline: isOffline,
           onAcceptInvitation: onAcceptInvitation,
@@ -99,7 +97,6 @@ class HomePage extends StatelessWidget {
         )
       : EstablishedUserHome(
           spaces: spaces,
-          workspaces: workspaces,
           workers: workers,
           invitations: invitations,
           attentionItems: attentionItems,
@@ -118,7 +115,7 @@ class HomePage extends StatelessWidget {
           onDeclinePersonInvitation: onDeclinePersonInvitation,
           run: run,
           openFindingCount: openFindingCount,
-          onOpenWorkspaces: onOpenWorkspaces,
+          onOpenWorkers: onOpenWorkers,
           onOpenSpace: onOpenSpace,
           onOpenRun: onOpenRun,
           onOpenThread: onOpenThread,
@@ -136,7 +133,7 @@ class NewUserHome extends StatelessWidget {
   const NewUserHome({
     super.key,
     VoidCallback? onCreateSpace,
-    required this.onOpenWorkspaces,
+    required this.onOpenWorkers,
     this.invitations = const [],
     this.isOffline = false,
     this.onAcceptInvitation,
@@ -146,7 +143,7 @@ class NewUserHome extends StatelessWidget {
   static void _noopVoid() {}
 
   final VoidCallback onCreateSpace;
-  final VoidCallback onOpenWorkspaces;
+  final VoidCallback onOpenWorkers;
   final List<AxSpaceInvitation> invitations;
   final bool isOffline;
   final ValueChanged<AxSpaceInvitation>? onAcceptInvitation;
@@ -267,7 +264,7 @@ class NewUserHome extends StatelessWidget {
 
           // Advanced local execution path (visually secondary)
           _AdvancedWorkspaceCard(
-            onOpenWorkspaces: onOpenWorkspaces,
+            onOpenWorkers: onOpenWorkers,
           ),
         ],
       ),
@@ -276,9 +273,9 @@ class NewUserHome extends StatelessWidget {
 }
 
 class _AdvancedWorkspaceCard extends StatelessWidget {
-  const _AdvancedWorkspaceCard({required this.onOpenWorkspaces});
+  const _AdvancedWorkspaceCard({required this.onOpenWorkers});
 
-  final VoidCallback onOpenWorkspaces;
+  final VoidCallback onOpenWorkers;
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +331,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(
-                  onPressed: onOpenWorkspaces,
+                  onPressed: onOpenWorkers,
                   style: OutlinedButton.styleFrom(
                     visualDensity: VisualDensity.compact,
                   ),
@@ -378,7 +375,7 @@ class _AdvancedWorkspaceCard extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               OutlinedButton(
-                onPressed: onOpenWorkspaces,
+                onPressed: onOpenWorkers,
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
@@ -628,7 +625,6 @@ class EstablishedUserHome extends StatelessWidget {
   const EstablishedUserHome({
     super.key,
     List<AxSpace>? spaces,
-    required this.workspaces,
     required this.workers,
     this.invitations = const [],
     this.attentionItems = const [],
@@ -647,7 +643,7 @@ class EstablishedUserHome extends StatelessWidget {
     this.onDeclinePersonInvitation,
     required this.run,
     required this.openFindingCount,
-    required this.onOpenWorkspaces,
+    required this.onOpenWorkers,
     ValueChanged<String>? onOpenSpace,
     required this.onOpenRun,
     this.onOpenThread,
@@ -664,7 +660,6 @@ class EstablishedUserHome extends StatelessWidget {
   static void _noopString(String _) {}
 
   final List<AxSpace> spaces;
-  final List<AxWorkspace> workspaces;
   final List<AxWorker> workers;
   final List<AxSpaceInvitation> invitations;
   final List<AxHomeAttentionItem> attentionItems;
@@ -683,7 +678,7 @@ class EstablishedUserHome extends StatelessWidget {
   final ValueChanged<AxPerson>? onDeclinePersonInvitation;
   final AxRun? run;
   final int openFindingCount;
-  final VoidCallback onOpenWorkspaces;
+  final VoidCallback onOpenWorkers;
   final ValueChanged<String> onOpenSpace;
   final void Function(String spaceId, String runId) onOpenRun;
   final void Function(String spaceId, String threadId)? onOpenThread;
@@ -787,7 +782,7 @@ class EstablishedUserHome extends StatelessWidget {
         onDeclineInvitation: onDeclineInvitation,
         onOpenSpace: onOpenSpace,
         onOpenThread: onOpenThread,
-        onOpenWorkspaces: onOpenWorkspaces,
+        onOpenWorkers: onOpenWorkers,
       );
     } catch (_) {
       effectiveAttentionItems = const [];
@@ -890,7 +885,7 @@ class EstablishedUserHome extends StatelessWidget {
               onDeclinePersonInvitation: onDeclinePersonInvitation,
               onOpenSpace: onOpenSpace,
               onOpenThread: onOpenThread,
-              onOpenWorkspaces: onOpenWorkspaces,
+              onOpenWorkers: onOpenWorkers,
               onOpenNotifications: onOpenNotifications,
               onReadAttentionItem: onReadAttentionItem,
               readAttentionItemIds: readAttentionItemIds,
@@ -1131,7 +1126,7 @@ class AxHomeAttentionProjector {
     ValueChanged<AxSpaceInvitation>? onDeclineInvitation,
     ValueChanged<String>? onOpenSpace,
     void Function(String spaceId, String threadId)? onOpenThread,
-    VoidCallback? onOpenWorkspaces,
+    VoidCallback? onOpenWorkers,
   }) {
     final effectiveSpaces = spaces ?? const [];
     final effectiveOpenSpace = onOpenSpace;
@@ -1233,13 +1228,13 @@ class AxHomeAttentionProjector {
                 AxHomeAttentionType.executionFailed => 'Inspect →',
                 AxHomeAttentionType.executionCompleted => 'Open →',
                 AxHomeAttentionType.workerProblem => 'Fix →',
-                AxHomeAttentionType.workspaceProblem => 'Connect →',
+                AxHomeAttentionType.workerOffline => 'Connect →',
               };
         VoidCallback action = () {};
-        if (raw.effectiveType == AxHomeAttentionType.workspaceProblem ||
+        if (raw.effectiveType == AxHomeAttentionType.workerOffline ||
             raw.effectiveType == AxHomeAttentionType.workerProblem) {
-          if (onOpenWorkspaces != null) {
-            action = onOpenWorkspaces;
+          if (onOpenWorkers != null) {
+            action = onOpenWorkers;
           }
         } else if (raw.spaceId != null &&
             raw.threadId != null &&
@@ -1362,7 +1357,7 @@ class _ForYouSection extends StatelessWidget {
     this.onDeclinePersonInvitation,
     ValueChanged<String>? onOpenSpace,
     this.onOpenThread,
-    required this.onOpenWorkspaces,
+    required this.onOpenWorkers,
     this.onOpenNotifications,
     this.onReadAttentionItem,
     this.readAttentionItemIds = const {},
@@ -1382,7 +1377,7 @@ class _ForYouSection extends StatelessWidget {
   final ValueChanged<AxPerson>? onDeclinePersonInvitation;
   final ValueChanged<String> onOpenSpace;
   final void Function(String spaceId, String threadId)? onOpenThread;
-  final VoidCallback onOpenWorkspaces;
+  final VoidCallback onOpenWorkers;
   final VoidCallback? onOpenNotifications;
   final ValueChanged<String>? onReadAttentionItem;
   final Set<String> readAttentionItemIds;
@@ -1401,7 +1396,7 @@ class _ForYouSection extends StatelessWidget {
       onDeclineInvitation: onDeclineInvitation,
       onOpenSpace: onOpenSpace,
       onOpenThread: onOpenThread,
-      onOpenWorkspaces: onOpenWorkspaces,
+      onOpenWorkers: onOpenWorkers,
     );
 
     final pendingSpaceInvitations =
@@ -1518,7 +1513,7 @@ class _ForYouItemTile extends StatelessWidget {
       AxHomeAttentionType.approvalRequired => 'Approval required',
       AxHomeAttentionType.executionFailed => 'Failed execution',
       AxHomeAttentionType.workerProblem => 'Worker needs attention',
-      AxHomeAttentionType.workspaceProblem => 'Worker offline',
+      AxHomeAttentionType.workerOffline => 'Worker offline',
       AxHomeAttentionType.executionCompleted => 'Completed',
     };
   }
@@ -1532,7 +1527,7 @@ class _ForYouItemTile extends StatelessWidget {
         SyntilaColors.warningText(isDark),
       AxHomeAttentionType.executionFailed => SyntilaColors.errorText(isDark),
       AxHomeAttentionType.workerProblem ||
-      AxHomeAttentionType.workspaceProblem =>
+      AxHomeAttentionType.workerOffline =>
         SyntilaColors.warningText(isDark),
       AxHomeAttentionType.executionCompleted =>
         SyntilaColors.successText(isDark),
@@ -1760,7 +1755,6 @@ class _ProductUpdateTile extends StatelessWidget {
             AxProductUpdateCategory.security => Icons.shield_outlined,
             AxProductUpdateCategory.workflow => Icons.account_tree_outlined,
             AxProductUpdateCategory.collaboration => Icons.groups_outlined,
-            AxProductUpdateCategory.workspace => Icons.computer_outlined,
             AxProductUpdateCategory.worker => Icons.smart_toy_outlined,
           },
           size: 18,
@@ -2005,24 +1999,6 @@ class AxWhatsNewDialog extends StatelessWidget {
 // Historical milestones appear in See all without changing Home’s current list.
 const historicalProductUpdates = <AxProductUpdate>[
   AxProductUpdate(
-    id: 'history-remote-mcp-tools',
-    slug: 'remote-mcp-tools',
-    title: 'Remote MCP tools',
-    summary:
-        'Connect supported remote MCP servers to your Workspace for your own AI work.',
-    category: AxProductUpdateCategory.workspace,
-    publishedAt: '2026-11-13T00:00:00Z',
-  ),
-  AxProductUpdate(
-    id: 'history-workspace-mcp-setup',
-    slug: 'workspace-mcp-setup',
-    title: 'Simpler MCP setup',
-    summary:
-        'Manage enabled MCP servers at the Workspace level for your own AI work.',
-    category: AxProductUpdateCategory.workspace,
-    publishedAt: '2026-11-11T00:00:00Z',
-  ),
-  AxProductUpdate(
     id: 'history-personal-space-management',
     slug: 'personal-space-management',
     title: 'Personal Space improvements',
@@ -2052,8 +2028,7 @@ const historicalProductUpdates = <AxProductUpdate>[
     id: 'history-free-and-plus-plans',
     slug: 'free-and-plus-plans',
     title: 'Free and Plus plans',
-    summary:
-        'Plan limits cover AI tasks, Workspaces, Space members, and uploaded files.',
+    summary: 'Plan limits cover AI tasks, Space members, and uploaded files.',
     category: AxProductUpdateCategory.feature,
     publishedAt: '2026-11-02T00:00:00Z',
   ),
@@ -2089,7 +2064,7 @@ const historicalProductUpdates = <AxProductUpdate>[
     slug: 'additional-folders',
     title: 'Additional folders',
     summary: 'Choose additional folders that Workers may access for a Space.',
-    category: AxProductUpdateCategory.workspace,
+    category: AxProductUpdateCategory.worker,
     publishedAt: '2026-10-25T00:00:00Z',
   ),
   AxProductUpdate(
@@ -2124,14 +2099,6 @@ const historicalProductUpdates = <AxProductUpdate>[
     summary: 'Dictate text in supported browsers.',
     category: AxProductUpdateCategory.feature,
     publishedAt: '2026-10-23T00:00:00Z',
-  ),
-  AxProductUpdate(
-    id: 'history-workspace-access-controls',
-    slug: 'workspace-access-controls',
-    title: 'Workspace access controls',
-    summary: 'Manage a person’s Workspace access and usage limits.',
-    category: AxProductUpdateCategory.workspace,
-    publishedAt: '2026-10-17T00:00:00Z',
   ),
   AxProductUpdate(
     id: 'history-live-worker-activity',
@@ -2245,14 +2212,14 @@ const defaultProductUpdates = [
     status: AxProductUpdateStatus.published,
   ),
   AxProductUpdate(
-    id: 'update-workspace-sync',
-    slug: 'workspace-local-sync',
-    title: 'Workspace Local Sync',
+    id: 'update-local-worker-sync',
+    slug: 'local-worker-sync',
+    title: 'Local Worker sync',
     summary:
         'Seamless bidirectional file synchronization and live process execution on your local machine.',
     details:
-        'Connect your Mac, Linux, or Windows machine as a local execution workspace with isolated work roots and real-time execution telemetry.',
-    category: AxProductUpdateCategory.workspace,
+        'Connect your Mac, Linux, or Windows machine as a Worker with isolated work roots and real-time execution telemetry.',
+    category: AxProductUpdateCategory.worker,
     publishedAt: '2026-09-28T00:00:00Z',
     dateDisplay: 'Sep 28',
     status: AxProductUpdateStatus.published,

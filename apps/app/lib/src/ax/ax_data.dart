@@ -402,8 +402,6 @@ class AxAccountPlan {
     this.status,
     this.currentPeriodEnd,
     this.features = const {},
-    this.ownedWorkspaces,
-    this.workspaceLimit,
     this.attachmentMaxFileBytes,
     this.attachmentStorageBytes,
   });
@@ -419,8 +417,6 @@ class AxAccountPlan {
           for (final feature in json['features'] as List? ?? const [])
             if (feature is String) feature,
         },
-        ownedWorkspaces: (json['workspaces'] as Map?)?['owned'] as int?,
-        workspaceLimit: (json['workspaces'] as Map?)?['limit'] as int?,
         attachmentMaxFileBytes:
             (json['attachments'] as Map?)?['maxFileBytes'] as int?,
         attachmentStorageBytes:
@@ -431,11 +427,6 @@ class AxAccountPlan {
   final String? status;
   final DateTime? currentPeriodEnd;
   final Set<String> features;
-
-  /// Registered Workspaces the viewer owns (null when Cloud did not say), and
-  /// the Free allowance; a null limit means no subscription-based limit.
-  final int? ownedWorkspaces;
-  final int? workspaceLimit;
 
   /// Upload limits Cloud reports for this account (decimal bytes).
   final int? attachmentMaxFileBytes;

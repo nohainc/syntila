@@ -8,15 +8,12 @@ class TestRealtime implements RealtimeClient {
   @override
   Stream<Map<String, dynamic>> get events => controller.stream;
   @override
-  Future<void> connect(Uri endpoint, [String? workspaceId]) async {}
-  @override
-  Future<void> setWorkspace(String workspaceId) async {}
+  Future<void> connect(Uri endpoint) async {}
   @override
   Future<void> setScopes({
     String? spaceId,
     String? threadId,
     String? runId,
-    String? executionWorkspaceId,
   }) async {}
   void emit(Map<String, dynamic> event) => controller.add(event);
   @override

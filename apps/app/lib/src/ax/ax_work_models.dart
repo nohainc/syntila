@@ -1164,7 +1164,6 @@ abstract interface class AxDataSource {
   Future<AxDesktopAuthIntentStatus> loadDesktopAuthIntentStatus(
       {required String intentId});
   Future<void> denyDesktopAuthIntent({required String intentId});
-  Future<List<AxWorkspace>> loadWorkspaces() async => const [];
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false});
   Future<AxSpace> loadSpace({required String spaceId});
   Future<List<AxThread>> loadSpaceThreads({
@@ -1314,7 +1313,7 @@ abstract interface class AxDataSource {
 
   /// Application bootstrap/recovery state, never a navigation loader.
   /// Space details and Threads are separate focused resource queries.
-  Future<AxSnapshot> loadBootstrapState({String? spaceId, String? workspaceId});
+  Future<AxSnapshot> loadBootstrapState({String? spaceId});
   Future<void> controlRun(String runId, String command);
   Future<void> respondToRunPrompt(String runId, String response);
 }

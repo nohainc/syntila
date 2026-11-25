@@ -16,19 +16,15 @@ class AxSyncScope {
       final value = switch (kind) {
         'space' => id(scope['spaceId']),
         'thread' => id(scope['threadId']),
-        'execution_workspace' => id(scope['workspaceId']),
         _ => null,
       };
       if (value != null) return AxSyncScope(kind as String, value);
     }
     // The user subscription may report a gap in a narrower durable stream.
-    if (stream is Map &&
-        const {'space', 'execution_workspace'}.contains(stream['kind'])) {
+    if (stream is Map && stream['kind'] == 'space') {
       final value = id(stream['id']);
       if (value != null) return AxSyncScope(stream['kind'] as String, value);
     }
-    final workspace = id(event['workspaceId']);
-    if (workspace != null) return AxSyncScope('execution_workspace', workspace);
     // Unknown/malformed narrow scopes must not become session-wide recovery.
     return AxSyncScope(
         scope is Map && scope['kind'] != 'user' ? 'unknown' : 'user');
@@ -49,7 +45,6 @@ class AxSyncScope {
     final discussion =
         p.length == 3 && (p[0] == 'thread') && p[2] == 'discussion';
     final work = p.length == 3 && (p[0] == 'thread') && p[2] == 'work-requests';
-    final workspace = p.length >= 2 && p[0] == 'execution_workspace';
     final workers = p.length == 1 && p[0] == 'workers';
     final archivedSpaces = p.length == 1 && p[0] == 'archived-spaces';
     return switch (kind) {
@@ -57,7 +52,6 @@ class AxSyncScope {
           archivedSpaces ||
           ((space || workflow) && p[1] == id),
       'thread' => (discussion || work) && p[1] == id,
-      'execution_workspace' => workers || (workspace && p[1] == id),
       'user' => p[0] == 'people' ||
           archivedSpaces ||
           space ||
@@ -65,7 +59,6 @@ class AxSyncScope {
           userWorkflow ||
           discussion ||
           work ||
-          workspace ||
           workers,
       _ => false,
     };

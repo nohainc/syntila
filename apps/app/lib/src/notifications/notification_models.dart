@@ -14,7 +14,7 @@ enum AxNotificationKind {
   workerInstallFailed,
 
   // Workspace
-  workspaceOffline,
+  workerOffline,
 
   // Space
   spaceInvitationReceived,
@@ -33,8 +33,7 @@ enum AxNotificationTarget {
   space,
   workflowRun,
   run,
-  workspaces,
-  workspace,
+  workers,
 }
 
 /// Filters realtime noise from actionable team notifications. Progress,
@@ -187,7 +186,7 @@ AxNotification? notificationFromRealtimeEvent(
       AxNotificationKind.workerCredentialProblem,
     'workspace.offline' ||
     'workspace.stale' =>
-      AxNotificationKind.workspaceOffline,
+      AxNotificationKind.workerOffline,
     'worker.install.failed' ||
     'worker.install_failed' =>
       AxNotificationKind.workerInstallFailed,
@@ -255,10 +254,9 @@ AxNotification? notificationFromRealtimeEvent(
     AxNotificationKind.failed ||
     AxNotificationKind.approvalRequired =>
       AxNotificationTarget.workflowRun,
-    AxNotificationKind.workspaceOffline => AxNotificationTarget.workspaces,
-    AxNotificationKind.workerCredentialProblem =>
-      AxNotificationTarget.workspace,
-    AxNotificationKind.workerInstallFailed => AxNotificationTarget.workspace,
+    AxNotificationKind.workerOffline => AxNotificationTarget.workers,
+    AxNotificationKind.workerCredentialProblem => AxNotificationTarget.workers,
+    AxNotificationKind.workerInstallFailed => AxNotificationTarget.workers,
     AxNotificationKind.spaceInvitationReceived ||
     AxNotificationKind.invitationReceived =>
       AxNotificationTarget.space,
@@ -280,7 +278,7 @@ AxNotification? notificationFromRealtimeEvent(
       AxNotificationKind.workflowRunNeedsApproval ||
       AxNotificationKind.approvalRequired =>
         'Action needed',
-      AxNotificationKind.workspaceOffline => 'Worker offline',
+      AxNotificationKind.workerOffline => 'Worker offline',
       AxNotificationKind.workerCredentialProblem => 'Worker connection expired',
       AxNotificationKind.workerInstallFailed => 'Worker connection failed',
       AxNotificationKind.spaceInvitationReceived ||
@@ -298,7 +296,7 @@ AxNotification? notificationFromRealtimeEvent(
       AxNotificationKind.failed ||
       AxNotificationKind.workerCredentialProblem =>
         AxNotificationPriority.high,
-      AxNotificationKind.workspaceOffline ||
+      AxNotificationKind.workerOffline ||
       AxNotificationKind.workerInstallFailed ||
       AxNotificationKind.spaceInvitationReceived ||
       AxNotificationKind.invitationReceived =>

@@ -54,12 +54,6 @@ class TabSource extends AxFixtureDataSource {
     count('audit');
     return [];
   }
-
-  @override
-  Future<List<AxWorkspace>> loadWorkspaces() async {
-    count('owned');
-    return [];
-  }
 }
 
 Widget page(TabSource source, AxSpaceTabQueries queries,
@@ -100,7 +94,6 @@ void main() {
               lead: 'Me',
               status: 'active',
               brief: '',
-              primaryWorkspace: '',
               queueStatus: '',
               canConfigureWork: true),
           const AxThread(
@@ -110,7 +103,6 @@ void main() {
               lead: 'Other',
               status: 'active',
               brief: '',
-              primaryWorkspace: '',
               queueStatus: ''),
         ];
       await tester

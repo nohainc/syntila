@@ -8,21 +8,18 @@ class _BootstrapSource extends AxFixtureDataSource {
   const _BootstrapSource();
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     final base = axFixtureSnapshot();
     return AxSnapshot(
       viewer: const AxViewer(
           id: 'user-1', displayName: 'User One', email: 'user@example.test'),
       spaces: base.spaces,
-      workspaces: base.workspaces,
       tasks: base.tasks,
       findings: base.findings,
       events: base.events,
       artifacts: base.artifacts,
       run: base.run,
       activeRunId: base.activeRunId,
-      workspaceId: base.workspaceId,
     );
   }
 }
@@ -38,7 +35,6 @@ void main() {
 
       final bootstrap = await store.loadBootstrapState(
         spaceId: 'space-auth',
-        workspaceId: 'workspace-fixture',
       );
 
       expect(bootstrap.spaces, isNotEmpty);
@@ -52,8 +48,6 @@ void main() {
         expect(space.threads, isEmpty,
             reason: 'SpaceStore items must discard nested threads');
       }
-
-      expect(store.workspaces.items, isNotEmpty);
       expect(store.auth.viewer?.id, 'user-1');
     });
 
@@ -114,8 +108,6 @@ void main() {
       expect(store.execution.run?.id, snapshot.run?.id);
       expect(store.spaces.items, isEmpty,
           reason: 'replaceExecution must not write space queries');
-      expect(store.workspaces.items, isEmpty,
-          reason: 'replaceExecution must not write workspace queries');
     });
 
     test(
@@ -139,21 +131,10 @@ void main() {
         ),
       ]);
 
-      store.workspaces.replace([
-        const AxWorkspace(
-          id: 'w1',
-          name: 'W1',
-          slug: 'w1',
-          status: 'active',
-          role: 'owner',
-        ),
-      ]);
-
       expect(executionSignals, 0,
           reason:
               'Query updates must not trigger execution projection signals');
       expect(store.spaces.items.length, 1);
-      expect(store.workspaces.items.length, 1);
     });
 
     test(
@@ -165,12 +146,10 @@ void main() {
 
       await store.loadBootstrapState();
       expect(store.spaces.items, isNotEmpty);
-      expect(store.workspaces.items, isNotEmpty);
 
       store.clearServerState();
 
       expect(store.spaces.items, isEmpty);
-      expect(store.workspaces.items, isEmpty);
       expect(store.security.value, isNull);
       expect(store.execution.run, isNull);
       expect(store.execution.tasks, isEmpty);

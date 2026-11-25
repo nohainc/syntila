@@ -38,7 +38,7 @@ class _BrowserRealtimeClient implements RealtimeClient {
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   @override
-  Future<void> connect(Uri endpoint, [String? workspaceId]) async {
+  Future<void> connect(Uri endpoint) async {
     _closed = false;
     _endpoint = endpoint;
     _attempt = 0;
@@ -46,14 +46,10 @@ class _BrowserRealtimeClient implements RealtimeClient {
   }
 
   @override
-  Future<void> setWorkspace(String workspaceId) async {}
-
-  @override
   Future<void> setScopes({
     String? spaceId,
     String? threadId,
     String? runId,
-    String? executionWorkspaceId,
   }) async {
     final previous = _streams();
     _spaceId = spaceId;

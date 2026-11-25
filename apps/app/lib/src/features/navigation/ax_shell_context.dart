@@ -38,17 +38,15 @@ class AxShellContext {
     required this.navigation,
     required List<AxSpace> spaces,
     this.spaceListenable,
-    this.workspaceListenable,
     this.spaceThreads,
     this.threadsBySpace = const {},
     this.selectedSpace,
     this.selectedThread,
     this.selectedRun,
-    List<AxWorkspace> workspaces = const [],
+    List<AxWorker> workers = const [],
     int unreadNotificationCount = 0,
     this.unreadNotifications,
     this.invitationsListenable,
-    this.workspaceInvitationsListenable,
     this.isDarkTheme = true,
     this.themeMode = ThemeMode.system,
     this.viewPreferences = const ViewPreferences(),
@@ -63,7 +61,7 @@ class AxShellContext {
     this.expandedSpaceIds = const {},
     this.catalogs,
   })  : _spaces = spaces,
-        _workspaces = workspaces,
+        _workers = workers,
         _unreadNotificationCount = unreadNotificationCount,
         _realtimeStale = realtimeStale,
         _realtimeNotice = realtimeNotice;
@@ -84,17 +82,13 @@ class AxShellContext {
   final AxSpace? selectedSpace;
   final AxThread? selectedThread;
   final AxRun? selectedRun;
-  final List<AxWorkspace> _workspaces;
-  final ValueListenable<List<AxWorkspace>>? workspaceListenable;
-  List<AxWorkspace> get workspaces => workspaceListenable?.value ?? _workspaces;
+  final List<AxWorker> _workers;
+  List<AxWorker> get workers => _workers;
   final int _unreadNotificationCount;
   final ValueListenable<int>? unreadNotifications;
   final ValueListenable<List<AxSpaceInvitation>>? invitationsListenable;
   List<AxSpaceInvitation> get invitations =>
       invitationsListenable?.value ?? const [];
-  final ValueListenable<List<Object>>? workspaceInvitationsListenable;
-  int get workspaceInvitationCount =>
-      workspaceInvitationsListenable?.value.length ?? 0;
   int get unreadNotificationCount =>
       unreadNotifications?.value ?? _unreadNotificationCount;
   Widget watchNotifications(Widget Function() build) {
@@ -144,7 +138,7 @@ class AxShellContext {
       ? _realtimeNotice
       : realtimeListenable!.value.$2;
   Widget watchExecution(Widget Function() build) => ListenableBuilder(
-      listenable: Listenable.merge([workspaceListenable, realtimeListenable]),
+      listenable: Listenable.merge([realtimeListenable]),
       builder: (context, _) => build());
   final String? viewerDisplayName;
   final String? viewerEmail;
@@ -168,23 +162,7 @@ class AxShellContext {
 
   final Set<String> expandedSpaceIds;
 
-  int get onlineWorkspaceCount =>
-      workspaces.where((w) => w.status.toLowerCase() == 'online').length;
-
-  AxWorkspace? get targetedWorkspace {
-    final thread = selectedThread;
-    if (thread != null &&
-        thread.primaryWorkspace.isNotEmpty &&
-        thread.primaryWorkspace != 'Not selected') {
-      final query = thread.primaryWorkspace.trim().toLowerCase();
-      return workspaces.where((w) {
-        return w.name.trim().toLowerCase() == query ||
-            w.id.trim().toLowerCase() == query ||
-            w.hostname.trim().toLowerCase() == query;
-      }).firstOrNull;
-    }
-    return null;
-  }
+  int get readyWorkerCount => workers.where((w) => w.isReady).length;
 
   bool get isThreadContext =>
       selectedThread != null ||
@@ -192,70 +170,18 @@ class AxShellContext {
       navigation.kind == AxRouteKind.run;
 
   String get executionStatusLabel {
-    if (isThreadContext) {
-      final target = targetedWorkspace;
-      if (target != null) {
-        final isOnline = target.status.toLowerCase() == 'online';
-        final isDegraded = target.status.toLowerCase() == 'degraded' ||
-            target.status.toLowerCase() == 'reconnecting';
-        final statusText = isOnline
-            ? 'Online'
-            : isDegraded
-                ? 'Degraded'
-                : 'Offline';
-        return '${target.name} · $statusText';
-      }
-      final customName = selectedThread?.primaryWorkspace;
-      if (customName != null &&
-          customName.isNotEmpty &&
-          customName != 'Not selected') {
-        return '$customName · Offline';
-      }
-    }
-    if (workspaces.isEmpty) {
-      return 'No Workers';
-    }
-    final online = onlineWorkspaceCount;
-    final total = workspaces.length;
-    return '$online / $total ${total == 1 ? 'Worker' : 'Workers'} online';
+    if (workers.isEmpty) return 'No Workers';
+    final total = workers.length;
+    return '$readyWorkerCount / $total ${total == 1 ? 'Worker' : 'Workers'} online';
   }
 
   ExecutionStatusTone get executionStatusTone {
-    if (realtimeStale) {
-      return ExecutionStatusTone.degraded;
-    }
-    if (workspaces.isEmpty) {
-      return ExecutionStatusTone.neutral;
-    }
-    if (isThreadContext) {
-      final target = targetedWorkspace;
-      if (target != null) {
-        final st = target.status.toLowerCase();
-        if (st == 'online') return ExecutionStatusTone.usable;
-        if (st == 'degraded' || st == 'reconnecting') {
-          return ExecutionStatusTone.degraded;
-        }
-        return ExecutionStatusTone.failed;
-      }
-      final customName = selectedThread?.primaryWorkspace;
-      if (customName != null &&
-          customName.isNotEmpty &&
-          customName != 'Not selected') {
-        return ExecutionStatusTone.failed;
-      }
-      return onlineWorkspaceCount > 0
-          ? ExecutionStatusTone.usable
-          : ExecutionStatusTone.failed;
-    }
-    if (onlineWorkspaceCount > 0) {
-      return ExecutionStatusTone.usable;
-    }
-    return ExecutionStatusTone.failed;
+    if (realtimeStale) return ExecutionStatusTone.degraded;
+    if (workers.isEmpty) return ExecutionStatusTone.neutral;
+    return readyWorkerCount > 0
+        ? ExecutionStatusTone.usable
+        : ExecutionStatusTone.failed;
   }
-
-  String? get primaryWorkspaceLabel => executionStatusLabel;
-
-  bool get hasOnlineWorkspace => onlineWorkspaceCount > 0;
 
   String get viewerInitials {
     final name = (viewerDisplayName ?? viewerEmail ?? '').trim();
@@ -301,8 +227,8 @@ class AxShellContext {
         return navigation.kind == AxRouteKind.files;
       case AxRouteKind.archivedSpaces:
         return navigation.kind == AxRouteKind.archivedSpaces;
-      case AxRouteKind.workspaces:
-        return navigation.kind == AxRouteKind.workspaces;
+      case AxRouteKind.workers:
+        return navigation.kind == AxRouteKind.workers;
       case AxRouteKind.profileSecurity:
         return navigation.kind == AxRouteKind.profileSecurity;
       case AxRouteKind.settings:

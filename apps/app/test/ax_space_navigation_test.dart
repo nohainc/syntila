@@ -22,7 +22,6 @@ const w = AxThread(
     lead: '',
     status: 'active',
     brief: '',
-    primaryWorkspace: '',
     queueStatus: '');
 
 class NavigationSource extends AxFixtureDataSource {
@@ -59,21 +58,12 @@ class NavigationSource extends AxFixtureDataSource {
   }
 
   @override
-  Future<List<AxWorkspace>> loadWorkspaces() async {
-    workspaceCalls++;
-    return [];
-  }
-
-  @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     bootstrapCalls++;
     final spaces = await loadSpaces();
     await loadSession();
-    await loadWorkspaces();
     return AxSnapshot(
         spaces: spaces,
-        workspaces: const [],
         tasks: const [],
         findings: const [],
         events: const [],

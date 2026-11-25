@@ -64,8 +64,8 @@ extension _AxAppRunDetails on _AxAppStateMixin {
           archivedSpaces: store.archivedSpaces,
           mutations: store.collaboration,
         );
-      case AxRouteKind.workspaces:
-        return _workspacesView();
+      case AxRouteKind.workers:
+        return _workersView();
       case AxRouteKind.profileSecurity:
         return _profileSecurityView();
       case AxRouteKind.settings:

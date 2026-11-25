@@ -20,15 +20,13 @@ class LongListSource extends AxFixtureDataSource {
               lead: '',
               status: 'active',
               brief: '',
-              primaryWorkspace: '',
               queueStatus: ''),
       ];
   @override
   Future<List<AxThread>> loadSpaceThreads({required String spaceId}) async =>
       threads;
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     final snapshot = axFixtureSnapshot();
     return snapshot
         .copyWith(spaces: [snapshot.spaces.first.copyWith(threads: threads)]);
@@ -49,8 +47,7 @@ class PersonalNameSource extends AxFixtureDataSource {
       [person];
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-          {String? spaceId, String? workspaceId}) async =>
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async =>
       axFixtureSnapshot().copyWith(spaces: [person]);
 
   @override

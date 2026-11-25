@@ -14,7 +14,6 @@ const memberThread = AxThread(
     lead: 'member',
     status: 'active',
     brief: '',
-    primaryWorkspace: '',
     queueStatus: '',
     creatorEmail: 'member@example.test',
     creatorIsOwner: false,
@@ -33,7 +32,6 @@ class PermissionSource extends AxFixtureDataSource {
             lead: 'owner',
             status: 'active',
             brief: '',
-            primaryWorkspace: '',
             queueStatus: '',
             creatorEmail: 'owner@example.test')
       ];
@@ -92,9 +90,7 @@ AxWorker _worker(String id, String workspaceId, {bool shared = false}) =>
 
 /// Space Workspace "space-ws"; the viewer owns "own-ws" and borrows "lent-ws".
 class OwnWorkersSource extends PermissionSource
-    implements
-        AxWorkflowWorkspaceDataSource,
-        AxSpaceWorkflowConfigurationDataSource {
+    implements AxSpaceWorkflowConfigurationDataSource {
   @override
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
           String spaceId) async =>
@@ -104,14 +100,6 @@ class OwnWorkersSource extends PermissionSource
         _worker('own-worker', 'own-ws'),
         _worker('lent-worker', 'lent-ws', shared: true),
       ];
-  @override
-  Future<AxWorkflowWorkspaceSettings> loadWorkflowWorkspace(
-          {String? spaceId}) async =>
-      const AxWorkflowWorkspaceSettings(workspaceId: 'space-ws');
-  @override
-  Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-          {String? spaceId, String? workspaceId}) =>
-      loadWorkflowWorkspace(spaceId: spaceId);
 }
 
 Widget page(PermissionSource source, {AxSpace space = ownerSpace}) =>

@@ -28,7 +28,6 @@ void main() {
                 lead: 'Vitalii',
                 status: 'active',
                 brief: 'Auth overhaul',
-                primaryWorkspace: 'local',
                 queueStatus: 'idle',
               ),
               AxThread(
@@ -38,7 +37,6 @@ void main() {
                 lead: 'Vitalii',
                 status: 'planning',
                 brief: 'Search page UX',
-                primaryWorkspace: 'local',
                 queueStatus: 'idle',
               ),
             ],
@@ -62,7 +60,6 @@ void main() {
       final shellContext = AxShellContext(
         navigation: const AxNavigation.home(),
         spaces: sampleSnapshot.spaces,
-        workspaces: const [],
         unreadNotificationCount: 0,
         isDarkTheme: true,
       );
@@ -132,7 +129,7 @@ void main() {
             body: SearchPage(
               query: 'auth',
               spaces: sampleSnapshot.spaces,
-              workspaces: sampleSnapshot.workspaces,
+              workers: const [],
               run: sampleSnapshot.run,
               threadsBySpace: {
                 for (final space in sampleSnapshot.spaces)
@@ -175,7 +172,7 @@ void main() {
             body: SearchPage(
               query: 'nonexistentquery123',
               spaces: sampleSnapshot.spaces,
-              workspaces: sampleSnapshot.workspaces,
+              workers: const [],
               run: sampleSnapshot.run,
               threadsBySpace: {
                 for (final space in sampleSnapshot.spaces)

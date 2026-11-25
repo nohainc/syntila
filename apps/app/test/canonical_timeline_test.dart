@@ -66,7 +66,6 @@ void main() {
       lead: 'Alice',
       status: 'active',
       brief: '',
-      primaryWorkspace: '',
       queueStatus: 'Idle',
       canExecuteWork: true,
     );

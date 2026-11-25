@@ -43,7 +43,6 @@ class AxReadCacheCodec {
         'status': value.status,
         'brief': value.brief,
         'briefAuthorName': value.briefAuthorName,
-        'primaryWorkspace': value.primaryWorkspace,
         'queueStatus': value.queueStatus,
         'canConfigureWork': value.canConfigureWork,
         'canExecuteWork': value.canExecuteWork,
@@ -72,26 +71,6 @@ class AxReadCacheCodec {
         if (value.shared) 'shared': true,
         if (value.executionOptions != null)
           'executionOptions': value.executionOptions!.toJson(),
-      };
-  Map<String, dynamic> workspace(AxWorkspace value) => {
-        'id': value.id,
-        'name': value.name,
-        'slug': value.slug,
-        'status': value.status,
-        'role': value.role,
-        'hasRuntimeIdentity': value.hasRuntimeIdentity,
-        'platform': value.platform,
-        'architecture': value.architecture,
-        'hostname': value.hostname,
-        'appVersion': value.appVersion,
-        'activeTransport': value.activeTransport,
-        'connectionMode': value.connectionMode,
-        'runtimeCapabilitiesJson': value.runtimeCapabilities,
-        'factsUpdatedAt': value.factsUpdatedAt,
-        'updateChannel': value.updateChannel,
-        'lastSeen': value.lastSeen,
-        'workerCount': value.workerCount,
-        'activeTaskCount': value.activeTaskCount,
       };
   Map<String, dynamic> message(AxDiscussionMessage value) => {
         'id': value.id,
@@ -218,10 +197,6 @@ class AxReadCacheCodec {
         key.first == 'workers' &&
         value is List<AxWorker>) {
       data = value.map(worker).toList();
-    } else if (key.length == 1 &&
-        key.first == 'workspaces' &&
-        value is List<AxWorkspace>) {
-      data = value.map(workspace).toList();
     } else if (key.length == 1 &&
         key.first == 'workflow-catalog' &&
         value is List<AxBuiltinWorkflow>) {

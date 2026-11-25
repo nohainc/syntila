@@ -62,15 +62,6 @@ void main() {
             lastActivity: 'just now',
           ),
         ],
-        workspaces: [
-          AxWorkspace(
-            id: 'workspace-1',
-            name: 'Workspace One',
-            slug: 'workspace-1',
-            status: 'active',
-            role: 'owner',
-          ),
-        ],
         viewerDisplayName: 'Vitalii Noha',
         viewerEmail: 'vitalii@example.test',
       );
@@ -125,7 +116,6 @@ void main() {
       const shellContext = AxShellContext(
         navigation: AxNavigation.profileSecurity(),
         spaces: [],
-        workspaces: [],
         viewerDisplayName: 'Vitalii Noha',
         viewerEmail: 'vitalii@example.test',
       );
@@ -388,7 +378,6 @@ This is standard body paragraph text with **bold** and `inline_code`.
                 lead: 'Vitalii',
                 status: 'active',
                 brief: 'Implement account authentication',
-                primaryWorkspace: 'Workspace 1',
                 queueStatus: 'Idle',
               ),
               dataSource: dataSource,

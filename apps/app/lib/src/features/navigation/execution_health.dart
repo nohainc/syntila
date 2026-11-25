@@ -5,7 +5,7 @@ import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import 'ax_shell_context.dart';
 
-/// Compact popover showing execution workspace statuses, ready worker counts,
+/// Compact popover showing Worker statuses,
 /// and connection health.
 class ExecutionStatusPopover extends StatelessWidget {
   const ExecutionStatusPopover({
@@ -29,9 +29,9 @@ class ExecutionStatusPopover extends StatelessWidget {
     final mutedInk =
         isDark ? SyntilaBrand.darkInkMuted : SyntilaBrand.lightInkMuted;
 
-    final workspaces = shellContext.workspaces;
-    final onlineCount = shellContext.onlineWorkspaceCount;
-    final totalCount = workspaces.length;
+    final workers = shellContext.workers;
+    final onlineCount = shellContext.readyWorkerCount;
+    final totalCount = workers.length;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -176,11 +176,11 @@ class ExecutionStatusPopover extends StatelessWidget {
 
               Divider(height: 1, color: borderColor),
 
-              // Workspace List
+              // Worker list
               Flexible(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 280),
-                  child: workspaces.isEmpty
+                  child: workers.isEmpty
                       ? Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 32, horizontal: 16),
@@ -204,13 +204,13 @@ class ExecutionStatusPopover extends StatelessWidget {
                           shrinkWrap: true,
                           padding: const EdgeInsets.symmetric(
                               vertical: 8, horizontal: 10),
-                          itemCount: workspaces.length,
+                          itemCount: workers.length,
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 4),
                           itemBuilder: (context, index) {
-                            final ws = workspaces[index];
-                            return _buildWorkspaceRow(
-                              ws: ws,
+                            final worker = workers[index];
+                            return _buildWorkerRow(
+                              worker: worker,
                               isDark: isDark,
                               inkColor: inkColor,
                               mutedInk: mutedInk,
@@ -230,7 +230,7 @@ class ExecutionStatusPopover extends StatelessWidget {
                   if (Navigator.of(context).canPop()) {
                     Navigator.of(context).pop();
                   }
-                  onNavigateTo(const AxNavigation.workspaces());
+                  onNavigateTo(const AxNavigation.workers());
                 },
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(12),
@@ -264,23 +264,26 @@ class ExecutionStatusPopover extends StatelessWidget {
     );
   }
 
-  Widget _buildWorkspaceRow({
-    required AxWorkspace ws,
+  Widget _buildWorkerRow({
+    required AxWorker worker,
     required bool isDark,
     required Color inkColor,
     required Color mutedInk,
     required Color cardBg,
     required Color borderColor,
   }) {
-    final statusLower = ws.status.toLowerCase();
-    final isOnline = statusLower == 'online';
-    final isDegraded =
-        statusLower == 'degraded' || statusLower == 'reconnecting';
-    final dotColor = isOnline
+    final isReady = worker.isReady;
+    final isDisabled = worker.status == 'disabled';
+    final dotColor = isReady
         ? SyntilaBrand.success
-        : isDegraded
-            ? SyntilaBrand.warning
-            : SyntilaColors.neutral;
+        : isDisabled
+            ? SyntilaColors.neutral
+            : SyntilaBrand.warning;
+    final statusText = isReady
+        ? 'Ready'
+        : isDisabled
+            ? 'Disabled'
+            : 'Needs attention';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -303,7 +306,7 @@ class ExecutionStatusPopover extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  ws.name,
+                  worker.displayName,
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
@@ -312,31 +315,13 @@ class ExecutionStatusPopover extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  isOnline
-                      ? 'Online'
-                      : isDegraded
-                          ? 'Degraded'
-                          : 'Offline',
+                  statusText,
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w500,
-                    color: isOnline
-                        ? SyntilaBrand.success
-                        : isDegraded
-                            ? SyntilaBrand.warning
-                            : mutedInk,
+                    color: isReady ? SyntilaBrand.success : mutedInk,
                   ),
                 ),
-                if (isOnline && ws.workerCount > 0) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '${ws.workerCount} Workers ready',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: mutedInk,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

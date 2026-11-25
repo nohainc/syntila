@@ -119,16 +119,16 @@ void main() {
       'Worker connection failed',
       'Invitation received',
     ]);
-    expect(notifications[0].target, AxNotificationTarget.workspaces);
-    expect(notifications[0].kind, AxNotificationKind.workspaceOffline);
+    expect(notifications[0].target, AxNotificationTarget.workers);
+    expect(notifications[0].kind, AxNotificationKind.workerOffline);
 
     expect(notifications[1].priority, AxNotificationPriority.high);
-    expect(notifications[1].target, AxNotificationTarget.workspace);
+    expect(notifications[1].target, AxNotificationTarget.workers);
     expect(notifications[1].kind, AxNotificationKind.workerCredentialProblem);
     expect(notifications[1].workspaceId, 'workspace-1');
     expect(notifications[1].workerId, 'worker-1');
 
-    expect(notifications[2].target, AxNotificationTarget.workspace);
+    expect(notifications[2].target, AxNotificationTarget.workers);
     expect(notifications[2].kind, AxNotificationKind.workerInstallFailed);
     expect(notifications[2].workspaceId, 'workspace-2');
     expect(notifications[2].workerId, 'worker-2');

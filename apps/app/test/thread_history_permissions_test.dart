@@ -66,7 +66,6 @@ void main() {
           status: archived ? 'archived' : 'active',
           archived: archived,
           brief: '',
-          primaryWorkspace: '',
           queueStatus: ''),
       dataSource: source,
       currentUserId: 'owner',

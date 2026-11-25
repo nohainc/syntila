@@ -17,7 +17,6 @@ import 'ax_fixture_data.dart';
 import 'ax_fixture_realtime.dart';
 import 'ax_space_navigation_test.dart' show HistoryNavigation;
 import 'package:syntila_app/src/ax/sync/ax_realtime_cache_router.dart';
-import 'ax_fixture_snapshot.dart';
 
 const a = AxSpace(
     id: 'space-auth',
@@ -40,7 +39,6 @@ AxThread stream(String space, String name,
         lead: '',
         status: 'active',
         brief: '',
-        primaryWorkspace: '',
         queueStatus: '',
         updatedAt: updatedAt);
 
@@ -64,17 +62,10 @@ class ControlledSource extends AxFixtureDataSource {
   }
 
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     snapshots++;
-    final fixture = axFixtureSnapshot();
-    return AxSnapshot(
-        spaces: [a, b],
-        workspaces: fixture.workspaces,
-        tasks: const [],
-        findings: const [],
-        events: const [],
-        artifacts: const []);
+    return const AxSnapshot(
+        spaces: [a, b], tasks: [], findings: [], events: [], artifacts: []);
   }
 }
 
@@ -104,7 +95,6 @@ class UnsortedRecentSource extends AxFixtureDataSource {
           lead: '',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: '',
           updatedAt: '2026-10-01T00:00:00Z',
         ),
@@ -115,7 +105,6 @@ class UnsortedRecentSource extends AxFixtureDataSource {
           lead: '',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: '',
           updatedAt: '2026-10-03T00:00:00Z',
         ),

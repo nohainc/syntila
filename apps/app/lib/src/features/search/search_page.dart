@@ -5,13 +5,13 @@ import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import '../common/command_palette.dart';
 
-/// Full-page search view rendered in the main workspace content area.
+/// Full-page search view rendered in the main content area.
 class SearchPage extends StatelessWidget {
   const SearchPage({
     super.key,
     required this.query,
     required this.spaces,
-    required this.workspaces,
+    required this.workers,
     required this.threadsBySpace,
     this.run,
     required this.onNavigateTo,
@@ -26,7 +26,7 @@ class SearchPage extends StatelessWidget {
     super.key,
     required this.query,
     required this.spaces,
-    required this.workspaces,
+    required this.workers,
     required this.threadsBySpace,
     this.run,
     required this.onNavigateTo,
@@ -38,7 +38,7 @@ class SearchPage extends StatelessWidget {
 
   final String query;
   final List<AxSpace> spaces;
-  final List<AxWorkspace> workspaces;
+  final List<AxWorker> workers;
   final Map<String, List<AxThread>> threadsBySpace;
   final AxRun? run;
   final ValueChanged<AxNavigation> onNavigateTo;
@@ -79,7 +79,7 @@ class SearchPage extends StatelessWidget {
         category: 'Navigation',
         onSelect: () {
           onClearSearch();
-          onNavigateTo(const AxNavigation.workspaces());
+          onNavigateTo(const AxNavigation.workers());
         },
       ),
       CommandPaletteAction(
@@ -170,16 +170,15 @@ class SearchPage extends StatelessWidget {
       ));
     }
 
-    // Workspaces
-    for (final workspace in workspaces) {
+    for (final worker in workers) {
       actions.add(CommandPaletteAction(
-        title: workspace.name,
-        subtitle: '${workspace.hostname} · ${workspace.status}',
+        title: worker.displayName,
+        subtitle: worker.status,
         icon: Icons.computer_outlined,
         category: 'Workers',
         onSelect: () {
           onClearSearch();
-          onNavigateTo(AxNavigation.workspaces(workspaceId: workspace.id));
+          onNavigateTo(AxNavigation.workers(workerId: worker.id));
         },
       ));
     }

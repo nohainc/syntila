@@ -50,12 +50,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
   late final _threads =
       AxSpaceThreads(widget.dataSource, engine: widget.workHistoryCache.engine);
   late final AxWorkflowConfigurations? _workflows =
-      widget.workflowConfigurations ??
-          (widget.dataSource is AxWorkflowWorkspaceDataSource
-              ? AxWorkflowConfigurations(widget.dataSource,
-                  engine: widget.workHistoryCache.engine,
-                  spaceId: widget.space.id)
-              : null);
+      widget.workflowConfigurations;
   bool _busy = false;
   bool _savingAiHistoryVisibility = false;
   String? _aiHistoryVisibilityError;

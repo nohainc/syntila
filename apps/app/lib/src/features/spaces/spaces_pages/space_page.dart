@@ -158,11 +158,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
           .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
     }
     threads = _streams.peek(widget.space.id);
-    _workflows = widget.workflowConfigurations ??
-        (widget.dataSource is AxWorkflowWorkspaceDataSource
-            ? AxWorkflowConfigurations(widget.dataSource,
-                engine: _streams.engine, spaceId: widget.space.id)
-            : null);
+    _workflows = widget.workflowConfigurations;
   }
 
   void _cancelTab() {

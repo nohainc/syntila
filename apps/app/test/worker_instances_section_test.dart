@@ -24,7 +24,7 @@ void main() {
         home: Scaffold(
             body: GlobalAppMenu(
       shellContext: AxShellContext(
-          navigation: const AxNavigation.workspaces(),
+          navigation: const AxNavigation.workers(),
           spaces: const [],
           catalogs: AxSessionCatalogs(source)),
       onNavigateTo: (_) {},
@@ -45,7 +45,7 @@ void main() {
         home: Scaffold(
             body: AppBreadcrumb(
       shellContext: AxShellContext(
-          navigation: const AxNavigation.workspace('old-id'),
+          navigation: const AxNavigation.worker('old-id'),
           spaces: const [],
           catalogs: AxSessionCatalogs(source)),
       onNavigateTo: (_) {},

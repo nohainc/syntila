@@ -596,7 +596,6 @@ void main() {
                       lead: '',
                       status: 'active',
                       brief: '',
-                      primaryWorkspace: '',
                       queueStatus: ''),
                   dataSource: source,
                   discussionCache: cache,

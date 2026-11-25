@@ -9,7 +9,7 @@ enum AxRouteKind {
   notes,
   files,
   archivedSpaces,
-  workspaces,
+  workers,
   profileSecurity,
   settings,
   login,
@@ -23,7 +23,7 @@ class AxNavigation {
     this.spaceId,
     this.threadId,
     this.runId,
-    this.workspaceId,
+    this.workerId,
     this.loginReturnTo,
     this.loginToken,
     this.loginError,
@@ -61,11 +61,11 @@ class AxNavigation {
   const AxNavigation.archivedSpaces()
       : this._(kind: AxRouteKind.archivedSpaces);
 
-  const AxNavigation.workspaces({String? workspaceId})
-      : this._(kind: AxRouteKind.workspaces, workspaceId: workspaceId);
+  const AxNavigation.workers({String? workerId})
+      : this._(kind: AxRouteKind.workers, workerId: workerId);
 
-  const AxNavigation.workspace(String workspaceId)
-      : this._(kind: AxRouteKind.workspaces, workspaceId: workspaceId);
+  const AxNavigation.worker(String workerId)
+      : this._(kind: AxRouteKind.workers, workerId: workerId);
 
   const AxNavigation.login({
     String? returnTo,
@@ -95,7 +95,7 @@ class AxNavigation {
   final String? spaceId;
   final String? threadId;
   final String? runId;
-  final String? workspaceId;
+  final String? workerId;
   final String? loginReturnTo;
   final String? loginToken;
   final String? loginError;
@@ -137,8 +137,8 @@ class AxNavigation {
     if (parts case ['archived-spaces']) {
       return const AxNavigation.archivedSpaces();
     }
-    // Workflows are configured inside each Workspace tab.
-    if (parts case ['workflows']) return const AxNavigation.workspaces();
+    // Workflows are configured on the Workers page.
+    if (parts case ['workflows']) return const AxNavigation.workers();
     if (parts.length == 3 && parts[0] == 'spaces') {
       // Space-level Workflow settings were removed; old links open the Space.
       if (parts[2] == 'workflows') {
@@ -150,13 +150,13 @@ class AxNavigation {
     }
     if (parts.length == 1 &&
         (parts[0] == 'workers' || parts[0] == 'workspaces')) {
-      return const AxNavigation.workspaces();
+      return const AxNavigation.workers();
     }
     if (parts.length == 2 &&
         (parts[0] == 'workers' || parts[0] == 'workspaces') &&
         parts[1] != 'workers' &&
         parts[1] != 'accounts') {
-      return AxNavigation.workspaces(workspaceId: parts[1]);
+      return AxNavigation.workers(workerId: parts[1]);
     }
     if (parts case ['search']) {
       return AxNavigation.search(uri.queryParameters['q']);
@@ -193,8 +193,8 @@ class AxNavigation {
       AxRouteKind.notes => Uri(path: '/notes'),
       AxRouteKind.files => Uri(path: '/files'),
       AxRouteKind.archivedSpaces => Uri(path: '/archived-spaces'),
-      AxRouteKind.workspaces => workspaceId != null
-          ? Uri(path: '/workers/$workspaceId')
+      AxRouteKind.workers => workerId != null
+          ? Uri(path: '/workers/$workerId')
           : Uri(path: '/workers'),
       AxRouteKind.login => Uri(
           path: '/login',
@@ -240,7 +240,7 @@ class AxNavigation {
       other.spaceId == spaceId &&
       other.threadId == threadId &&
       other.runId == runId &&
-      other.workspaceId == workspaceId &&
+      other.workerId == workerId &&
       other.loginReturnTo == loginReturnTo &&
       other.loginToken == loginToken &&
       other.loginError == loginError &&
@@ -248,6 +248,6 @@ class AxNavigation {
       other.desktopAuthIntentId == desktopAuthIntentId;
 
   @override
-  int get hashCode => Object.hash(kind, spaceId, threadId, runId, workspaceId,
+  int get hashCode => Object.hash(kind, spaceId, threadId, runId, workerId,
       loginReturnTo, loginToken, loginError, searchQuery, desktopAuthIntentId);
 }

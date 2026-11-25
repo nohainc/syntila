@@ -20,7 +20,6 @@ void main() {
     lead: 'Owner',
     status: 'active',
     brief: 'Make login reliable.',
-    primaryWorkspace: 'Mac Workspace',
     queueStatus: 'Idle',
   );
 

@@ -57,7 +57,7 @@ void main() {
       const AxNavigation.home(),
       const AxNavigation.spaces(),
       const AxNavigation.archivedSpaces(),
-      const AxNavigation.workspaces(),
+      const AxNavigation.workers(),
       const AxNavigation.profileSecurity(),
     ];
 
@@ -66,12 +66,19 @@ void main() {
     }
     expect(AxNavigation.fromUri(Uri.parse('/archived-spaces')).kind,
         AxRouteKind.archivedSpaces);
-    // Workflows live inside Workspace tabs; the old route opens Workers.
+    // Old links open Workers.
     expect(AxNavigation.fromUri(Uri.parse('/workflows')),
-        const AxNavigation.workspaces());
+        const AxNavigation.workers());
     expect(AxNavigation.fromUri(Uri.parse('/workers')),
-        const AxNavigation.workspaces());
-    expect(const AxNavigation.workspaces().toUri().path, '/workers');
+        const AxNavigation.workers());
+    expect(const AxNavigation.workers().toUri().path, '/workers');
+    // Old Workspace links redirect to the Workers page.
+    expect(AxNavigation.fromUri(Uri.parse('/workspaces')),
+        const AxNavigation.workers());
+    expect(AxNavigation.fromUri(Uri.parse('/workspaces/abc')),
+        const AxNavigation.workers(workerId: 'abc'));
+    expect(const AxNavigation.workers(workerId: 'abc').toUri().path,
+        '/workers/abc');
   });
 
   test('preserves desktop auth approval through the browser sign-in route', () {

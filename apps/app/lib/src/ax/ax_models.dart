@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'worker_execution_options.dart';
 export 'worker_execution_options.dart';
-import 'dart:convert';
 
 enum RunStatus {
   active,
@@ -250,28 +249,6 @@ class AxBuiltinWorkflowStep {
 List<String> _strings(Map<String, dynamic> json, String key) =>
     List<String>.from(json[key] as List? ?? const []);
 
-List<String> _runtimeCapabilityLabels(Map<String, dynamic> json, String key) {
-  dynamic value = json[key];
-  if (value is String) {
-    try {
-      value = jsonDecode(value);
-    } catch (_) {
-      return const [];
-    }
-  }
-  if (value is List) return value.whereType<String>().toList();
-  if (value is! Map) return const [];
-
-  final labels = (value['supportedRuntimes'] as List? ?? const [])
-      .whereType<String>()
-      .toList();
-  final maxConcurrentWorkers = value['maxConcurrentWorkers'];
-  if (maxConcurrentWorkers is int) {
-    labels.add('Up to $maxConcurrentWorkers concurrent Workers');
-  }
-  return labels;
-}
-
 enum AxPhaseStatus { completed, inProgress, pending }
 
 class AxPhaseItem {
@@ -342,7 +319,6 @@ class AxThread {
     required this.lead,
     required this.status,
     required this.brief,
-    required this.primaryWorkspace,
     required this.queueStatus,
     this.briefAuthorName = '',
     this.leadDisplayName = '',
@@ -373,7 +349,6 @@ class AxThread {
 
   /// Who sent [brief], the latest Thread message; empty when unknown.
   final String briefAuthorName;
-  final String primaryWorkspace;
   final String queueStatus;
   final Map<String, dynamic> workConfig;
 
@@ -425,7 +400,6 @@ class AxThread {
           status: status ?? this.status,
           brief: brief,
           briefAuthorName: briefAuthorName,
-          primaryWorkspace: primaryWorkspace,
           queueStatus: queueStatus,
           workConfig: workConfig ?? this.workConfig,
           metadata: viewState == null
@@ -458,7 +432,6 @@ class AxThread {
         status: _string(json, 'status', 'active'),
         brief: _string(json, 'brief', ''),
         briefAuthorName: _string(json, 'briefAuthorName'),
-        primaryWorkspace: _string(json, 'primaryWorkspace', 'Not selected'),
         queueStatus: _string(json, 'queueStatus', 'Idle'),
         workConfig: json['workConfig'] is Map
             ? Map<String, dynamic>.from(json['workConfig'] as Map)
@@ -1533,180 +1506,6 @@ class AxAccountSecurity {
       );
 }
 
-class AxWorkspace {
-  const AxWorkspace({
-    required this.id,
-    required this.name,
-    this.slug = '',
-    this.status = 'offline',
-    this.role = 'owner',
-    this.hasRuntimeIdentity = false,
-    this.platform = '—',
-    this.architecture = '—',
-    this.hostname = '—',
-    this.appVersion = '—',
-    this.activeTransport,
-    this.connectionMode,
-    this.runtimeCapabilities = const [],
-    this.factsUpdatedAt,
-    this.updateChannel = 'stable',
-    this.lastSeen = '—',
-    this.workerCount = 0,
-    this.activeTaskCount = 0,
-    this.shared = false,
-    this.parallelSlots,
-    this.spaceAiChat = false,
-    this.spaceAiWork = false,
-  });
-
-  final String id;
-  final String name;
-  final String slug;
-  final String status;
-  final String role;
-
-  /// Lent to the viewer by its owner; the viewer may not manage access.
-  final bool shared;
-  final bool hasRuntimeIdentity;
-  final String platform;
-  final String architecture;
-  final String hostname;
-  final String appVersion;
-  final String? activeTransport;
-  final String? connectionMode;
-  final List<String> runtimeCapabilities;
-  final String? factsUpdatedAt;
-  final String updateChannel;
-  final String lastSeen;
-  final int workerCount;
-  final int activeTaskCount;
-
-  /// How many requests run at once on this Workspace. Owner-only (null for a
-  /// lent Workspace); set on the Workspaces page and enforced by Cloud.
-  final int? parallelSlots;
-
-  /// Owner-chosen Space AI availability for this Workspace.
-  final bool spaceAiChat;
-  final bool spaceAiWork;
-
-  factory AxWorkspace.fromJson(Map<String, dynamic> json) => AxWorkspace(
-        id: _string(json, 'id'),
-        name: _string(json, 'name'),
-        slug: _string(json, 'slug'),
-        status: _string(json, 'status', 'offline'),
-        role: _string(json, 'role', 'viewer'),
-        hasRuntimeIdentity: json['hasRuntimeIdentity'] == true ||
-            json['hasRuntimeIdentity'] == 1,
-        platform: _string(json, 'platform'),
-        architecture: _string(json, 'architecture'),
-        hostname: _string(json, 'hostname'),
-        appVersion: _string(json, 'appVersion'),
-        activeTransport: json['activeTransport']?.toString(),
-        connectionMode: json['connectionMode']?.toString(),
-        runtimeCapabilities:
-            _runtimeCapabilityLabels(json, 'runtimeCapabilitiesJson'),
-        factsUpdatedAt: json['factsUpdatedAt']?.toString(),
-        updateChannel: _string(json, 'updateChannel', 'stable'),
-        lastSeen: _string(
-            json, 'lastSeen', json['factsUpdatedAt']?.toString() ?? '—'),
-        workerCount: json['workerCount'] as int? ?? 0,
-        activeTaskCount: json['activeTaskCount'] as int? ?? 0,
-        shared: json['shared'] == true || json['shared'] == 1,
-        parallelSlots: json['parallelSlots'] as int?,
-        spaceAiChat: json['spaceAiChat'] == true || json['spaceAiChat'] == 1,
-        spaceAiWork: json['spaceAiWork'] == true || json['spaceAiWork'] == 1,
-      );
-
-  AxWorkspace copyWith({
-    int? workerCount,
-    int? activeTaskCount,
-    String? lastSeen,
-    int? parallelSlots,
-    bool? spaceAiChat,
-    bool? spaceAiWork,
-  }) =>
-      AxWorkspace(
-        id: id,
-        name: name,
-        slug: slug,
-        status: status,
-        role: role,
-        hasRuntimeIdentity: hasRuntimeIdentity,
-        platform: platform,
-        architecture: architecture,
-        hostname: hostname,
-        appVersion: appVersion,
-        activeTransport: activeTransport,
-        connectionMode: connectionMode,
-        runtimeCapabilities: runtimeCapabilities,
-        factsUpdatedAt: factsUpdatedAt,
-        updateChannel: updateChannel,
-        lastSeen: lastSeen ?? this.lastSeen,
-        workerCount: workerCount ?? this.workerCount,
-        activeTaskCount: activeTaskCount ?? this.activeTaskCount,
-        shared: shared,
-        parallelSlots: parallelSlots ?? this.parallelSlots,
-        spaceAiChat: spaceAiChat ?? this.spaceAiChat,
-        spaceAiWork: spaceAiWork ?? this.spaceAiWork,
-      );
-}
-
-class AxWorkspaceMember {
-  const AxWorkspaceMember({
-    required this.userId,
-    required this.displayName,
-    required this.email,
-    required this.role,
-    required this.status,
-    required this.createdAt,
-  });
-
-  final String userId;
-  final String displayName;
-  final String email;
-  final String role;
-  final String status;
-  final String createdAt;
-
-  factory AxWorkspaceMember.fromJson(Map<String, dynamic> json) =>
-      AxWorkspaceMember(
-        userId: _string(json, 'userId'),
-        displayName: _string(json, 'displayName', _string(json, 'email')),
-        email: _string(json, 'email'),
-        role: _string(json, 'role', 'member'),
-        status: _string(json, 'status', 'active'),
-        createdAt: _string(json, 'createdAt'),
-      );
-}
-
-class AxWorkspaceInvitation {
-  const AxWorkspaceInvitation({
-    required this.id,
-    required this.email,
-    required this.role,
-    required this.status,
-    required this.expiresAt,
-    required this.createdAt,
-  });
-
-  final String id;
-  final String email;
-  final String role;
-  final String status;
-  final String expiresAt;
-  final String createdAt;
-
-  factory AxWorkspaceInvitation.fromJson(Map<String, dynamic> json) =>
-      AxWorkspaceInvitation(
-        id: _string(json, 'id'),
-        email: _string(json, 'email'),
-        role: _string(json, 'role', 'member'),
-        status: _string(json, 'status', 'pending'),
-        expiresAt: _string(json, 'expiresAt'),
-        createdAt: _string(json, 'createdAt'),
-      );
-}
-
 class AxSpaceMember {
   const AxSpaceMember({
     required this.userId,
@@ -1839,12 +1638,10 @@ class AxAuditEntry {
 
 class AxSnapshot {
   const AxSnapshot({
-    this.workspaceId,
     this.viewer,
     this.activeRunId,
     this.run,
     required this.spaces,
-    this.workspaces = const [],
     required this.tasks,
     required this.findings,
     required this.events,
@@ -1853,12 +1650,10 @@ class AxSnapshot {
     this.synthesisDecision,
   });
 
-  final String? workspaceId;
   final String? activeRunId;
   final AxViewer? viewer;
   final AxRun? run;
   final List<AxSpace> spaces;
-  final List<AxWorkspace> workspaces;
   final List<AxTask> tasks;
   final List<AxFinding> findings;
   final List<AxEvent> events;
@@ -1868,15 +1663,12 @@ class AxSnapshot {
 
   AxSnapshot copyWith({
     List<AxSpace>? spaces,
-    List<AxWorkspace>? workspaces,
   }) =>
       AxSnapshot(
-        workspaceId: workspaceId,
         viewer: viewer,
         activeRunId: activeRunId,
         run: run,
         spaces: spaces ?? this.spaces,
-        workspaces: workspaces ?? this.workspaces,
         tasks: tasks,
         findings: findings,
         events: events,
@@ -1886,15 +1678,9 @@ class AxSnapshot {
       );
 
   static AxSnapshot empty() => const AxSnapshot(
-      spaces: [],
-      workspaces: [],
-      tasks: [],
-      findings: [],
-      events: [],
-      artifacts: []);
+      spaces: [], tasks: [], findings: [], events: [], artifacts: []);
 
   factory AxSnapshot.fromJson(Map<String, dynamic> json) => AxSnapshot(
-        workspaceId: json['workspaceId'] as String?,
         viewer: json['viewer'] == null
             ? null
             : AxViewer.fromJson(
@@ -1906,10 +1692,6 @@ class AxSnapshot {
         spaces: (json['spaces'] as List? ?? const [])
             .map((item) =>
                 AxSpace.fromJson(Map<String, dynamic>.from(item as Map)))
-            .toList(),
-        workspaces: (json['workspaces'] as List? ?? const [])
-            .map((item) =>
-                AxWorkspace.fromJson(Map<String, dynamic>.from(item as Map)))
             .toList(),
         tasks: (json['tasks'] as List? ?? const [])
             .map((item) =>
@@ -1945,7 +1727,7 @@ enum AxHomeAttentionType {
   executionFailed,
   executionCompleted,
   workerProblem,
-  workspaceProblem;
+  workerOffline;
 
   // Backward-compatible aliases
   static const AxHomeAttentionType invitation = spaceInvitation;
@@ -2041,7 +1823,7 @@ class AxHomeAttentionItem {
       AxHomeAttentionType.approvalRequired => 2,
       AxHomeAttentionType.executionFailed => 3,
       AxHomeAttentionType.workerProblem => 4,
-      AxHomeAttentionType.workspaceProblem => 5,
+      AxHomeAttentionType.workerOffline => 5,
       AxHomeAttentionType.executionCompleted => 6,
     };
   }
@@ -2325,7 +2107,6 @@ enum AxProductUpdateCategory {
   security,
   workflow,
   collaboration,
-  workspace,
   worker;
 
   String get label => switch (this) {
@@ -2334,7 +2115,6 @@ enum AxProductUpdateCategory {
         AxProductUpdateCategory.security => 'Security',
         AxProductUpdateCategory.workflow => 'Workflow',
         AxProductUpdateCategory.collaboration => 'Collaboration',
-        AxProductUpdateCategory.workspace => 'Workspace',
         AxProductUpdateCategory.worker => 'Worker',
       };
 

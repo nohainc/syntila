@@ -9,7 +9,6 @@ AxThread _thread(String id, {Map<String, dynamic> metadata = const {}}) =>
       lead: 'u',
       status: 'active',
       brief: '',
-      primaryWorkspace: '',
       queueStatus: 'Idle',
       metadata: metadata,
     );

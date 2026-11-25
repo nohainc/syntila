@@ -119,37 +119,6 @@ abstract interface class AxSpaceWorkflowConfigurationDataSource {
       String spaceId);
 }
 
-class AxWorkflowWorkspace {
-  const AxWorkflowWorkspace({required this.id, required this.name});
-  final String id;
-  final String name;
-  factory AxWorkflowWorkspace.fromJson(Map<String, dynamic> json) =>
-      AxWorkflowWorkspace(
-          id: json['id'] as String, name: json['name'] as String);
-}
-
-class AxWorkflowWorkspaceSettings {
-  const AxWorkflowWorkspaceSettings(
-      {this.workspaceId, this.inherited = false, this.workspaces = const []});
-  final String? workspaceId;
-  final bool inherited;
-  final List<AxWorkflowWorkspace> workspaces;
-  factory AxWorkflowWorkspaceSettings.fromJson(Map<String, dynamic> json) =>
-      AxWorkflowWorkspaceSettings(
-          workspaceId: json['workspaceId'] as String?,
-          inherited: json['inherited'] == true,
-          workspaces: (json['workspaces'] as List)
-              .map((v) => AxWorkflowWorkspace.fromJson(
-                  Map<String, dynamic>.from(v as Map)))
-              .toList());
-}
-
-abstract interface class AxWorkflowWorkspaceDataSource {
-  Future<AxWorkflowWorkspaceSettings> loadWorkflowWorkspace({String? spaceId});
-  Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId});
-}
-
 /// An owner-managed folder outside Work Root, published by the Space's
 /// Workspace. Cloud only knows its name and access status, never its path.
 class AxAdditionalFolder {

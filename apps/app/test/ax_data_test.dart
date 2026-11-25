@@ -904,13 +904,10 @@ void main() {
 
   test('populates focused stores from the Cloud read model', () async {
     final store = AxStore(const AxFixtureDataSource());
-    final snapshot = await store.loadBootstrapState();
+    await store.loadBootstrapState();
 
-    expect(snapshot.workspaceId, isNull);
     expect(store.spaces.items.first.id, 'space-auth');
     expect(store.runs.current?.id, 'run-fixture');
-    expect(store.workspaces.items.single.id, 'workspace-macbook');
-    expect(store.workspaces.items, hasLength(1));
   });
 
   test('preserves a session viewer when a snapshot omits viewer data',
@@ -1041,7 +1038,7 @@ void main() {
       client: client,
     );
 
-    final state = await api.loadBootstrapState(workspaceId: 'workspace-1');
+    final state = await api.loadBootstrapState();
 
     expect(state.viewer?.id, 'user-1');
     expect(state.spaces.single.threads, isEmpty);
@@ -1050,31 +1047,6 @@ void main() {
     expect(client.requests, isNot(contains('/api/spaces/space-1/threads')));
     expect(client.requests, isNot(contains('/api/workspaces')));
     expect(client.requests, contains('/api/session'));
-  });
-
-  test('parses Workspace runtime facts', () {
-    final snapshot = AxSnapshot.fromJson({
-      'workspaceId': 'workspace-1',
-      'workspaces': [
-        {
-          'id': 'workspace-runtime-1',
-          'name': 'Build Workspace',
-          'hostname': 'mac.local',
-          'status': 'online',
-          'appVersion': '4.0.0',
-          'workerCount': 2,
-          'platform': 'macos',
-        },
-      ],
-      'workers': [
-        {'id': 'obsolete-worker'},
-      ],
-    });
-
-    expect(snapshot.workspaces, hasLength(1));
-    expect(snapshot.workspaces.single.name, 'Build Workspace');
-    expect(snapshot.workspaces.single.appVersion, '4.0.0');
-    expect(snapshot.workspaces.single.platform, 'macos');
   });
 
   test('parses only the safe Workspace Worker projection', () {

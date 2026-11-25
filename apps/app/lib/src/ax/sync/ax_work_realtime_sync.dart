@@ -351,7 +351,7 @@ class AxWorkRealtimeSync extends ChangeNotifier {
     final stream = event['stream'];
     final streamKey = stream is Map
         ? '${stream['kind']}:${stream['id']}'
-        : 'execution_workspace:${event['workspaceId']}';
+        : 'thread:$threadId';
     final sequenceKey = '$streamKey:$threadId:$id';
     if (sequence is int && sequence > 0) {
       if (sequence <= (_sequences[sequenceKey] ?? -1)) return;

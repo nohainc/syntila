@@ -119,7 +119,6 @@ void main() {
                   lead: '',
                   status: 'running',
                   brief: '',
-                  primaryWorkspace: '',
                   queueStatus: '',
                   hasActiveWork: true,
                 )
@@ -198,7 +197,6 @@ void main() {
           lead: '',
           status: 'active',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: ''),
       AxThread(
           id: 'archived',
@@ -207,7 +205,6 @@ void main() {
           lead: '',
           status: 'archived',
           brief: '',
-          primaryWorkspace: '',
           queueStatus: ''),
     ];
     for (final navigation in [
@@ -319,7 +316,6 @@ void main() {
         lead: '',
         status: 'active',
         brief: '',
-        primaryWorkspace: '',
         queueStatus: '',
         hasUnread: true);
     await tester.pumpWidget(MaterialApp(

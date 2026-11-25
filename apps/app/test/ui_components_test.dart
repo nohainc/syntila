@@ -142,7 +142,7 @@ void main() {
           home: Scaffold(
             body: CommandPaletteDialog(
               spaces: snapshot.spaces,
-              workspaces: snapshot.workspaces,
+              workers: const [],
               run: snapshot.run,
               threadsBySpace: {
                 for (final space in snapshot.spaces) space.id: space.threads
@@ -168,7 +168,7 @@ void main() {
 
       await tester.tap(find.byType(ListTile).first);
       await tester.pumpAndSettle();
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
 
       // Search for Profile & Security
       await tester.enterText(find.byType(TextField), 'Profile');
@@ -190,7 +190,7 @@ void main() {
           home: Scaffold(
             body: CommandPaletteDialog(
               spaces: axFixtureSnapshot().spaces,
-              workspaces: axFixtureSnapshot().workspaces,
+              workers: const [],
               run: axFixtureSnapshot().run,
               threadsBySpace: {
                 for (final space in axFixtureSnapshot().spaces)
@@ -209,7 +209,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
 
-      expect(navigatedTo?.kind, AxRouteKind.workspaces);
+      expect(navigatedTo?.kind, AxRouteKind.workers);
     });
   });
 }

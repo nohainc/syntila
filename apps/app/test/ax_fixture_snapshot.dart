@@ -27,7 +27,6 @@ AxSnapshot axFixtureSnapshot() => const AxSnapshot(
               status: 'active',
               brief:
                   'Harden the authentication boundaries before the next release.',
-              primaryWorkspace: 'MacBook Pro',
               queueStatus: 'Idle',
             ),
           ],
@@ -37,17 +36,6 @@ AxSnapshot axFixtureSnapshot() => const AxSnapshot(
           name: 'Atlas API',
           branch: 'develop',
           lastActivity: 'Yesterday',
-        ),
-      ],
-      workspaces: [
-        AxWorkspace(
-          id: 'workspace-macbook',
-          name: 'Development Workspace',
-          hostname: 'development-workspace.local',
-          status: 'ONLINE',
-          appVersion: '1.5.0',
-          workerCount: 5,
-          activeTaskCount: 1,
         ),
       ],
       tasks: [

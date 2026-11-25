@@ -14,16 +14,13 @@ class PollingSource extends AxFixtureDataSource {
   final details = <String>[];
   List<int> get broadCounts => [bootstraps, sessions, spaces, workspaces];
   @override
-  Future<AxSnapshot> loadBootstrapState(
-      {String? spaceId, String? workspaceId}) async {
+  Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     bootstraps++;
     final fixture = axFixtureSnapshot();
     return AxSnapshot(
-        workspaceId: 'workspace',
         run: fixture.run,
         activeRunId: fixture.activeRunId,
         spaces: fixture.spaces,
-        workspaces: fixture.workspaces,
         tasks: fixture.tasks,
         findings: fixture.findings,
         events: fixture.events,
@@ -40,12 +37,6 @@ class PollingSource extends AxFixtureDataSource {
   Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) {
     spaces++;
     return super.loadSpaces(includeArchived: includeArchived);
-  }
-
-  @override
-  Future<List<AxWorkspace>> loadWorkspaces() {
-    workspaces++;
-    return super.loadWorkspaces();
   }
 
   @override

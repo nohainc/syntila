@@ -14,8 +14,8 @@ class AxBrowserRoute {
         return Uri(path: '/thread');
       case AxRouteKind.run:
         return Uri(path: '/run');
-      case AxRouteKind.workspaces:
-        if (route.workspaceId != null) return Uri(path: '/workers');
+      case AxRouteKind.workers:
+        if (route.workerId != null) return Uri(path: '/workers');
         break;
       case AxRouteKind.login:
         final returnTo = route.loginReturnTo;

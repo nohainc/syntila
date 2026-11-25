@@ -390,7 +390,6 @@ void main() {
     final first = store(backend);
     await first.hydrateReadCache();
     first.spaces.replace([space]);
-    first.workspaces.replace([const AxWorkspace(id: 'X', name: 'Workspace')]);
     first.syncEngine.update(
         first.spaceThreads.query('P'),
         (_) => [
