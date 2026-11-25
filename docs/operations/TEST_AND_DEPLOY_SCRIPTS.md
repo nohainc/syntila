@@ -31,7 +31,7 @@ A file that fails under parallel load is re-run once alone; if it then passes it
 
 | Command | Purpose |
 | --- | --- |
-| `scripts/start-local-backend.sh` | Local backend on `:8788` with local PostgreSQL. `SYNTILA_FEATURE_FLAGS` defaults to every Worker-first flag except `cluster_mode`; set it to an empty string for all flags off, or to your own list. |
+| `scripts/start-local-backend.sh` | Local backend on `:8788` with local PostgreSQL. `SYNTILA_FEATURE_FLAGS` defaults to none; the Worker-first flags no longer exist and stop the backend as unknown. |
 | `scripts/regenerate-schema-lock.sh [--check]` | Rebuilds `apps/backend/migrations/schema.lock` from the migrations in a scratch database (`--check` only compares; exit 1 when out of date). Uses the local credentials (`syntila_app` / `devpass`). Never leaves an empty lock file. |
 | `scripts/run-worker-agent.sh <command>` | Runs the Worker Agent CLI from source with its data in `.development/worker-agent` (`install --pairing-code CODE --no-service`, `run`, `status`, `permissions add-folder PATH --write`, ...). |
 | `scripts/legacy-cutover.sh <step>` | P10 cutover switches (`status`, `close-registration`, `require-worker`, `close-gateway`, `archive-mapping`, `reopen`); see [LEGACY_CUTOVER.md](LEGACY_CUTOVER.md). |
