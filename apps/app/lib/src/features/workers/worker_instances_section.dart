@@ -638,8 +638,6 @@ class WorkerInstancesList extends StatelessWidget {
                                         source: usageSource!,
                                         worker: AxWorker(
                                           id: worker.id,
-                                          workspaceId: '',
-                                          workspaceName: '',
                                           workerTypeId: worker.workerTypeId,
                                           displayName: worker.name,
                                           status: worker.online

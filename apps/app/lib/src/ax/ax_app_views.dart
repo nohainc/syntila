@@ -237,8 +237,8 @@ extension _AxAppViews on _AxAppStateMixin {
                       : 'Loading Thread…'));
         }
         return ThreadPage(
-          onManageWorkerVisibility: (workspaceId) =>
-              _navigateTo(AxNavigation.workers(workerId: workspaceId)),
+          onManageWorkerVisibility: (workerId) =>
+              _navigateTo(AxNavigation.workers(workerId: workerId)),
           catalogs: store.catalogs,
           workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
               engine: store.syncEngine, spaceId: space.id),

@@ -53,11 +53,8 @@ class AxWorkerUsageReport {
 }
 
 abstract interface class AxWorkerUsageDataSource {
-  /// Runs the Profile-defined usage command for [workerId] on its Workspace.
-  Future<AxWorkerUsageReport> readWorkerUsage({
-    required String workspaceId,
-    required String workerId,
-  });
+  /// Runs the Profile-defined usage command for [workerId] on its computer.
+  Future<AxWorkerUsageReport> readWorkerUsage({required String workerId});
 }
 
 /// Holds the usage card shown above the composer. Results are local view
@@ -81,7 +78,6 @@ class AxWorkerUsageController extends ChangeNotifier {
   int _generation = 0;
 
   Future<void> load({
-    required String workspaceId,
     required String workerId,
     required String workerName,
   }) async {
@@ -96,8 +92,7 @@ class AxWorkerUsageController extends ChangeNotifier {
     notifyListeners();
     AxWorkerUsageReport result;
     try {
-      result = await source.readWorkerUsage(
-          workspaceId: workspaceId, workerId: workerId);
+      result = await source.readWorkerUsage(workerId: workerId);
     } on Object {
       result = const AxWorkerUsageReport(
         status: 'error',

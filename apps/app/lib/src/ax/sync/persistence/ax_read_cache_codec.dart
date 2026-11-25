@@ -51,8 +51,6 @@ class AxReadCacheCodec {
       };
   Map<String, dynamic> worker(AxWorker value) => {
         'id': value.id,
-        'workspaceId': value.workspaceId,
-        'workspaceName': value.workspaceName,
         'workerTypeId': value.workerTypeId,
         'displayName': value.displayName,
         'description': value.description,

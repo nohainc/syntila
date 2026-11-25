@@ -5397,8 +5397,6 @@ class _GenericWorkerConfigDataSource extends _WorkFormDataSource {
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [
         AxWorker(
           id: 'local-worker-dynamic-test',
-          workspaceId: 'workspace-1',
-          workspaceName: 'Vitalii’s MacBook Pro',
           workerTypeId: 'dynamic-test-worker',
           displayName: 'Dynamic Test Worker',
           description: 'Catalog-created acceptance Worker.',
@@ -5871,8 +5869,6 @@ class _ModelSelectionTestDataSource extends _GenericWorkerConfigDataSource {
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [
         AxWorker(
           id: 'w-chatgpt',
-          workspaceId: 'workspace-1',
-          workspaceName: 'MacBook Pro',
           workerTypeId: 'chatgpt',
           displayName: 'ChatGPT',
           status: 'ready',

@@ -79,8 +79,6 @@ class PermissionSource extends AxFixtureDataSource {
 AxWorker _worker(String id, String workspaceId, {bool shared = false}) =>
     AxWorker(
         id: id,
-        workspaceId: workspaceId,
-        workspaceName: 'Workspace $workspaceId',
         workerTypeId: 'chatgpt',
         displayName: 'ChatGPT',
         status: 'ready',

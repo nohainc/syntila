@@ -6,7 +6,6 @@ void main() {
     final worker = AxWorker.fromJson({
       'id': 'workspace-worker-dynamic',
       'workspaceId': 'workspace-1',
-      'workspaceName': 'Vitalii’s MacBook Pro',
       'workerTypeId': 'dynamic-test-worker',
       'displayName': 'Dynamic Test Worker',
       'description': 'Catalog-created acceptance Worker.',
@@ -17,7 +16,6 @@ void main() {
     });
 
     expect(worker.displayName, 'Dynamic Test Worker');
-    expect(worker.workspaceName, 'Vitalii’s MacBook Pro');
     expect(worker.description, 'Catalog-created acceptance Worker.');
     expect(worker.status, 'needs_attention');
   });

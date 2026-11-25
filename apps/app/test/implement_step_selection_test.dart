@@ -122,8 +122,6 @@ void main() {
             String modelName) =>
         AxWorker(
           id: id,
-          workspaceId: 'ws',
-          workspaceName: 'Laptop',
           displayName: name,
           workerTypeId: typeId,
           status: 'ready',

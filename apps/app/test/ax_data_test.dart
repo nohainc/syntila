@@ -1049,11 +1049,9 @@ void main() {
     expect(client.requests, contains('/api/session'));
   });
 
-  test('parses only the safe Workspace Worker projection', () {
+  test('parses only the safe Worker projection', () {
     final worker = AxWorker.fromJson({
       'id': 'worker-codex',
-      'workspaceId': 'workspace-1',
-      'workspaceName': 'Build Mac',
       'workerTypeId': 'chatgpt',
       'displayName': 'ChatGPT',
       'status': 'ready',
@@ -1064,7 +1062,6 @@ void main() {
       'apiKey': 'must-not-be-retained',
     });
 
-    expect(worker.workspaceId, 'workspace-1');
     expect(worker.workerTypeId, 'chatgpt');
     expect(worker.localConcurrencyLimit, 2);
     expect(worker.attentionReasonCode, isNull);

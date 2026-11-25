@@ -18,7 +18,6 @@ class _WorkerUsageDialogState extends State<WorkerUsageDialog> {
   late final _controller = AxWorkerUsageController(widget.source);
 
   void _load() => _controller.load(
-        workspaceId: widget.worker.workspaceId,
         workerId: widget.worker.id,
         workerName: widget.worker.displayName,
       );

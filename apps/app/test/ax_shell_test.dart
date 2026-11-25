@@ -1319,8 +1319,6 @@ void main() {
         workers: const [
           AxWorker(
             id: 'worker-1',
-            workspaceId: '',
-            workspaceName: '',
             workerTypeId: 'codex',
             displayName: 'MacBook Pro',
             status: 'ready',
@@ -1793,8 +1791,6 @@ void main() {
 
       const macBook = AxWorker(
         id: 'worker-1',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'MacBook Pro',
         status: 'ready',
@@ -1803,8 +1799,6 @@ void main() {
       );
       const buildServer = AxWorker(
         id: 'worker-2',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'Build Server',
         status: 'ready',
@@ -1813,8 +1807,6 @@ void main() {
       );
       const officeMac = AxWorker(
         id: 'worker-3',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'Office Mac',
         status: 'needs_attention',
@@ -1873,8 +1865,6 @@ void main() {
     test('AxShellContext derives correct tone and label across states', () {
       const ready = AxWorker(
         id: 'worker-1',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'MacBook Pro',
         status: 'ready',
@@ -1883,8 +1873,6 @@ void main() {
       );
       const broken = AxWorker(
         id: 'worker-3',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'Office Mac',
         status: 'needs_attention',
@@ -2207,8 +2195,6 @@ void main() {
       // Test 1c: Worker route -> "Workers / Worker Name"
       const testWorker = AxWorker(
         id: 'ws-mac',
-        workspaceId: '',
-        workspaceName: '',
         workerTypeId: 'codex',
         displayName: 'MacBook Pro',
         status: 'ready',
@@ -2258,8 +2244,6 @@ void main() {
         workers: [
           AxWorker(
             id: 'worker-1',
-            workspaceId: '',
-            workspaceName: '',
             workerTypeId: 'codex',
             displayName: 'Build Server',
             status: 'needs_attention',

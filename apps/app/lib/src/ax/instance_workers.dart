@@ -67,8 +67,6 @@ AxWorker _fromInstance(WorkerInstance instance, AxWorker? base,
   return AxWorker(
     id: instance.id,
     workerInstanceId: instance.id,
-    workspaceId: '',
-    workspaceName: '',
     workerTypeId: instance.workerTypeId,
     displayName: instance.name,
     description: instance.description,

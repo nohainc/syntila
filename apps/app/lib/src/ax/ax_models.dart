@@ -954,13 +954,11 @@ class AxDirectSpaceUserState {
       );
 }
 
-/// Safe Cloud projection of a locally owned Workspace Worker.
+/// Safe Cloud projection of a Worker on a person's computer.
 /// It intentionally contains no credential references, secrets, or local paths.
 class AxWorker {
   const AxWorker({
     required this.id,
-    required this.workspaceId,
-    required this.workspaceName,
     required this.workerTypeId,
     required this.displayName,
     this.description,
@@ -986,8 +984,6 @@ class AxWorker {
 
   /// The Worker Instance this Worker was adopted into (legacy mapping).
   final String? workerInstanceId;
-  final String workspaceId;
-  final String workspaceName;
 
   /// Shared with the viewer by another person; not the viewer's own Worker.
   final bool shared;
@@ -1023,8 +1019,6 @@ class AxWorker {
             ? Map<String, dynamic>.from(json['modelOptions'] as Map)
             : const {},
         id: _string(json, 'id'),
-        workspaceId: _string(json, 'workspaceId'),
-        workspaceName: _string(json, 'workspaceName'),
         workerTypeId: _string(json, 'workerTypeId'),
         displayName: _string(json, 'displayName'),
         description: json['description']?.toString(),
@@ -1063,8 +1057,6 @@ class AxWorker {
       AxWorker(
         id: id ?? this.id,
         workerInstanceId: workerInstanceId ?? this.workerInstanceId,
-        workspaceId: workspaceId,
-        workspaceName: workspaceName,
         workerTypeId: workerTypeId,
         displayName: displayName ?? this.displayName,
         description: description,
@@ -1085,12 +1077,10 @@ class AxWorker {
         shared: shared,
       );
 
-  /// The same Worker shown under another name, for example with its Workspace.
+  /// The same Worker shown under another name, for example with its computer name.
   AxWorker withDisplayName(String value) => AxWorker(
         id: id,
         workerInstanceId: workerInstanceId,
-        workspaceId: workspaceId,
-        workspaceName: workspaceName,
         workerTypeId: workerTypeId,
         displayName: value,
         description: description,

@@ -176,8 +176,7 @@ void main() {
     final output = jsonEncode(_grok);
     final controller = AxWorkerUsageController(_Source(output));
     addTearDown(controller.dispose);
-    await controller.load(
-        workspaceId: 'w', workerId: 'grok', workerName: 'Grok');
+    await controller.load(workerId: 'grok', workerName: 'Grok');
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body:
@@ -354,8 +353,7 @@ void main() {
       (tester) async {
     Future<AxWorkerUsageController> pump(String output) async {
       final controller = AxWorkerUsageController(_Source(output));
-      await controller.load(
-          workspaceId: 'w', workerId: 'k', workerName: 'Worker');
+      await controller.load(workerId: 'k', workerName: 'Worker');
       return controller;
     }
 
@@ -452,7 +450,7 @@ class _Source implements AxWorkerUsageDataSource {
   final String output;
   @override
   Future<AxWorkerUsageReport> readWorkerUsage(
-          {required String workspaceId, required String workerId}) async =>
+          {required String workerId}) async =>
       AxWorkerUsageReport(
           status: 'ok', output: output, fetchedAt: DateTime.utc(2026, 10, 17));
 }

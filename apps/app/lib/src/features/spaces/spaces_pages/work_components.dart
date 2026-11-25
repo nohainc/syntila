@@ -159,7 +159,7 @@ class _WorkComposer extends StatelessWidget {
     this.onResearcherCountChanged,
     this.spaceWorkers = const <AxWorker>[],
     this.eligibleWorkers = const <AxWorker>[],
-    this.visibilityByWorkspace = const {},
+    this.workerVisibility,
     this.onManageVisibility,
     required this.loadingWorkflows,
     required this.workflowCatalogError,
@@ -255,7 +255,7 @@ class _WorkComposer extends StatelessWidget {
       onStepExecutionSelectionChanged;
   final List<AxWorker> spaceWorkers;
   final List<AxWorker> eligibleWorkers;
-  final Map<String, AxWorkerVisibility> visibilityByWorkspace;
+  final AxWorkerVisibility? workerVisibility;
   final ValueChanged<String?>? onManageVisibility;
   final bool loadingWorkflows;
   final String? workflowCatalogError;
@@ -999,7 +999,7 @@ class _WorkComposer extends StatelessWidget {
                         .where((w) => w.id == workerId && !w.shared)
                         .firstOrNull ??
                     eligibleWorkers.where((w) => !w.shared).firstOrNull;
-                onManageVisibility!(worker?.workspaceId);
+                onManageVisibility!(worker?.id);
               },
         immediatePopup: true,
         workerIconBuilder: (capability) {
@@ -1074,12 +1074,10 @@ class _WorkComposer extends StatelessWidget {
               return byName != 0 ? byName : a.id.compareTo(b.id);
             }))
             if (worker.shared ||
-                !(visibilityByWorkspace[worker.workspaceId]
-                        ?.workerHidden(worker.id) ??
-                    false) ||
+                !(workerVisibility?.workerHidden(worker.id) ?? false) ||
                 selection.worker == worker.id)
               worker.id:
-                  '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
+                  '${worker.displayName}${!worker.shared && (workerVisibility?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
         },
         displayModels: (selection) {
           final catalog =
@@ -1090,8 +1088,7 @@ class _WorkComposer extends StatelessWidget {
           if (worker == null) return {};
           final preferences = worker.shared
               ? AxWorkerVisibility()
-              : visibilityByWorkspace[worker.workspaceId] ??
-                  AxWorkerVisibility();
+              : workerVisibility ?? AxWorkerVisibility();
           return AxWorkerVisibilityProjection(catalog, preferences,
                   selected: selection)
               .models(worker.id);
@@ -1105,8 +1102,7 @@ class _WorkComposer extends StatelessWidget {
           if (worker == null) return {};
           final preferences = worker.shared
               ? AxWorkerVisibility()
-              : visibilityByWorkspace[worker.workspaceId] ??
-                  AxWorkerVisibility();
+              : workerVisibility ?? AxWorkerVisibility();
           final projection = AxWorkerVisibilityProjection(catalog, preferences,
               selected: selection);
           return {
@@ -1151,7 +1147,6 @@ class _WorkComposer extends StatelessWidget {
       return;
     }
     controller.load(
-      workspaceId: worker.workspaceId,
       workerId: worker.id,
       workerName: worker.displayName,
     );

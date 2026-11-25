@@ -6,8 +6,6 @@ import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 AxWorker _legacy(String id, String? instanceId) => AxWorker(
       id: id,
       workerInstanceId: instanceId,
-      workspaceId: 'ws',
-      workspaceName: 'Mac',
       workerTypeId: 'codex',
       displayName: 'Codex',
       status: 'ready',

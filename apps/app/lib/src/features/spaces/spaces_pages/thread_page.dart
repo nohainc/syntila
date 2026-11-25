@@ -843,7 +843,6 @@ class _ThreadPageState extends State<ThreadPage>
   void Function()? _cancelWorkersUx;
   void Function()? _cancelWorkerInstances;
   bool? _workersUxEnabled;
-  String? _selectedWorkflowWorkspaceId;
   int _choicesGeneration = 0;
   String _workflow = '';
   List<AxBuiltinWorkflow> _workflowCatalog = const [];
@@ -1725,11 +1724,10 @@ class _ThreadPageState extends State<ThreadPage>
     _watchReadStates();
   }
 
-  Map<String, AxWorkerVisibility> get _visibilityByWorkspace {
-    final map = <String, AxWorkerVisibility>{};
+  AxWorkerVisibility? get _workerVisibility {
     final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
     if (instances != null) {
-      map[''] = AxWorkerVisibility(
+      return AxWorkerVisibility(
         hiddenModels: {
           for (final w in instances)
             if (w.hiddenModels.isNotEmpty) w.id: w.hiddenModels,
@@ -1740,7 +1738,7 @@ class _ThreadPageState extends State<ThreadPage>
         },
       );
     }
-    return map;
+    return null;
   }
 
   void _applyWorkers(List<AxWorker> workers) {
@@ -1768,32 +1766,10 @@ class _ThreadPageState extends State<ThreadPage>
       _eligibleWorkers = own.where((worker) => worker.isReady).toList();
       return;
     }
-    _spaceWorkers = workers
-        .where((worker) => worker.workspaceId == _selectedWorkflowWorkspaceId)
-        .toList();
-    // Until the Space Workspace is known, a Worker cannot be told apart from
-    // the Space's own, so none is offered as the viewer's own.
-    // In Direct Spaces, each participant can always use their own workers in Chat.
-    _ownChatWorkers = (widget.space.isDirect ||
-            (widget.space.effectivePermissions.chat &&
-                (_selectedWorkflowWorkspaceId != null ||
-                    _workflowWorkspaceLoaded)))
-        ? [
-            for (final worker in workers)
-              if (!worker.shared &&
-                  (widget.space.isDirect ||
-                      worker.workspaceId != _selectedWorkflowWorkspaceId))
-                worker.withDisplayName(
-                    '${worker.displayName} · ${worker.workspaceName}'),
-          ]
-        : const [];
-    _eligibleWorkers = _spaceWorkers
-        .where((worker) =>
-            worker.activationState == 'enabled' &&
-            worker.readinessState == 'ready' &&
-            worker.catalogLifecycleState == 'active' &&
-            worker.catalogVisibilityState == 'visible')
-        .toList();
+    // The Worker Instances are not loaded yet: nothing to offer.
+    _spaceWorkers = const [];
+    _ownChatWorkers = const [];
+    _eligibleWorkers = const [];
   }
 
   void _subscribeCatalogs() {
@@ -1993,7 +1969,6 @@ class _ThreadPageState extends State<ThreadPage>
 
   void _subscribeWorkflowWorkspace() {
     _cancelWorkflowWorkspace?.call();
-    _selectedWorkflowWorkspaceId = null;
     _workflowWorkspaceLoaded = true;
     _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
   }
@@ -3299,7 +3274,7 @@ class _ThreadPageState extends State<ThreadPage>
         onResearcherCountChanged: _selectResearcherCount,
         spaceWorkers: _composerWorkers,
         eligibleWorkers: _composerEligibleWorkers,
-        visibilityByWorkspace: _visibilityByWorkspace,
+        workerVisibility: _workerVisibility,
         onManageVisibility: widget.onManageWorkerVisibility,
         loadingWorkflows: _loadingWorkflows,
         workflowCatalogError: _workflowCatalogError,

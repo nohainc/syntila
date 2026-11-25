@@ -40,7 +40,6 @@ mixin _CatalogApi on _AxApiClientCore {
   }
 
   Future<AxWorkerUsageReport> readWorkerUsage({
-    required String workspaceId,
     required String workerId,
   }) async {
     final response = await client.post(

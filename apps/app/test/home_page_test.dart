@@ -635,8 +635,6 @@ void main() {
       workers: const [
         AxWorker(
           id: 'ready-1',
-          workspaceId: 'workspace-1',
-          workspaceName: 'MacBook',
           workerTypeId: 'chatgpt',
           displayName: 'ChatGPT',
           status: 'ready',
@@ -1705,8 +1703,6 @@ void main() {
             workers: const [
               AxWorker(
                 id: 'w-chatgpt',
-                workspaceId: 'ws-local',
-                workspaceName: 'Local',
                 workerTypeId: 'chatgpt',
                 displayName: 'ChatGPT Worker',
                 status: 'ready',
@@ -1760,8 +1756,6 @@ void main() {
           workers: const [
             AxWorker(
               id: 'worker-1',
-              workspaceId: 'workspace-1',
-              workspaceName: 'Local',
               workerTypeId: 'chatgpt',
               displayName: 'ChatGPT Worker',
               status: 'ready',
@@ -1802,8 +1796,6 @@ void main() {
       () {
     const chatgptWorker = AxWorker(
       id: 'w-1',
-      workspaceId: 'ws-1',
-      workspaceName: 'Local',
       workerTypeId: 'chatgpt',
       displayName: 'ChatGPT Worker',
       status: 'ready',
@@ -2210,8 +2202,6 @@ void main() {
       (tester) async {
     const testWorker = AxWorker(
       id: 'worker-chatgpt',
-      workspaceId: 'ws-macbook',
-      workspaceName: 'Local Workspace',
       workerTypeId: 'chatgpt',
       displayName: 'ChatGPT Worker',
       status: 'ready',
@@ -2301,8 +2291,6 @@ void main() {
 
     const testWorker = AxWorker(
       id: 'worker-chatgpt',
-      workspaceId: 'ws-main',
-      workspaceName: 'Local Workspace',
       workerTypeId: 'chatgpt',
       displayName: 'ChatGPT Worker',
       status: 'ready',
@@ -2407,8 +2395,6 @@ void main() {
 
     const testWorker = AxWorker(
       id: 'worker-chatgpt',
-      workspaceId: 'ws-main',
-      workspaceName: 'Local Workspace',
       workerTypeId: 'chatgpt',
       displayName: 'ChatGPT Worker',
       status: 'ready',
@@ -2661,8 +2647,6 @@ void main() {
           workers: const [
             AxWorker(
               id: 'w-chatgpt',
-              workspaceId: 'ws-local',
-              workspaceName: 'Local Workspace',
               workerTypeId: 'chatgpt',
               displayName: 'ChatGPT Worker',
               status: 'ready',
@@ -2999,8 +2983,6 @@ void main() {
     // Workspace worker only supports ChatGPT
     const localWorker = AxWorker(
       id: 'w-chatgpt',
-      workspaceId: 'ws-1',
-      workspaceName: 'Local Workspace',
       workerTypeId: 'chatgpt',
       displayName: 'ChatGPT Worker',
       status: 'ready',
@@ -3699,8 +3681,6 @@ void main() {
         (tester) async {
       const chatgptWorker = AxWorker(
         id: 'w-openai',
-        workspaceId: 'ws-local',
-        workspaceName: 'Local Workspace',
         workerTypeId: 'chatgpt',
         displayName: 'OpenAI ChatGPT Worker',
         status: 'ready',
@@ -3743,8 +3723,6 @@ void main() {
         (tester) async {
       const chatgptWorker = AxWorker(
         id: 'w-openai',
-        workspaceId: 'ws-local',
-        workspaceName: 'Local Workspace',
         workerTypeId: 'chatgpt',
         displayName: 'OpenAI ChatGPT Worker',
         status: 'ready',
@@ -3789,8 +3767,6 @@ void main() {
         (tester) async {
       const claudeWorker = AxWorker(
         id: 'w-claude',
-        workspaceId: 'ws-local',
-        workspaceName: 'Local Workspace',
         workerTypeId: 'claude',
         displayName: 'Claude Worker',
         status: 'ready',
@@ -4224,8 +4200,6 @@ void main() {
 
       const chatgptWorker = AxWorker(
         id: 'w-openai',
-        workspaceId: 'ws-local',
-        workspaceName: 'Local Workspace',
         workerTypeId: 'chatgpt',
         displayName: 'OpenAI ChatGPT Worker',
         status: 'ready',

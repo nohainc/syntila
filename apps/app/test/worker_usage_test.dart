@@ -36,7 +36,6 @@ class _UsageDataSource extends AxFixtureDataSource
 
   @override
   Future<AxWorkerUsageReport> readWorkerUsage({
-    required String workspaceId,
     required String workerId,
   }) async =>
       const AxWorkerUsageReport(status: 'ok', output: 'raw report');
@@ -49,7 +48,6 @@ class _ReportDataSource extends _UsageDataSource {
 
   @override
   Future<AxWorkerUsageReport> readWorkerUsage({
-    required String workspaceId,
     required String workerId,
   }) async =>
       AxWorkerUsageReport(status: 'ok', output: output);
@@ -150,8 +148,7 @@ void main() {
     Future<double> labelWidth(String output) async {
       final controller = AxWorkerUsageController(_ReportDataSource(output));
       addTearDown(controller.dispose);
-      await controller.load(
-          workspaceId: 'workspace-1', workerId: 'worker-1', workerName: 'W');
+      await controller.load(workerId: 'worker-1', workerName: 'W');
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SizedBox(
@@ -181,8 +178,7 @@ void main() {
 
   test('usage controller shows the provider report unchanged', () async {
     final controller = AxWorkerUsageController(_UsageDataSource());
-    await controller.load(
-        workspaceId: 'workspace-1', workerId: 'worker-1', workerName: 'Claude');
+    await controller.load(workerId: 'worker-1', workerName: 'Claude');
     expect(controller.visible, isTrue);
     expect(controller.loading, isFalse);
     expect(controller.report!.displayText, 'raw report');
@@ -200,8 +196,7 @@ void main() {
           return response;
         }),
       );
-      return client.readWorkerUsage(
-          workspaceId: 'workspace-1', workerId: 'worker-1');
+      return client.readWorkerUsage(workerId: 'worker-1');
     }
 
     final ok = await read(http.Response(
@@ -237,7 +232,7 @@ void main() {
         return http.Response(
             jsonEncode({'status': 'ok', 'output': 'Session: 6% used'}), 200);
       }),
-    ).readWorkerUsage(workspaceId: '', workerId: 'worker-1');
+    ).readWorkerUsage(workerId: 'worker-1');
     expect(requested?.path, '/api/workers/worker-1/usage');
     expect(connectWorker.isOk, isTrue);
   });
