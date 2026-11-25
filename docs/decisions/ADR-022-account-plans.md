@@ -74,7 +74,7 @@ without migrations.
   VALUES(?, 'paid', 'active', 'manual', datetime('now'), datetime('now'))`.
 - Next: billing provider checkout/portal, a signed and idempotent webhook that
   upserts `source = 'provider'` rows, upgrade prompts, and downgrade handling.
-- Plans are per user. Moving to per-Workspace billing would need a new owner
+- Plans are per user. Moving to per-Worker billing would need a new owner
   column and a different lookup.
 
 - **Concurrent AI executions:** Free accounts run one at a time; see
