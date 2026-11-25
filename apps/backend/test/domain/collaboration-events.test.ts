@@ -309,8 +309,8 @@ describe("collaboration durable signals", () => {
         duplicate.event.sequence,
       ]).toEqual([1, 1, 1, 1]);
       expect(duplicate.persisted).toBe(false);
-      expect(e.event.version).toBe("1.0");
-      expect(e.event.stream).toBeUndefined();
+      expect(e.event.version).toBe("1.1");
+      expect(e.event.stream).toEqual({ kind: "execution_workspace", id: "same" });
       const next = await publisher.publish({
         ...input,
         idempotencyKey: "next",

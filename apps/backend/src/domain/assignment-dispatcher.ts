@@ -24,10 +24,6 @@ import {
   sanitizeProviderFailureDetails,
   type ProviderFailureDetails,
 } from "@syntila/protocol";
-import {
-  selectSpaceExecutionTarget,
-  type ExecutionTarget,
-} from "./scheduler.js";
 import { dispatchWorkerAssignment } from "./worker-dispatch.js";
 import type { WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
@@ -146,14 +142,13 @@ function cloudFailureDiagnostic(
 
 /** Syntila scope reference only; does not expose or certify a native CLI thread. */
 export function conversationWorkerSessionReference(
-  target: Pick<
-    ExecutionTarget,
-    | "workspaceId"
-    | "workerId"
-    | "profileDefinitionId"
-    | "profileReleaseVersion"
-    | "conversationId"
-  >,
+  target: {
+    readonly workspaceId: string | null;
+    readonly workerId: string;
+    readonly profileDefinitionId: string;
+    readonly profileReleaseVersion: number;
+    readonly conversationId?: string | null;
+  },
   sessionPolicy: string,
   sessionKey: unknown,
 ): string | null {
@@ -269,7 +264,6 @@ function deferredDispatch(
 
 export interface AssignmentDispatcherEnv {
   readonly SYNTILA_DB: Db;
-  readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
 }
 

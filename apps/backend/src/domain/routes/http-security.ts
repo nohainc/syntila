@@ -158,7 +158,6 @@ export type SecurityEnv = Env & {
   readonly SYNTILA_EMAIL_FROM?: string;
   readonly SYNTILA_EMAIL_FALLBACK_FROM?: string;
   readonly SYNTILA_EMAIL_FROM_NAME?: string;
-  readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_THREAD_COORDINATOR?: DurableObjectNamespace;

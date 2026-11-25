@@ -57,12 +57,18 @@ describe("runtime", () => {
       throw new Error(`no frame; got ${JSON.stringify(frames.map((f) => f.type))}`);
     };
     await waitFor((f) => f.type === "realtime.ready");
-    ws.send(JSON.stringify({ type: "subscribe", scope: { kind: "space", spaceId } }));
-    await waitFor((f) => f.type === "subscription.confirmed");
+    ws.send(JSON.stringify({
+      protocol: "syntila.messaging/1",
+      requestId: "req-1",
+      type: "command",
+      command: "subscription.subscribe",
+      payload: { stream: { kind: "space", id: spaceId }, cursor: 0 },
+    }));
+    await waitFor((f) => f.type === "subscription.ready");
 
     const posted = await api(alice, "POST", `/api/threads/${threadId}/discussion-messages`, { body: "hello from postgres" });
     expect(posted.status).toBeLessThan(300);
-    const event = await waitFor((f) => f.type !== "realtime.ready" && f.type !== "subscription.confirmed" && JSON.stringify(f).includes(threadId));
+    const event = await waitFor((f) => f.type !== "realtime.ready" && f.type !== "subscription.ready" && JSON.stringify(f).includes(threadId));
     expect(event).toBeTruthy();
     ws.close();
     // Gateway state survives in PostgreSQL storage.

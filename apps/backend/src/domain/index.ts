@@ -133,7 +133,6 @@ export const routeHandlers = {
   handleDownloadUserFile: handlers.handleDownloadUserFile,
   handleSyncUserFiles: handlers.handleSyncUserFiles,
   handleDeleteUserFile: handlers.handleDeleteUserFile,
-  handleListFeatures: handlers.handleListFeatures,
   handleListWorkers: handlers.handleListWorkers,
   handleCreateWorker: handlers.handleCreateWorker,
   handleWorker: handlers.handleWorker,

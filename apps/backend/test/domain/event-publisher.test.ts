@@ -10,8 +10,8 @@ async function createHarness(options: { duplicate?: boolean } = {}) {
   let fanoutCount = 0;
   if (options.duplicate)
     (await sqlite.exec(
-      `INSERT INTO realtime_events (event_id, workspace_id, space_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
-       VALUES ('event-existing', 'workspace-1', 'space-1', 7, 'work_request.created', '{"entityId":"message-1"}', 'message-1', '2026-09-23T00:00:00.000Z')`,
+      `INSERT INTO realtime_events (event_id, stream_kind, stream_id, space_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
+       VALUES ('event-existing', 'space', 'space-1', 'space-1', 7, 'work_request.completed', '{"entityId":"message-1","workRequestId":"wr-1","threadId":"t-1","status":"completed"}', 'message-1', '2026-09-23T00:00:00.000Z')`,
     ));
   const gateway = {
     getByName() {
@@ -178,8 +178,12 @@ describe("Cloud event publisher", () => {
     const harness = await createHarness({ duplicate: true });
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
+      type: "work_request.completed",
+      workspaceId: undefined,
+      stream: { kind: "space", id: "space-1" },
       eventId: "event-existing",
       idempotencyKey: "message-1",
+      payload: { entityId: "message-1", workRequestId: "wr-1", threadId: "t-1", status: "completed" },
     });
     expect(result.persisted).toBe(false);
     expect(await harness.insertCount()).toBe(0);

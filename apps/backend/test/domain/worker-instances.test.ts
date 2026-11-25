@@ -3,7 +3,6 @@ import { pgD1 } from "./helpers/pg-d1";
 import { user } from "./helpers/seed";
 import {
   handleCreateWorker,
-  handleListFeatures,
   handleListWorkers,
   handleWorker,
   type SecurityEnv,
@@ -165,11 +164,4 @@ it("worker_assignments requires worker_instance_id (NOT NULL)", async () => {
     "agent_commands", "thread_runtime_leases", "worker_assignments",
   ]);
   expect(cols.every((c: any) => c.is_nullable === "NO")).toBe(true);
-});
-
-it("/api/features reports the always-on Worker-first features", async () => {
-  const f = await fixture();
-  const features = ((await (await handleListFeatures(f.as("alice", "GET", undefined, "/api/features"), f.env)).json()) as { flags: string[] }).flags;
-  expect(features).toContain("worker_identity");
-  expect(features).toContain("worker_target_dispatch");
 });

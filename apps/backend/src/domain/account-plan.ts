@@ -50,17 +50,6 @@ export async function countOwnedWorkspaces(
   return row?.count ?? 0;
 }
 
-/** Rejected because a Free account already owns its personal Workspace. */
-export class PersonalWorkspaceLimitError extends HttpError {
-  readonly code = "personal_workspace_limit_reached";
-  constructor() {
-    super(
-      402,
-      "Free includes one personal Workspace. Upgrade to Syntila Plus to connect more machines.",
-    );
-  }
-}
-
 /**
  * Concurrent AI executions a Free requester may have. Plus has no
  * subscription-based cap. An execution is one non-terminal Worker Assignment
@@ -314,24 +303,6 @@ export function pluginOwnerEntitledSql(ownerColumn: string): string {
   return paidOwnerSql(ownerColumn);
 }
 
-/**
- * Admission condition for an assignment INSERT: the Worker is not a plugin, or
- * its Workspace owner holds the plugin entitlement right now. Evaluated in the
- * same statement as the write, so a plan that expires between scheduling and
- * admission admits nothing.
- */
-export function pluginAssignmentAdmissionSql(
-  workerTypeParam: string,
-  workspaceParam: string,
-): string {
-  return `(NOT EXISTS (SELECT 1 FROM worker_catalog wc
-                        WHERE wc.worker_type_id = ${workerTypeParam}
-                          AND wc.origin = 'plugin')
-    OR ${pluginOwnerEntitledSql(
-      `(SELECT pw.owner_user_id FROM execution_workspaces pw WHERE pw.id = ${workspaceParam})`,
-    )})`;
-}
-
 /* Data-layer (tagged SQL) versions of the SQL builders above and below. Each
  * takes the Query it will be embedded in and plain values, not parameter
  * numbers. The string builders stay until their last caller has moved. */
@@ -375,14 +346,6 @@ export function pluginAssignmentAdmission(q: Query, workerTypeId: string, worker
                         WHERE wc.worker_type_id = ${workerTypeId}
                           AND wc.origin = 'plugin')
     OR ${paidOwner(q, q.frag`(SELECT pw.owner_user_id FROM worker_instances pw WHERE pw.id = ${workerInstanceId})`)})`;
-}
-
-export function personalWorkspaceAdmission(q: Query, userId: string): unknown {
-  const limit = q.raw(String(FREE_PERSONAL_WORKSPACE_LIMIT));
-  return q.frag`(${paidOwner(q, userId)}
-    OR (SELECT COUNT(*) FROM worker_instances ow
-         WHERE ow.owner_user_id = ${userId} AND ow.revoked_at IS NULL)
-       < ${limit})`;
 }
 
 /** Accepted human members plus valid pending invitations, which reserve a slot. */

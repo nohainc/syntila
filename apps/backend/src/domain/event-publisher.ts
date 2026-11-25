@@ -59,13 +59,10 @@ export function realtimeEventFromRow(
   return parseRealtimeEvent({
     eventId: String(row.event_id),
     type: String(row.event_type),
-    version:
-      row.stream_kind && row.stream_kind !== "execution_workspace"
-        ? "1.1"
-        : "1.0",
+    version: row.stream_kind ? "1.1" : "1.0",
     timestamp: String(row.occurred_at),
     ...(row.workspace_id ? { workspaceId: String(row.workspace_id) } : {}),
-    ...(row.stream_kind && row.stream_kind !== "execution_workspace"
+    ...(row.stream_kind
       ? {
           stream: { kind: row.stream_kind, id: row.stream_id },
         }
@@ -76,9 +73,6 @@ export function realtimeEventFromRow(
     ...(row.task_id ? { taskId: String(row.task_id) } : {}),
     ...(row.attempt_id ? { attemptId: String(row.attempt_id) } : {}),
     ...(row.assignment_id ? { assignmentId: String(row.assignment_id) } : {}),
-    ...(row.workspace_runtime_id
-      ? { workspaceRuntimeId: String(row.workspace_runtime_id) }
-      : {}),
     sequence: Number(row.sequence),
     payload: JSON.parse(String(row.payload_json)) as RealtimeEventPayload,
   });
@@ -110,10 +104,7 @@ export class CloudEventPublisher implements EventPublisher {
       event = parseRealtimeEvent({
         eventId,
         type: input.type,
-        version:
-          input.stream && input.stream.kind !== "execution_workspace"
-            ? "1.1"
-            : "1.0",
+        version: input.stream ? "1.1" : "1.0",
         timestamp: occurredAt,
         ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         ...(input.stream ? { stream: input.stream } : {}),
@@ -158,10 +149,7 @@ export class CloudEventPublisher implements EventPublisher {
     const eventBase = {
       eventId: input.eventId,
       type: input.type,
-      version:
-        input.stream && input.stream.kind !== "execution_workspace"
-          ? "1.1"
-          : "1.0",
+      version: input.stream ? "1.1" : "1.0",
       timestamp: input.occurredAt,
       ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...(input.stream ? { stream: input.stream } : {}),
@@ -199,11 +187,11 @@ export class CloudEventPublisher implements EventPublisher {
       await input.mutate?.(tx);
       const row = await tx.row<Record<string, unknown>>`INSERT INTO realtime_events
          (event_id, workspace_id, space_id, run_id, task_id, attempt_id,
-          assignment_id, workspace_runtime_id, sequence, event_type, payload_json,
+          assignment_id, sequence, event_type, payload_json,
           idempotency_key, occurred_at, stream_kind, stream_id, thread_id)
          SELECT ${input.eventId}, ${input.workspaceId ?? null}, ${input.spaceId ?? null}, ${input.runId ?? null},
                 ${input.taskId ?? null}, ${input.attemptId ?? null}, ${input.assignmentId ?? null},
-                ${input.workspaceRuntimeId ?? null}, cursor.next_sequence - 1,
+                cursor.next_sequence - 1,
                 ${input.type}, ${json(input.payload)}, ${input.idempotencyKey ?? null}, ${input.occurredAt}::timestamptz,
                 ${stream.kind}, ${stream.id}, ${input.threadId ?? null}
          FROM realtime_event_cursors AS cursor

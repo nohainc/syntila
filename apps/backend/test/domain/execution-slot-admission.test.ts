@@ -5,7 +5,6 @@ import {
   countHeldExecutionSlots,
   recordExecutionWaiter,
   wakeNextExecutionWaiter,
-  wakeWorkspaceReadyWaiters,
 } from "../../src/domain/account-execution-slots.js";
 import {
   FREE_CONCURRENT_EXECUTION_LIMIT,
@@ -341,42 +340,6 @@ it("wakes the oldest eligible waiter after a slot is released", async () => {
       "x",
     ),
   ).toBe(false);
-});
-
-it("wakes requests parked on Service readiness, not slot waiters", async () => {
-  const f = await fixture();
-  await f.sqlite.exec(
-    "UPDATE runs SET workflow_instance_id = 'instance-1' WHERE id = 'RUN'",
-  );
-  await recordExecutionWaiter(f.read, {
-    taskId: "T2",
-    requesterUserId: "U",
-    runId: "RUN",
-    reason: "workspace_not_ready",
-  });
-  await recordExecutionWaiter(f.read, {
-    taskId: "T3",
-    requesterUserId: "U",
-    runId: "RUN",
-    reason: "account_concurrency_limit",
-  });
-  const sendEvent = vi.fn(async () => undefined);
-  const get = vi.fn(async () => ({ sendEvent }));
-  expect(
-    await wakeWorkspaceReadyWaiters(
-      { SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get } },
-      "WS",
-      "assignment-terminal",
-    ),
-  ).toBe(1);
-  expect(sendEvent).toHaveBeenCalledWith({
-    type: "assignment-terminal",
-    payload: { taskId: "T2", reason: "workspace_ready" },
-  });
-  // Without a Workflow binding nothing happens and nothing throws.
-  expect(
-    await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db }, "WS", "x"),
-  ).toBe(0);
 });
 
 it("rechecks readiness after registration when the ready signal raced the waiter", async () => {

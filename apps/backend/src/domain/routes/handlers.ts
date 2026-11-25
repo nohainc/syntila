@@ -44,7 +44,6 @@ export {
 } from "./user-files.js";
 export {
   handleCreateWorker,
-  handleListFeatures,
   handleListWorkers,
   handleWorker,
   handleWorkerMcpPin,

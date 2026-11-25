@@ -19,18 +19,12 @@ import {
   type RealtimeQueueEnqueueResult,
 } from "./realtime-queue.js";
 
-const selectExecutionWorkspacesByIdOwnerUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
-  q.row<T>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${p1} AND owner_user_id = ${p2} AND status <> 'revoked'`;
-
 import { buildEnvelope, eventContext, isMessagingFrame, type StreamRef } from "./messaging/envelope.js";
 import { MAX_REPLAY_EVENTS as MAX_UNIFIED_REPLAY, MessagingSession } from "./messaging/session.js";
 import { SubscriptionRegistry } from "./messaging/subscription-registry.js";
-import { isFeatureEnabled } from "../feature-flags.js";
 
 export interface RealtimeScope {
-  kind?: "user" | "space" | "thread" | "run" | "execution_workspace";
-  executionWorkspaceId?: string;
-  workspaceId?: string;
+  kind?: "user" | "space" | "thread" | "run";
   spaceId?: string;
   threadId?: string;
   runId?: string;
@@ -121,9 +115,9 @@ const PONG_FRAME = JSON.stringify({ type: "realtime.pong" });
 
 export function scopeKey(scope: RealtimeScope): string {
   if (scope.kind) {
-    return `${scope.kind}=${scope.executionWorkspaceId ?? scope.spaceId ?? scope.threadId ?? scope.runId ?? ""}`;
+    return `${scope.kind}=${scope.spaceId ?? scope.threadId ?? scope.runId ?? ""}`;
   }
-  return ["workspaceId", "spaceId", "runId"]
+  return ["spaceId", "runId"]
     .map((field) => `${field}=${scope[field as keyof RealtimeScope] ?? ""}`)
     .join("&");
 }
@@ -244,38 +238,7 @@ export function parseRealtimeClientMessage(
       scope: { kind: scope.kind, [idField]: scope[idField] },
     } as RealtimeClientMessage;
   }
-  if (scope.kind === "execution_workspace") {
-    if (
-      typeof scope.executionWorkspaceId !== "string" ||
-      scope.executionWorkspaceId.length === 0
-    ) {
-      throw new Error("Realtime execution Workspace scope id is required");
-    }
-    return {
-      type: value.type,
-      scope: {
-        kind: "execution_workspace",
-        executionWorkspaceId: scope.executionWorkspaceId,
-      },
-    };
-  }
-  const scopeFields = ["workspaceId", "spaceId", "runId"] as const;
-  if (typeof scope.workspaceId !== "string" || scope.workspaceId.length === 0) {
-    throw new Error("Realtime subscription workspaceId is required");
-  }
-  for (const field of scopeFields.slice(1)) {
-    if (scope[field] !== undefined && typeof scope[field] !== "string") {
-      throw new Error(`Realtime subscription ${field} must be a string`);
-    }
-  }
-  return {
-    type: value.type,
-    scope: {
-      workspaceId: scope.workspaceId,
-      ...(typeof scope.spaceId === "string" ? { spaceId: scope.spaceId } : {}),
-      ...(typeof scope.runId === "string" ? { runId: scope.runId } : {}),
-    },
-  };
+  throw new Error("Realtime subscription scope kind is required");
 }
 
 export function reconnectDelayMs(
@@ -304,15 +267,7 @@ export function eventMatchesScope(
   if (scope.kind === "space") return event.spaceId === scope.spaceId;
   if (scope.kind === "thread") return event.threadId === scope.threadId;
   if (scope.kind === "run") return event.runId === scope.runId;
-  if (scope.kind === "execution_workspace") {
-    return event.workspaceId === scope.executionWorkspaceId;
-  }
-  return (
-    !!event.workspaceId &&
-    event.workspaceId === scope.workspaceId &&
-    (!scope.spaceId || event.spaceId === scope.spaceId) &&
-    (!scope.runId || event.runId === scope.runId)
-  );
+  return false;
 }
 
 export function requiresRealtimeReconnect(
@@ -345,12 +300,6 @@ export async function authorizeRealtimeScope(
       ? { allowed: true }
       : { allowed: false, reason: "thread_access_denied" };
   }
-  if (scope.kind === "execution_workspace") {
-    const owner = await selectExecutionWorkspacesByIdOwnerUserId<{ owner: number }>(queryOf(db), scope.executionWorkspaceId, userId);
-    return owner
-      ? { allowed: true }
-      : { allowed: false, reason: "execution_workspace_access_denied" };
-  }
   if (scope.kind === "run") {
     const row = await queryOf(db).row<{ user_id: string }>`SELECT pm.user_id FROM space_memberships pm
        JOIN runs resource ON resource.space_id = pm.space_id
@@ -359,7 +308,7 @@ export async function authorizeRealtimeScope(
       ? { allowed: true }
       : { allowed: false, reason: `${scope.kind}_access_denied` };
   }
-  return { allowed: false, reason: "execution_workspace_access_denied" };
+  return { allowed: false, reason: "scope_access_denied" };
 }
 
 export async function isRealtimeIdentityAuthorized(
@@ -620,91 +569,10 @@ export class RealtimeGateway implements DurableObject {
         await this.handleUnified(connectionId, connected, input);
         return;
       }
-      const message = parseRealtimeClientMessage(input);
-      if (message.type === "ack") {
-        // Acknowledgements are frequent and change no authorization state:
-        // they only move the applied position, without a database query.
-        const key = realtimeStreamKey(message.stream);
-        connected.appliedSequences.set(
-          key,
-          Math.max(connected.appliedSequences.get(key) ?? 0, message.sequence),
-        );
-        return;
-      }
-      if (
-        !(await isRealtimeIdentityAuthorized(
-          this.env.SYNTILA_DB,
-          connected.identity.userId,
-          [...connected.subscriptions.values()],
-        ))
-      ) {
-        connected.socket.close(1008, "Realtime authorization revoked");
-        await this.removeClient(connectionId);
-        return;
-      }
-      if (message.type === "ping") {
-        this.sendRaw(connected.socket, { type: "realtime.pong" });
-        return;
-      }
-      if (message.type === "realtime.hello") {
-        // The client's own cursors are applied positions; the connection
-        // starts enqueueing right after them.
-        connected.lastEnqueuedSequences.clear();
-        connected.appliedSequences.clear();
-        connected.resyncPending = false;
-        const reported = (key: string, value: number) => {
-          connected.lastEnqueuedSequences.set(key, value);
-          connected.appliedSequences.set(key, value);
-        };
-        for (const [key, value] of Object.entries(
-          message.lastDurableSequences ?? {},
-        )) {
-          reported(
-            realtimeStreamKey({ kind: "execution_workspace", id: key }),
-            value,
-          );
-        }
-        for (const [key, value] of Object.entries(
-          message.lastDurableStreamSequences ?? {},
-        )) {
-          reported(key, value);
-        }
-        this.sendRaw(connected.socket, {
-          type: "realtime.ready",
-          connectionId,
-          eventVersion: "1.1",
-        });
-        return;
-      }
-      const result = await authorizeRealtimeScope(
-        this.env.SYNTILA_DB,
-        connected.identity.userId,
-        message.scope,
-      );
-      if (!result.allowed) {
-        this.sendRaw(connected.socket, {
-          type: "subscription.denied",
-          scope: message.scope,
-          reason: (result as { reason: string }).reason,
-        });
-        return;
-      }
-      const key = scopeKey(message.scope);
-      if (message.type === "subscribe") {
-        connected.subscriptions.set(key, message.scope);
-        this.sendRaw(connected.socket, {
-          type: "subscription.confirmed",
-          scope: message.scope,
-        });
-        await this.replayScope(connected, message.scope);
-      } else {
-        connected.subscriptions.delete(key);
-        this.sendRaw(connected.socket, {
-          type: "subscription.confirmed",
-          scope: message.scope,
-          subscribed: false,
-        });
-      }
+      this.sendRaw(connected.socket, {
+        type: "subscription.denied",
+        reason: "Unsupported realtime protocol; use syntila.messaging/1",
+      });
     } catch (error) {
       this.sendRaw(connected.socket, {
         type: "subscription.denied",
@@ -748,9 +616,9 @@ export class RealtimeGateway implements DurableObject {
         const backing = await this.backingStream(stream);
         if (!backing) return null;
         const threadId = stream.kind === "thread" ? stream.id : null;
-        const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null; spaceId: string | null; threadId: string | null; taskId: string | null; attemptId: string | null; workspaceRuntimeId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
+        const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null; spaceId: string | null; threadId: string | null; taskId: string | null; attemptId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
                   payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId",
-                  space_id AS "spaceId", thread_id AS "threadId", task_id AS "taskId", attempt_id AS "attemptId", workspace_runtime_id AS "workspaceRuntimeId"
+                  space_id AS "spaceId", thread_id AS "threadId", task_id AS "taskId", attempt_id AS "attemptId"
              FROM realtime_events
             WHERE stream_kind = ${backing.kind} AND COALESCE(stream_id, workspace_id) = ${backing.id}
               AND event_type <> 'assignment.activity'
@@ -763,7 +631,7 @@ export class RealtimeGateway implements DurableObject {
           return buildEnvelope({
             eventId: row.eventId, type: row.eventType, occurredAt, stream, sequence: Number(row.sequence),
             ...(row.runId || row.assignmentId ? { correlationId: row.assignmentId ?? row.runId ?? undefined } : {}),
-            context: eventContext({ spaceId: row.spaceId, threadId: row.threadId, runId: row.runId, taskId: row.taskId, attemptId: row.attemptId, assignmentId: row.assignmentId, workspaceRuntimeId: row.workspaceRuntimeId }),
+            context: eventContext({ spaceId: row.spaceId, threadId: row.threadId, runId: row.runId, taskId: row.taskId, attemptId: row.attemptId, assignmentId: row.assignmentId }),
             payload: JSON.parse(row.payloadJson) as Record<string, unknown>,
           });
         });
@@ -1205,12 +1073,6 @@ export class RealtimeGateway implements DurableObject {
     scope: RealtimeScope,
   ): { join: unknown; where: unknown } | null {
     const none = q.raw("");
-    if (scope.kind === "execution_workspace" && scope.executionWorkspaceId) {
-      return {
-        join: none,
-        where: q.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.executionWorkspaceId}`,
-      };
-    }
     if (scope.kind === "space" && scope.spaceId) {
       return { join: none, where: q.frag`e.stream_kind = 'space' AND e.stream_id = ${scope.spaceId}` };
     }
@@ -1229,12 +1091,6 @@ export class RealtimeGateway implements DurableObject {
     }
     if (scope.kind === "thread" && scope.threadId) {
       return { join: none, where: q.frag`e.thread_id = ${scope.threadId}` };
-    }
-    if (scope.workspaceId) {
-      return {
-        join: none,
-        where: q.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.workspaceId}`,
-      };
     }
     return null;
   }

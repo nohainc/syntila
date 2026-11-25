@@ -66,12 +66,6 @@ const cases: Array<[string, RealtimeScope, string, string]> = [
   ["user", { kind: "user" }, "user", "U"],
   ["space", { kind: "space", spaceId: "S" }, "space", "S"],
   ["thread", { kind: "thread", threadId: "T" }, "space", "S"],
-  [
-    "execution_workspace",
-    { kind: "execution_workspace", executionWorkspaceId: "W" },
-    "execution_workspace",
-    "W",
-  ],
 ];
 
 describe("cursor-aware SQL replay", () => {
@@ -112,12 +106,10 @@ describe("cursor-aware SQL replay", () => {
     const f = await harness();
     await f.insert("user", "U", 301);
     await f.insert("space", "S", 301);
-    await f.insert("execution_workspace", "W", 301);
     await f.insert("space", "private", 1);
     for (const [kind, id] of [
       ["user", "U"],
       ["space", "S"],
-      ["execution_workspace", "W"],
     ]) {
       f.cursors.set(JSON.stringify([kind, id]), 300);
     }

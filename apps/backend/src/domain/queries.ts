@@ -22,12 +22,6 @@ export async function isSpaceMember(q: Query, spaceId: string, userId: string): 
   return (await spaceMembership(q, spaceId, userId)) !== null;
 }
 
-/** True when the user owns the Workspace and it has not been revoked. */
-export async function ownsActiveWorkspace(q: Query, workspaceId: string, userId: string): Promise<boolean> {
-  const row = await q.row`SELECT 1 FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${userId} AND status != 'revoked'`;
-  return row !== null;
-}
-
 /** The account status of a user, or null when the user does not exist. */
 export async function userAccount(q: Query, userId: string): Promise<{ status: string } | null> {
   return q.row<{ status: string }>`SELECT status FROM users WHERE id = ${userId}`;
@@ -101,11 +95,6 @@ export function directSpaceOfPair(q: Query, userLowId: string, userHighId: strin
 /** The Direct Space whose General Thread this is. */
 export function directSpaceOfGeneralThread(q: Query, threadId: string) {
   return q.row<{ space_id: string }>`SELECT space_id FROM direct_spaces WHERE general_thread_id = ${threadId}`;
-}
-
-/** Runtime identities of a Workspace that are not revoked. */
-export function activeRuntimeIdentityCount(q: Query, workspaceId: string) {
-  return q.row<{ count: number }>`SELECT COUNT(*) AS count FROM workspace_runtime_identities WHERE workspace_id = ${workspaceId} AND revoked_at IS NULL`;
 }
 
 /** A user's plan row (missing row means Free). */

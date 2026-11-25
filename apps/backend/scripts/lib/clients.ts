@@ -72,7 +72,15 @@ export class User {
         state.frames.push(frame);
         if (frame.type === "realtime.ready") {
           state.opens++;
-          for (const spaceId of subscribeTo) ws.send(JSON.stringify({ type: "subscribe", scope: { kind: "space", spaceId } }));
+          for (const spaceId of subscribeTo) {
+            ws.send(JSON.stringify({
+              protocol: "syntila.messaging/1",
+              requestId: `sub-${spaceId}`,
+              type: "command",
+              command: "subscription.subscribe",
+              payload: { stream: { kind: "space", id: spaceId }, cursor: 0 },
+            }));
+          }
         }
       };
       ws.onclose = (event) => { state.closes.push(event.code); if (!state.stopped) setTimeout(connect, 250 + Math.random() * 250); };

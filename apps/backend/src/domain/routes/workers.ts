@@ -4,7 +4,6 @@ import {
   type WorkerInstance,
 } from "@syntila/protocol";
 import { dataOf, type Row } from "../../platform/data.js";
-import { ALWAYS_ON_FEATURES } from "../../feature-flags.js";
 import { readBody, readJson } from "./validation.js";
 import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
 import { notifyWorkerAgent, publishWorkerChanged } from "../worker-events.js";
@@ -100,19 +99,6 @@ async function readWorker(env: SecurityEnv, userId: string, workerId: string): P
      WHERE w.id = ${workerId} AND w.owner_user_id = ${userId}`;
   if (!row) throw new HttpError(404, "Worker not found");
   return workerView(row);
-}
-
-/**
- * GET /api/features: the former rollout flags, now always on. The web app still
- * reads them; remove this route once it no longer does.
- */
-export async function handleListFeatures(
-  request: Request,
-  env: SecurityEnv,
-  accessContext?: ExecutionContext,
-): Promise<Response> {
-  await securityContext(request, env, accessContext);
-  return json({ flags: ALWAYS_ON_FEATURES });
 }
 
 /** GET /api/workers — the caller's Workers; `?includeRevoked=true` adds removed ones. */

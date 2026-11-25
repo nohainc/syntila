@@ -18,7 +18,6 @@ const updateThreadRuntimeLeasesSetExpiresAtRun = (q: Query, p1: unknown, p2: unk
 
 export interface ThreadCoordinatorEnv {
   readonly SYNTILA_DB: Db;
-  readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
 }
 

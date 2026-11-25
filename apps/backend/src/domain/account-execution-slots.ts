@@ -11,18 +11,16 @@ import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
 
 /**
- * Why a task is waiting before it has an assignment. Neither reason holds a
- * slot; both are shown to the requester as "queued".
+ * Why a task is waiting before it has an assignment. The wait holds no slot;
+ * it is shown to the requester as "queued".
  */
-export type ExecutionWaitReason =
-  "account_concurrency_limit" | "workspace_not_ready";
+export type ExecutionWaitReason = "account_concurrency_limit";
 
 export const EXECUTION_WAIT_MESSAGES: Readonly<
   Record<ExecutionWaitReason, string>
 > = {
   account_concurrency_limit:
     "Free runs one AI task at a time. This request will start when your current task finishes.",
-  workspace_not_ready: "Waiting for the Workspace Service to be ready",
 };
 
 export function waiterCutoff(now: Date = new Date()): string {
@@ -142,50 +140,4 @@ export async function wakeNextExecutionWaiter(
   } catch {
     return false;
   }
-}
-
-/** Wake waiters for this Workspace in bounded pages. Unbound requests are
- * also re-evaluated because their eventual Workspace is not yet known.
- * Failure is best effort: each waiter retains its durable timed retry. */
-export async function wakeWorkspaceReadyWaiters(
-  env: { SYNTILA_DB: Db; SYNTILA_RUN_WORKFLOW?: WakeableWorkflow },
-  workspaceId: string,
-  eventType: string,
-  now: Date = new Date(),
-): Promise<number> {
-  if (!env.SYNTILA_RUN_WORKFLOW) return 0;
-  let cursor = "";
-  let woken = 0;
-  try {
-    while (true) {
-      const waiters = await dataOf(env).read.rows<{ taskId: string; instanceId: string | null; requestId: string | null }>`
-        SELECT w.task_id AS "taskId", r.workflow_instance_id AS "instanceId", w.work_request_id AS "requestId"
-          FROM account_execution_waiters w
-          LEFT JOIN runs r ON r.id = w.run_id
-          LEFT JOIN work_requests wr ON wr.id = w.work_request_id
-         WHERE w.reason = 'workspace_not_ready'
-           AND w.heartbeat_at >= ${waiterCutoff(now)}::timestamptz
-           AND w.task_id > ${cursor}
-         ORDER BY w.task_id LIMIT 20`;
-      if (!waiters.length) break;
-      await Promise.all(waiters.map(async (waiter) => {
-        if (!waiter.instanceId) return;
-        try {
-          const instance = await env.SYNTILA_RUN_WORKFLOW!.get(waiter.instanceId);
-          await instance.sendEvent({ type: eventType, payload: { taskId: waiter.taskId, reason: "workspace_ready" } });
-          woken++;
-          tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
-            requestId: waiter.requestId ?? undefined, workspaceId, taskId: waiter.taskId, context: { status: "readiness_wake_sent" } });
-        } catch {
-          tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "warning", retryable: true,
-            requestId: waiter.requestId ?? undefined, workspaceId, taskId: waiter.taskId, context: { status: "readiness_wake_failed" } });
-        }
-      }));
-      cursor = waiters[waiters.length - 1]!.taskId;
-      if (waiters.length < 20) break;
-    }
-  } catch {
-    // Durable timed retries remain authoritative.
-  }
-  return woken;
 }

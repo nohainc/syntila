@@ -128,7 +128,7 @@ try {
 
   // Known gap: realtime across nodes.
   const live = a.realtime([spaceId]);
-  await live.waitFor("subscription on node A", (f) => f.type === "subscription.confirmed", 15_000);
+  await live.waitFor("subscription on node A", (f) => f.type === "subscription.ready", 15_000);
   await b.api("POST", `/api/threads/${threadId}/discussion-messages`, { body: "across" });
   const crossed = await waitFor("event from node B", () => live.state.frames.find((f) => JSON.stringify(f).includes("across")), 4_000).then(() => true, () => false);
   live.close();

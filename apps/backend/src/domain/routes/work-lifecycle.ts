@@ -55,7 +55,6 @@ import {
   resolveWorkflowInstanceId,
   securityContext,
   summarizeTestCounts,
-  validateWorkflowWorkerEligibility,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 

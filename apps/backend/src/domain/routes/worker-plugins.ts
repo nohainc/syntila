@@ -1,7 +1,6 @@
 import type { z } from "@syntila/protocol";
 import { PluginPinSchema, PluginUploadSchema } from "@syntila/protocol";
 import { readBody, RequestValidationError } from "./validation.js";
-import { ownsActiveWorkspace } from "../queries.js";
 import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ALWAYS_ON_FEATURES,
   FEATURE_FLAGS,
   FEATURE_FLAGS_ENV,
   FEATURE_FLAG_REQUIRES,
@@ -19,10 +18,9 @@ describe("worker-first feature flags", () => {
     expect([...FEATURE_FLAGS].sort()).toEqual(["cluster_mode"]);
   });
 
-  test("a listed flag is on, with whitespace, empty entries and retired rollout flags ignored", () => {
-    const env = { [FEATURE_FLAGS_ENV]: ` , ${ALWAYS_ON_FEATURES[0]} , cluster_mode ` };
+  test("a listed flag is on, with whitespace and empty entries ignored", () => {
+    const env = { [FEATURE_FLAGS_ENV]: " , cluster_mode , " };
     expect(isFeatureEnabled("cluster_mode", env)).toBe(true);
-    expect(parseFeatureFlags(ALWAYS_ON_FEATURES.join(",")).size).toBe(0);
   });
 
   test("an unknown flag name fails instead of being ignored", () => {

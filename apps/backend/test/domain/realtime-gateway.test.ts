@@ -29,76 +29,7 @@ describe("realtime gateway contract", () => {
     expect(realtimeAuthenticationError(identity, "active")).toBeNull();
   });
 
-  it("parses scoped control messages and rejects missing workspace scope", () => {
-    expect(
-      parseRealtimeClientMessage({
-        type: "subscribe",
-        scope: { workspaceId: "workspace-1", spaceId: "space-1" },
-      }),
-    ).toEqual({
-      type: "subscribe",
-      scope: { workspaceId: "workspace-1", spaceId: "space-1" },
-    });
-    expect(() =>
-      parseRealtimeClientMessage({ type: "subscribe", scope: {} }),
-    ).toThrow("workspaceId");
-    expect(() => parseRealtimeClientMessage({ type: "unknown" })).toThrow();
-  });
-
-  it("validates durable cursors by execution Workspace ID", () => {
-    expect(
-      parseRealtimeClientMessage({
-        type: "realtime.hello",
-        lastDurableSequences: { "workspace-1": 8, "workspace-2": 3 },
-      }),
-    ).toEqual({
-      type: "realtime.hello",
-      lastDurableSequences: { "workspace-1": 8, "workspace-2": 3 },
-    });
-    expect(() =>
-      parseRealtimeClientMessage({
-        type: "realtime.hello",
-        lastDurableSequences: { "workspace-1": -1 },
-      }),
-    ).toThrow("Workspace IDs to non-negative integers");
-  });
-
-  it("matches events only within the requested scope", () => {
-    expect(
-      eventMatchesScope(
-        {
-          eventId: "event-1",
-          type: "run.completed",
-          version: "1.0",
-          timestamp: "2026-09-23T00:00:00.000Z",
-          workspaceId: "workspace-1",
-          spaceId: "space-1",
-          sequence: 1,
-          payload: {},
-        },
-        { workspaceId: "workspace-1", spaceId: "space-1" },
-      ),
-    ).toBe(true);
-    expect(
-      eventMatchesScope(
-        {
-          eventId: "event-1",
-          type: "run.completed",
-          version: "1.0",
-          timestamp: "2026-09-23T00:00:00.000Z",
-          workspaceId: "workspace-2",
-          sequence: 1,
-          payload: {},
-        },
-        { workspaceId: "workspace-1" },
-      ),
-    ).toBe(false);
-    expect(scopeKey({ workspaceId: "workspace-1" })).toBe(
-      "workspaceId=workspace-1&spaceId=&runId=",
-    );
-  });
-
-  it("parses user, Space, and execution Workspace scopes", () => {
+  it("parses user, Space, and Thread scopes and rejects unknown scopes", () => {
     expect(
       parseRealtimeClientMessage({
         type: "subscribe",
@@ -113,21 +44,6 @@ describe("realtime gateway contract", () => {
     ).toEqual({
       type: "subscribe",
       scope: { kind: "space", spaceId: "space-1" },
-    });
-    expect(
-      parseRealtimeClientMessage({
-        type: "subscribe",
-        scope: {
-          kind: "execution_workspace",
-          executionWorkspaceId: "workspace-1",
-        },
-      }),
-    ).toEqual({
-      type: "subscribe",
-      scope: {
-        kind: "execution_workspace",
-        executionWorkspaceId: "workspace-1",
-      },
     });
     expect(scopeKey({ kind: "space", spaceId: "space-1" })).toBe(
       "space=space-1",
@@ -144,15 +60,18 @@ describe("realtime gateway contract", () => {
       type: "subscribe",
       scope: { kind: "thread", threadId: "thread-1" },
     });
+    expect(() =>
+      parseRealtimeClientMessage({ type: "subscribe", scope: {} }),
+    ).toThrow();
+    expect(() => parseRealtimeClientMessage({ type: "unknown" })).toThrow();
   });
 
-  it("matches scopes by Space and execution Workspace identity", () => {
+  it("matches scopes by user, Space, and Thread identity", () => {
     const event = {
       eventId: "event-1",
       type: "run.completed",
-      version: "1.0",
+      version: "1.1",
       timestamp: "2026-09-23T00:00:00.000Z",
-      workspaceId: "workspace-1",
       spaceId: "space-1",
       sequence: 1,
       payload: {},
@@ -164,12 +83,6 @@ describe("realtime gateway contract", () => {
     expect(
       eventMatchesScope(event, { kind: "space", spaceId: "space-2" }),
     ).toBe(false);
-    expect(
-      eventMatchesScope(event, {
-        kind: "execution_workspace",
-        executionWorkspaceId: "workspace-1",
-      }),
-    ).toBe(true);
     expect(
       eventMatchesScope(
         { ...event, threadId: "thread-1" },
@@ -248,32 +161,7 @@ describe("realtime gateway contract", () => {
 });
 
 describe("independent synchronization cursor delivery", () => {
-  it("accepts stream cursors alongside legacy execution Workspace cursors", () => {
-    const key = JSON.stringify(["space", "same"]);
-    expect(
-      parseRealtimeClientMessage({
-        type: "realtime.hello",
-        lastDurableSequences: { same: 10 },
-        lastDurableStreamSequences: { [key]: 2 },
-      }),
-    ).toMatchObject({
-      lastDurableSequences: { same: 10 },
-      lastDurableStreamSequences: { [key]: 2 },
-    });
-    for (const bad of [
-      { invalid: 1 },
-      { '["space","p"]': -1 },
-      { '["bogus","p"]': 1 },
-    ]) {
-      expect(() =>
-        parseRealtimeClientMessage({
-          type: "realtime.hello",
-          lastDurableStreamSequences: bad,
-        }),
-      ).toThrow();
-    }
-  });
-  it("matches collaboration signals to user/Space/Thread scopes without inventing Workspace access", () => {
+  it("matches collaboration signals to user/Space/Thread scopes", () => {
     const event = {
       eventId: "e",
       type: "discussion.created",
@@ -292,12 +180,5 @@ describe("independent synchronization cursor delivery", () => {
     expect(eventMatchesScope(event, { kind: "thread", threadId: "w" })).toBe(
       true,
     );
-    expect(
-      eventMatchesScope(event, {
-        kind: "execution_workspace",
-        executionWorkspaceId: "same",
-      }),
-    ).toBe(false);
-    expect(eventMatchesScope(event, { workspaceId: "same" })).toBe(false);
   });
 });

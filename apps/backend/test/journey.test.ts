@@ -108,8 +108,14 @@ describe("journey", () => {
     const browser = new WebSocket(`${base.replace("http", "ws")}/api/realtime?ticket=${ticket}`, { headers: { origin: "https://syntila.app" } } as any);
     browser.onmessage = (e) => live.push(JSON.parse(String(e.data)));
     await waitFor("realtime ready", () => live.find((f) => f.type === "realtime.ready"));
-    browser.send(JSON.stringify({ type: "subscribe", scope: { kind: "space", spaceId } }));
-    await waitFor("subscribed", () => live.find((f) => f.type === "subscription.confirmed"));
+    browser.send(JSON.stringify({
+      protocol: "syntila.messaging/1",
+      requestId: "req-1",
+      type: "command",
+      command: "subscription.subscribe",
+      payload: { stream: { kind: "space", id: spaceId }, cursor: 0 },
+    }));
+    await waitFor("subscribed", () => live.find((f) => f.type === "subscription.ready"));
 
     const submit = await api(web, "POST", `/api/threads/${threadId}/work-requests`, {
       workflowId: "chat", objective: "Say hello", workerId,

@@ -7,8 +7,7 @@ import type { RealtimeEventEnvelope } from "@syntila/protocol";
 
 // ADR-033 decisions 6 and 9: cursor semantics and bounded queues.
 
-// Collaboration signals carry identifiers only, so sized frames use an execution event.
-const SPACE_KEY = JSON.stringify(["execution_workspace", "same"]);
+const SPACE_KEY = JSON.stringify(["space", "same"]);
 
 describe("bounded queue", () => {
   it("is bounded in bytes as well as in items", () => {
@@ -107,13 +106,13 @@ async function harness() {
     gateway.fetch(new Request("https://realtime.internal/publish", { method: "POST", body: JSON.stringify(event) }));
   const event = (sequence: number, size = 100): RealtimeEventEnvelope => ({
     eventId: `run-${sequence}`,
-    type: "run.completed",
-    version: "1.0",
+    type: "work_request.completed",
+    version: "1.1",
     timestamp: "2026-10-06T00:00:00.000Z",
-    workspaceId: "same",
-    stream: { kind: "execution_workspace", id: "same" },
+    spaceId: "same",
+    stream: { kind: "space", id: "same" },
     sequence,
-    payload: { entityId: "same", message: "m".repeat(size) },
+    payload: { entityId: "same", workRequestId: "wr-1", threadId: "t-1", status: "completed", message: "m".repeat(size) },
   });
   const handle = (message: unknown) =>
     (Reflect.get(gateway, "handleClientMessage") as (id: string, data: unknown) => Promise<void>).call(
@@ -134,7 +133,7 @@ describe("a slow client", () => {
     for (let sequence = 1; sequence <= 600; sequence++) await f.publish(f.event(sequence, 2_000));
     const signals = f.frames.filter((frame) => frame.type === "sync.required");
     expect(signals).toHaveLength(1);
-    expect(signals[0]).toMatchObject({ reason: "connection_queue_limit", stream: { kind: "execution_workspace", id: "same" } });
+    expect(signals[0]).toMatchObject({ reason: "connection_queue_limit", stream: { kind: "space", id: "same" } });
     expect(f.eventSequences()).toEqual([]); // nothing was pushed into a blocked socket
     expect(f.client.queue.depth).toBe(0); // cleared, and nothing joins it until the client resyncs
     expect(f.client.queue.byteSize).toBe(0);
@@ -153,18 +152,6 @@ describe("a slow client", () => {
     expect(metrics.maxQueueDepth).toBeLessThan(128); // the byte limit came first
     expect(metrics.maxQueueBytes).toBeLessThanOrEqual(1024 * 1024);
     expect(metrics.queueOverflows).toBe(1);
-  });
-
-  it("forgets what it counted as enqueued and takes frames again after the client's hello", async () => {
-    const f = await harness();
-    f.socket.bufferedAmount = 10_000_000;
-    for (let sequence = 1; sequence <= 140; sequence++) await f.publish(f.event(sequence));
-    expect(f.enqueued.size).toBe(0); // cleared frames were never sent, so they are not "enqueued"
-    f.socket.bufferedAmount = 0;
-    await f.handle({ type: "realtime.hello", lastDurableStreamSequences: { [SPACE_KEY]: 149 } });
-    expect(f.client.resyncPending).toBe(false);
-    await f.publish(f.event(150));
-    expect(f.eventSequences()).toEqual([150]);
   });
 
   it("resumes the queue when the runtime reports a drain", async () => {
@@ -190,29 +177,9 @@ describe("a slow client", () => {
 });
 
 describe("cursor semantics", () => {
-  it("keeps the enqueued position apart from the applied acknowledgement", async () => {
+  it("rejects legacy non-messaging frames without mutating cursor state", async () => {
     const f = await harness();
-    for (const sequence of [1, 2, 3]) await f.publish(f.event(sequence));
-    expect(f.enqueued.get(SPACE_KEY)).toBe(3);
-    expect(f.client.appliedSequences.size).toBe(0); // delivery is not an acknowledgement
-
-    await f.handle({ type: "ack", stream: { kind: "execution_workspace", id: "same" }, sequence: 2 });
-    expect(f.client.appliedSequences.get(SPACE_KEY)).toBe(2);
-    expect(f.enqueued.get(SPACE_KEY)).toBe(3);
-    await f.handle({ type: "ack", stream: { kind: "execution_workspace", id: "same" }, sequence: 1 }); // never moves back
-    expect(f.client.appliedSequences.get(SPACE_KEY)).toBe(2);
-  });
-
-  it("takes the client's hello as its applied position", async () => {
-    const f = await harness();
-    await f.handle({ type: "realtime.hello", lastDurableStreamSequences: { [SPACE_KEY]: 7 } });
-    expect(f.client.appliedSequences.get(SPACE_KEY)).toBe(7);
-    expect(f.enqueued.get(SPACE_KEY)).toBe(7);
-  });
-
-  it("answers an invalid acknowledgement without changing anything", async () => {
-    const f = await harness();
-    await f.handle({ type: "ack", stream: { kind: "execution_workspace", id: "same" }, sequence: -3 });
+    await f.handle({ type: "ack", stream: { kind: "space", id: "same" }, sequence: 2 });
     expect(f.frames.at(-1)).toMatchObject({ type: "subscription.denied" });
     expect(f.client.appliedSequences.size).toBe(0);
   });

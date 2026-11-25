@@ -68,8 +68,7 @@ a Thread accepts.
 - `account_execution_waiters` is bookkeeping only and holds no capacity.
 
 ## User experience
-A queued step reports `waitReason` (`account_concurrency_limit` or
-`workspace_not_ready`) and `executionPhaseDetail`: "Free runs one AI task at a
+A queued step reports `waitReason` (`account_concurrency_limit`) and `executionPhaseDetail`: "Free runs one AI task at a
 time. This request will start when your current task finishes." (distinct from
 Workspace or provider capacity text). The `step.queued` event carries `reason`
 and `message`. Cancelling a queued request uses the existing cancel flow. The

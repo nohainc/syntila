@@ -229,7 +229,6 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("*", "/api/me/worker-plugins", (c) => handlePluginLibrary(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/me/worker-plugins/:pluginRef", (c) => handlePluginLibrary(c.request, c.env, c.params.pluginRef, c.ctx)),
     // Workers (ADR-032).
-    r("GET", "/api/features", call("handleListFeatures", ctx)),
     r("GET", "/api/workers", call("handleListWorkers", ctx)),
     r("GET", "/api/spaces/:spaceId/workers", (c) => handleListSpaceWorkers(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("POST", "/api/workers", call("handleCreateWorker", ctx), idempotent),
