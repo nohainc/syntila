@@ -174,7 +174,7 @@ export class FakeWorkspace {
 
   send(type: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) {
     const at = new Date().toISOString();
-    this.socket?.send(JSON.stringify({ protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: `m-${++this.counter}-${Date.now()}`, timestamp: at, type, executionWorkspaceId: this.workspaceId, workspaceRuntimeId: this.runtimeId, payload, ...extra }));
+    this.socket?.send(JSON.stringify({ protocol: "syntila.worker-agent-protocol", protocolVersion: "5.1", messageId: `m-${++this.counter}-${Date.now()}`, timestamp: at, type, executionWorkspaceId: this.workspaceId, workspaceRuntimeId: this.runtimeId, payload, ...extra }));
   }
 
   waitFor(what: string, predicate: (frame: any) => boolean, ms?: number) {

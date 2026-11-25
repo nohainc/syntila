@@ -16,10 +16,10 @@ const [
   workspaceDart,
 ] = await Promise.all([
   read("packages/protocol/src/generated.ts"),
-  read("packages/workspace-runtime-protocol/src/generated.ts"),
+  read("packages/worker-agent-protocol/src/generated.ts"),
   read("packages/dart/protocol/lib/generated_protocol.dart"),
   read("packages/protocol/src/index.ts"),
-  read("packages/workspace-runtime-protocol/src/index.ts"),
+  read("packages/worker-agent-protocol/src/index.ts"),
   read("packages/dart/protocol/lib/syntila_protocol.dart"),
   read("packages/syntila_worker_protocol/lib/src/protocol_version.dart"),
   read("packages/dart/protocol/lib/workspace_runtime_protocol.dart"),

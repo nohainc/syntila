@@ -271,7 +271,7 @@ async function connectAndHello() {
     }
 
     const hello = {
-      protocol: "syntila.workspace-runtime-protocol",
+      protocol: "syntila.worker-agent-protocol",
       protocolVersion: "5.1",
       messageId: `gateway-smoke-hello-${runId}`,
       timestamp: new Date().toISOString(),
@@ -305,7 +305,7 @@ async function connectAndHello() {
     socket.write(
       maskedFrame(
         JSON.stringify({
-          protocol: "syntila.workspace-runtime-protocol",
+          protocol: "syntila.worker-agent-protocol",
           protocolVersion: "5.1",
           messageId: syncRequestId,
           timestamp: new Date().toISOString(),

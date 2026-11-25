@@ -1,4 +1,4 @@
-import type { PluginManifest } from "@syntila/workspace-runtime-protocol";
+import type { PluginManifest } from "@syntila/worker-agent-protocol";
 import { canonicalJson } from "./canonical-json.js";
 
 /** Digest that pins a plugin: sha256 of the canonical manifest JSON. */

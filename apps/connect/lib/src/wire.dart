@@ -1,8 +1,7 @@
 import 'dart:convert';
 
-/// Envelope construction and parsing for the Workspace gateway protocol, which
-/// Syntila Connects use through the compatibility adapter until ADR-038.
-const wireProtocol = 'syntila.workspace-runtime-protocol';
+/// Envelope construction and parsing for the Worker Agent gateway protocol.
+const wireProtocol = 'syntila.worker-agent-protocol';
 const wireProtocolVersion = '5.1';
 
 /// The fields an assignment command carries and every reply must echo.

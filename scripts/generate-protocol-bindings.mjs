@@ -67,7 +67,7 @@ ${realtimeDartConstants(realtime)}
 const generatedFiles = new Map([
   ["packages/protocol/src/generated.ts", `${protocolTs.trimEnd()}\n`],
   [
-    "packages/workspace-runtime-protocol/src/generated.ts",
+    "packages/worker-agent-protocol/src/generated.ts",
     `${workspaceRuntimeTs.trimEnd()}\n`,
   ],
   [

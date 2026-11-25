@@ -24,4 +24,4 @@ done
   dart pub get
   dart analyze
 )
-pnpm exec vitest run --maxWorkers=4 packages/workspace-runtime-protocol/test packages/tool-profile/test apps/cloud/test/mcp-tool-call-gateway.test.ts apps/cloud/test/mcp-tool-dispatch-claim.test.ts apps/cloud/test/mcp-tool-step.test.ts apps/cloud/test/workflow-prompts.test.ts apps/cloud/test/execution-engine.test.ts apps/cloud/test/mcp-action-route.test.ts apps/cloud/test/mcp-tool-call-status-route.test.ts
+pnpm exec vitest run --maxWorkers=4 packages/worker-agent-protocol/test packages/tool-profile/test apps/cloud/test/mcp-tool-call-gateway.test.ts apps/cloud/test/mcp-tool-dispatch-claim.test.ts apps/cloud/test/mcp-tool-step.test.ts apps/cloud/test/workflow-prompts.test.ts apps/cloud/test/execution-engine.test.ts apps/cloud/test/mcp-action-route.test.ts apps/cloud/test/mcp-tool-call-status-route.test.ts

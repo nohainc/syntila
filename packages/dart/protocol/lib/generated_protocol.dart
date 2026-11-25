@@ -28,7 +28,7 @@ const executionErrorMessages = <String, String>{
   'permission_denied':
       'A local permission required for this assignment was denied.',
   'space_folder_exists':
-      'A folder with this Space\'s name already exists on the Workspace and is not empty. Confirm to use it.',
+      'A folder with this Space\'s name already exists on this computer and is not empty. Confirm to use it.',
   'quota_exhausted': 'The provider\'s usage limit has been reached.',
   'provider_unavailable': 'The provider is temporarily unavailable.',
   'timeout': 'The assignment exceeded its time limit.',
@@ -42,7 +42,7 @@ const executionErrorMessages = <String, String>{
       'The selected Worker is offline. Start its Agent and try again.',
 };
 
-const workspaceRuntimeProtocolSchemaName = 'syntila.workspace-runtime-protocol';
+const workspaceRuntimeProtocolSchemaName = 'syntila.worker-agent-protocol';
 const workspaceRuntimeProtocolSchemaVersion = '5.1';
 const workspaceRuntimeProtocolSchemaMaxMessageSizeBytes = 4194304;
 const workspaceRuntimeProtocolSchemaMessageTypes = <String>{

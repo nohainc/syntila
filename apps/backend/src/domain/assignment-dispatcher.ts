@@ -8,7 +8,7 @@ import { encryptProviderFailure, providerFailureKey } from "./provider-failure-e
 import {
   type AssignmentResultPayload,
   type AssignmentFailurePayload,
-} from "@syntila/workspace-runtime-protocol";
+} from "@syntila/worker-agent-protocol";
 import {
   ASSIGNMENT_LIFECYCLE_STATUSES,
   ContextLimitError,

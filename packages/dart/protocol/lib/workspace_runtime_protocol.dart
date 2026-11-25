@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'syntila_protocol.dart';
 import 'provider_failure.dart';
 
-const workspaceRuntimeProtocolName = 'syntila.workspace-runtime-protocol';
+const workspaceRuntimeProtocolName = 'syntila.worker-agent-protocol';
 const workspaceRuntimeProtocolVersion = '5.1';
 const workspaceRuntimeProtocolMaxMessageSizeBytes = 4194304;
 const workspaceProbePayloadCapability = 'workspace.probe_payload.v1';

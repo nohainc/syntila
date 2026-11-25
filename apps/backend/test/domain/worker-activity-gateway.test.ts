@@ -24,7 +24,7 @@ it("forwards current Worker activity on the Space stream and fences old sessions
   gateway.knownWorkerId = "w";
   gateway.attachment = { fence: { workerInstanceId: "w", sessionId: "s", epoch: 1 } };
   const frame = {
-    protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: "m", timestamp: new Date().toISOString(),
+    protocol: "syntila.worker-agent-protocol", protocolVersion: "5.1", messageId: "m", timestamp: new Date().toISOString(),
     type: "assignment.activity", executionWorkspaceId: "worker:w", workspaceRuntimeId: "worker:w", workerId: "w", runId: "run", taskId: "task", attemptId: "att", assignmentId: "a", idempotencyKey: "key",
     payload: { assignmentId: "a", executionId: "exec", workerId: "chatgpt", eventId: "ev", sequence: 1, timestamp: new Date().toISOString(), eventType: "tool.started", status: "running", title: "Reading files" },
   };

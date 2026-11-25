@@ -10,7 +10,7 @@ import {
   supportsPluginExecutor,
 } from "../execution-selection-snapshot.js";
 import { paidOwner } from "../account-plan.js";
-import { PluginInventoryExecutorSchema } from "@syntila/workspace-runtime-protocol";
+import { PluginInventoryExecutorSchema } from "@syntila/worker-agent-protocol";
 import {
   AuthorizationError,
   authorizeSpaceMembership,

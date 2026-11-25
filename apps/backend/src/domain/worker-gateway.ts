@@ -9,7 +9,7 @@ import {
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
   type AssignmentCancelPayload,
   type WorkspaceRuntimeMessage,
-} from "@syntila/workspace-runtime-protocol";
+} from "@syntila/worker-agent-protocol";
 import { assignmentStatusForEvidence, ASSIGNMENT_ACTIVE_STATUSES } from "@syntila/core";
 import { extractBearerToken } from "@syntila/security";
 import { signalAssignmentTerminal } from "./assignment-workflow-signal.js";

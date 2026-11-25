@@ -1,7 +1,7 @@
 packages:
   # Keep pnpm limited to TypeScript packages. Dart and Flutter projects use
   # their native package managers and are intentionally not workspace entries.
-  - packages/workspace-runtime-protocol
+  - packages/worker-agent-protocol
   - packages/core
   - packages/email
   - packages/tool-profile

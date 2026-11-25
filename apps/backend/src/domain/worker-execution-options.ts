@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { WorkspaceWorkerInventoryEntrySchema } from "@syntila/workspace-runtime-protocol";
+import { WorkspaceWorkerInventoryEntrySchema } from "@syntila/worker-agent-protocol";
 import {
   modelSelectionVersionMatches,
   type ToolProfileV1,

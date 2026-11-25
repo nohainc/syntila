@@ -46,7 +46,7 @@ const lockfile = readRequired("pnpm-lock.yaml");
 const wranglerTypes = readRequired("apps/cloud/worker-configuration.d.ts");
 const workspacePubspec = readRequired("apps/workspace/pubspec.yaml");
 const workspaceRuntimePackage = JSON.parse(
-  readRequired("packages/workspace-runtime-protocol/package.json") || "{}",
+  readRequired("packages/worker-agent-protocol/package.json") || "{}",
 );
 
 const canonicalExecutionPaths = [
@@ -107,7 +107,7 @@ const sourceRoots = [
   "engines/cli_worker/lib",
   "packages/core/src",
   "packages/protocol/src",
-  "packages/workspace-runtime-protocol/src",
+  "packages/worker-agent-protocol/src",
   "packages/dart/protocol/lib",
   "packages/security/src",
   "packages/tool-profile/src",
@@ -129,7 +129,7 @@ if (existsSync("apps/host") || existsSync("packages/host-protocol")) {
 }
 if (
   !workspacePubspec.includes("name: syntila_workspace") ||
-  workspaceRuntimePackage.name !== "@syntila/workspace-runtime-protocol"
+  workspaceRuntimePackage.name !== "@syntila/worker-agent-protocol"
 ) {
   failures.push(
     "Workspace application and runtime protocol packages must use Workspace names.",

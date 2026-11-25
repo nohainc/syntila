@@ -23,7 +23,7 @@
     "@syntila/protocol": "workspace:*",
     "@syntila/security": "workspace:*",
     "@syntila/tool-profile": "workspace:*",
-    "@syntila/workspace-runtime-protocol": "workspace:*"
+    "@syntila/worker-agent-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0"

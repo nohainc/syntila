@@ -50,9 +50,9 @@ importers:
       '@syntila/tool-profile':
         specifier: workspace:*
         version: link:../../packages/tool-profile
-      '@syntila/workspace-runtime-protocol':
+      '@syntila/worker-agent-protocol':
         specifier: workspace:*
-        version: link:../../packages/workspace-runtime-protocol
+        version: link:../../packages/worker-agent-protocol
     devDependencies:
       '@types/bun':
         specifier: ^1.3.0
@@ -122,7 +122,7 @@ importers:
         specifier: ^4.1.11
         version: 4.6.5
 
-  packages/workspace-runtime-protocol:
+  packages/worker-agent-protocol:
     dependencies:
       '@syntila/protocol':
         specifier: workspace:*

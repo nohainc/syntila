@@ -27,7 +27,7 @@
     "unsupported_cli_version": "The installed local CLI version is not supported.",
     "model_not_supported": "The selected model is not supported by this Worker.",
     "permission_denied": "A local permission required for this assignment was denied.",
-    "space_folder_exists": "A folder with this Space's name already exists on the Workspace and is not empty. Confirm to use it.",
+    "space_folder_exists": "A folder with this Space's name already exists on this computer and is not empty. Confirm to use it.",
     "quota_exhausted": "The provider's usage limit has been reached.",
     "provider_unavailable": "The provider is temporarily unavailable.",
     "timeout": "The assignment exceeded its time limit.",
@@ -38,7 +38,7 @@
     "worker_offline": "The selected Worker is offline. Start its Agent and try again."
   },
   "x-workspace-runtime-protocol": {
-    "name": "syntila.workspace-runtime-protocol",
+    "name": "syntila.worker-agent-protocol",
     "version": "5.1",
     "maxMessageSizeBytes": 4194304,
     "messageTypes": [

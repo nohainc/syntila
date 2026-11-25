@@ -5,7 +5,7 @@ import {
   parseWorkspaceRuntimeMessage,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
-} from "@syntila/workspace-runtime-protocol";
+} from "@syntila/worker-agent-protocol";
 
 it.each([null, "low"])(
   "dispatch uses the frozen effort %s even if the task has a later override",

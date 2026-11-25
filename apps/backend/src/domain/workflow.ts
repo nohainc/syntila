@@ -338,13 +338,13 @@ interface AssignmentRow {
 
 const PHASE_FAILURE_MESSAGE: Record<AssignmentDeadlinePhase, string> = {
   readiness_wait:
-    "The Workspace Service was not ready to accept the assignment in time. Check that it is running and synchronized, then retry.",
+    "Syntila Connect was not ready to accept the assignment in time. Check that it is running and synchronized, then retry.",
   command_delivery:
-    "Workspace did not acknowledge the assignment. Check its connection and retry.",
+    "The Worker did not acknowledge the assignment. Check its connection and retry.",
   queue_wait:
-    "The Workspace did not start the assignment before its queue wait limit. Retry the step.",
+    "The Worker did not start the assignment before its queue wait limit. Retry the step.",
   startup:
-    "The Workspace was cleared to start the assignment but did not report the provider as started. Retry the step.",
+    "The Worker was cleared to start the assignment but did not report the provider as started. Retry the step.",
   provider_execution: "The assignment exceeded its execution deadline.",
 };
 

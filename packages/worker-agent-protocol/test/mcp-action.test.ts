@@ -111,7 +111,7 @@ describe("mcp-action protocol", () => {
 
   it("enforces envelope validation", () => {
     const validEnvelope = {
-      protocol: "syntila.workspace-runtime-protocol",
+      protocol: "syntila.worker-agent-protocol",
       protocolVersion: "5.1",
       messageId: "msg-1",
       timestamp: new Date().toISOString(),

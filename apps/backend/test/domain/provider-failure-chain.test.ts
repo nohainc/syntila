@@ -39,7 +39,7 @@ async function workerGatewayFixture(
     counter += 1;
     await gateway.handle(
       JSON.stringify({
-        protocol: "syntila.workspace-runtime-protocol",
+        protocol: "syntila.worker-agent-protocol",
         protocolVersion: "5.1",
         messageId: `message-${counter}`,
         timestamp: new Date().toISOString(),

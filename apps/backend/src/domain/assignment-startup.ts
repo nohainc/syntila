@@ -3,7 +3,7 @@ import {
   ASSIGNMENT_STARTUP_STAGE_RANK,
   type AssignmentStartupPayload,
   type AssignmentStartupStage,
-} from "@syntila/workspace-runtime-protocol";
+} from "@syntila/worker-agent-protocol";
 
 /** Statuses in which the Service may still be starting the assignment. */
 const PRE_START_STATUSES = ["dispatched", "acknowledged"] as const;

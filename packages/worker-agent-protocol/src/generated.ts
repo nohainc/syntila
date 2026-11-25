@@ -1,7 +1,7 @@
 // GENERATED FILE. Do not edit by hand.
 
 export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_NAME =
-  "syntila.workspace-runtime-protocol" as const;
+  "syntila.worker-agent-protocol" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_VERSION = "5.1" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MAX_MESSAGE_SIZE_BYTES =
   4194304 as const;

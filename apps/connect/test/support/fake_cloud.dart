@@ -41,7 +41,7 @@ class _Socket {
 
 /// An in-process stand-in for the server side of ADR-034: pairing, signed
 /// nonces, an epoch per session, and a fence that rejects any write from a
-/// session that is no longer current. It speaks the Workspace gateway frames.
+/// session that is no longer current. It speaks the Worker Agent gateway frames.
 class FakeCloud {
   FakeCloud._(this._server);
 

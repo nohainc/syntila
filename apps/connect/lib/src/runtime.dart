@@ -1178,7 +1178,7 @@ class AgentRuntime {
     'permission_denied':
         'A local permission required for this assignment was denied.',
     'space_folder_exists':
-        "A folder with this Space's name already exists on the Workspace and is not empty. Confirm to use it.",
+        "A folder with this Space's name already exists on this computer and is not empty. Confirm to use it.",
     'quota_exhausted': "The provider's usage limit has been reached.",
     'provider_unavailable': 'The provider is temporarily unavailable.',
     'timeout': 'The assignment exceeded its time limit.',

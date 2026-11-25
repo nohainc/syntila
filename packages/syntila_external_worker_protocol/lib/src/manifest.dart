@@ -74,7 +74,7 @@ class ExternalWorkerManifestValidation {
 }
 
 /// Strict validation mirroring `PluginManifestSchema` in
-/// `packages/workspace-runtime-protocol`: unknown keys at any level are
+/// `packages/worker-agent-protocol`: unknown keys at any level are
 /// errors, so a typo cannot hide an access declaration. The Service's
 /// `plugins.validate` and author tooling use this one implementation.
 ExternalWorkerManifestValidation validateExternalWorkerManifest(Object? input) {

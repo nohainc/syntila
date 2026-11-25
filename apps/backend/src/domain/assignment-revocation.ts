@@ -7,7 +7,7 @@ import {
 import type {
   AssignmentCancelPayload,
   AssignmentFailurePayload,
-} from "@syntila/workspace-runtime-protocol";
+} from "@syntila/worker-agent-protocol";
 import {
   recordAssignmentCancelled,
   recordAssignmentError,

@@ -87,7 +87,7 @@ describe("journey", () => {
     let n = 0;
     const send = (type: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
       const at = new Date().toISOString();
-      ws.send(JSON.stringify({ protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: `m-${++n}`, timestamp: at,
+      ws.send(JSON.stringify({ protocol: "syntila.worker-agent-protocol", protocolVersion: "5.1", messageId: `m-${++n}`, timestamp: at,
         type, executionWorkspaceId: workerId, workspaceRuntimeId: session.sessionId, workerId, payload, ...extra }));
     };
     send("workspace.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });

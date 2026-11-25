@@ -1,5 +1,5 @@
 import { executionErrorMessage } from "@syntila/protocol";
-import { parseWorkspaceRuntimeMessage } from "@syntila/workspace-runtime-protocol";
+import { parseWorkspaceRuntimeMessage } from "@syntila/worker-agent-protocol";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { conversationFixture } from "./helpers/conversation.js";
 import { recordAssignmentError } from "../../src/domain/assignment-dispatcher.js";
@@ -387,7 +387,7 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
 
   it("validates assignment.error wire messages with and without providerFailure", () => {
     const base = {
-      protocol: "syntila.workspace-runtime-protocol",
+      protocol: "syntila.worker-agent-protocol",
       protocolVersion: "5.1",
       messageId: "msg-1",
       timestamp: "2026-11-18T00:00:00.000Z",

@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/setup-repo
       - uses: ./.github/actions/setup-flutter
       - name: Run static checks
         run: pnpm check:static
@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/setup-repo
       - name: Type-check and test cloud and packages
         run: pnpm check:typescript
 
@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/setup-repo
         with:
           install: "false"
       - uses: ./.github/actions/setup-flutter
@@ -154,7 +154,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-workspace
+      - uses: ./.github/actions/setup-repo
       - uses: ./.github/actions/check-site
 
   ci-passed:

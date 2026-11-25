@@ -1,5 +1,5 @@
 name: Check public site
-description: Type-check, build, and verify the Astro public site. Run setup-workspace first.
+description: Type-check, build, and verify the Astro public site. Run setup-repo first.
 
 runs:
   using: composite

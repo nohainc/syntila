@@ -3,7 +3,7 @@ import { dataOf } from "../../platform/data.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
 import { authenticateAgentSession } from "../worker-agents.js";
 import { getCurrentWorkerProfile, listWorkerProfileHistory } from "../worker-profile-registry.js";
-import { DiscoveredModelCatalogSchema } from "@syntila/workspace-runtime-protocol";
+import { DiscoveredModelCatalogSchema } from "@syntila/worker-agent-protocol";
 import { readJson } from "./validation.js";
 import { publishWorkerChanged } from "../worker-events.js";
 import { HttpError, json, type SecurityEnv } from "./handlers.js";
