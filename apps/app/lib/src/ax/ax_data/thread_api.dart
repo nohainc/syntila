@@ -1144,7 +1144,7 @@ mixin _ThreadApi on _AxApiClientCore
     if (limit < 1 || limit > 100 || (before != null && after != null)) {
       throw ArgumentError('Invalid Discussion page parameters');
     }
-    final uri = Uri.parse('$baseUrl/threads/$threadId/discussion-messages')
+    final uri = Uri.parse('$baseUrl/threads/$threadId/timeline')
         .replace(queryParameters: {
       'limit': '$limit',
       if (before != null) 'cursor': before,

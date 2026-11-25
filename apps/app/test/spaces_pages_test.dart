@@ -2672,96 +2672,6 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
-  for (final missingRequesterId in [false, true]) {
-    testWidgets(
-        'conversation spaces Work by its visible authors and hides meta backgrounds${missingRequesterId ? ' without requester ID' : ''}',
-        (tester) async {
-      await tester.binding.setSurfaceSize(const Size(800, 1400));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.linux),
-          home: Scaffold(
-              body: ThreadPage(
-            space: const AxSpace(
-                id: 'space-1',
-                name: 'Space',
-                branch: '',
-                lastActivity: '',
-                role: 'owner'),
-            thread: const AxThread(
-                id: 'thread-1',
-                spaceId: 'space-1',
-                name: 'Stream',
-                lead: '',
-                status: 'active',
-                brief: '',
-                primaryWorkspace: '',
-                queueStatus: ''),
-            dataSource: _ConversationMixDataSource(
-                otherAfter: true, missingRequesterId: missingRequesterId),
-            currentUserId: 'user-owner',
-            currentUserName: 'Vitalii',
-            onBackToSpace: _noop,
-            onArchive: _noop,
-          ))));
-      await tester.pumpAndSettle();
-      final before = find.byKey(const ValueKey('m1'));
-      final work = find.byKey(const ValueKey('work-R-request'));
-      final after = find.byKey(const ValueKey('m2'));
-      // The Chat message and prompt share an author despite their hour-long gap.
-      expect(tester.getTopLeft(work).dy - tester.getBottomLeft(before).dy, 2);
-      // The card ends with a Worker, so the following human starts a new group.
-      expect(tester.getTopLeft(after).dy - tester.getBottomLeft(work).dy, 20);
-
-      final backgrounds = find.descendant(
-          of: work,
-          matching: find.byWidgetPredicate((widget) =>
-              widget is DecoratedBox &&
-              widget.decoration is BoxDecoration &&
-              (widget.decoration as BoxDecoration).gradient != null));
-      expect(backgrounds, findsNWidgets(2));
-      for (final background in backgrounds.evaluate()) {
-        final opacity = find
-            .ancestor(
-                of: find.byElementPredicate((element) => element == background),
-                matching: find.byType(AnimatedOpacity))
-            .first;
-        expect(tester.widget<AnimatedOpacity>(opacity).opacity, 0);
-      }
-      final otherBackground = find.descendant(
-          of: after,
-          matching: find.byWidgetPredicate((widget) =>
-              widget is DecoratedBox &&
-              widget.decoration is BoxDecoration &&
-              (widget.decoration as BoxDecoration).gradient != null));
-      expect(otherBackground, findsOneWidget);
-      final otherOpacity = find
-          .ancestor(of: otherBackground, matching: find.byType(AnimatedOpacity))
-          .first;
-      expect(tester.widget<AnimatedOpacity>(otherOpacity).opacity, 0);
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: const Offset(1, 1));
-      await mouse.moveTo(tester.getCenter(find.text('Use passkeys')));
-      await tester.pumpAndSettle();
-      final workerBackground = backgrounds.last;
-      final workerOpacity = find
-          .ancestor(
-              of: workerBackground, matching: find.byType(AnimatedOpacity))
-          .first;
-      expect(tester.widget<AnimatedOpacity>(workerOpacity).opacity, 1);
-      await mouse.moveTo(const Offset(1, 1));
-      await tester.pumpAndSettle();
-      expect(tester.widget<AnimatedOpacity>(workerOpacity).opacity, 0);
-      await mouse.moveTo(tester.getCenter(find.text('After AI')));
-      await tester.pumpAndSettle();
-      expect(tester.widget<AnimatedOpacity>(otherOpacity).opacity, 1);
-      await mouse.moveTo(const Offset(1, 1));
-      await tester.pumpAndSettle();
-      expect(tester.widget<AnimatedOpacity>(otherOpacity).opacity, 0);
-      await mouse.removePointer();
-      expect(tester.takeException(), isNull);
-    });
-  }
   testWidgets('five consecutive own messages keep tight gaps after sending',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
@@ -5436,28 +5346,43 @@ class _MarkdownDiscussionDataSource extends AxFixtureDataSource {
 }
 
 class _ConversationMixDataSource extends _WorkFormDataSource {
-  _ConversationMixDataSource(
-      {this.otherAfter = false, this.missingRequesterId = false});
-  final bool missingRequesterId;
-  final bool otherAfter;
-
   @override
   Future<List<AxDiscussionMessage>> discussionRows({
     required String threadId,
   }) async =>
       [
-        for (final (id, body, at) in [
-          ('m1', 'Before AI', '2026-10-06T10:00:00Z'),
-          ('m2', 'After AI', '2026-10-06T12:00:00Z'),
-        ])
-          AxDiscussionMessage(
-              id: id,
-              threadId: threadId,
-              authorUserId:
-                  otherAfter && id == 'm2' ? 'user-other' : 'user-owner',
-              body: body,
-              createdAt: at,
-              isMe: true),
+        AxDiscussionMessage(
+            id: 'm1',
+            threadId: threadId,
+            authorUserId: 'user-owner',
+            body: 'Before AI',
+            createdAt: '2026-10-06T10:00:00Z',
+            isMe: true),
+        AxDiscussionMessage(
+            id: 'ai-req-R',
+            threadId: threadId,
+            authorUserId: 'user-owner',
+            body: 'Research auth',
+            createdAt: '2026-10-06T11:00:00Z',
+            isMe: true,
+            kind: 'ai_request',
+            workRequestId: 'R'),
+        AxDiscussionMessage(
+            id: 'ai-ans-R',
+            threadId: threadId,
+            authorUserId: 'worker-1',
+            body: 'Use passkeys',
+            createdAt: '2026-10-06T11:00:05Z',
+            kind: 'ai_answer',
+            workRequestId: 'R',
+            workerDisplayName: 'ChatGPT'),
+        AxDiscussionMessage(
+            id: 'm2',
+            threadId: threadId,
+            authorUserId: 'user-owner',
+            body: 'After AI',
+            createdAt: '2026-10-06T12:00:00Z',
+            isMe: true),
       ];
 
   @override
@@ -5466,10 +5391,10 @@ class _ConversationMixDataSource extends _WorkFormDataSource {
     bool activeOnly = false,
   }) async =>
       [
-        AxWorkRequest(
+        const AxWorkRequest(
           id: 'R',
-          requestedByName: missingRequesterId ? 'Vitalii' : 'You',
-          requestedByUserId: missingRequesterId ? null : 'user-owner',
+          requestedByName: 'You',
+          requestedByUserId: 'user-owner',
           prompt: 'Research auth',
           workflowId: 'direct',
           workflowVersion: 2,

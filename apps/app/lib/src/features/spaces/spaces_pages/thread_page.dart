@@ -739,26 +739,21 @@ class _ThreadPageState extends State<ThreadPage>
         .addPostFrameCallback((_) => mounted ? _dispatchQueuedWork() : null);
   }
 
-  /// Conversation item IDs in display order; see [_mergeWorkIntoConversation].
+  /// Conversation item IDs in server timeline display order.
   List<String> _conversationIds() {
-    final groups = <(DateTime?, List<String>)>[
+    final timelineRequestIds = {
       for (final message in _chatPresentation.messages)
-        (DateTime.tryParse(message.createdAt)?.toLocal(), [message.id]),
-      for (final request in _workPresentation.requests)
-        (
-          DateTime.tryParse(request.createdAt)?.toLocal(),
-          ['work-${request.id}-request', 'work-${request.id}-answer'],
-        ),
+        if (message.workRequestId != null) message.workRequestId!,
+    };
+    return [
+      for (final message in _chatPresentation.messages) message.id,
+      if (!widget.isDraft)
+        for (final request in _workPresentation.requests)
+          if (!timelineRequestIds.contains(request.id)) ...[
+            'work-${request.id}-request',
+            'work-${request.id}-answer',
+          ],
     ];
-    final indexed = groups.indexed.toList()..sort(_byConversationTime);
-    return [for (final entry in indexed) ...entry.$2.$2];
-  }
-
-  static int _byConversationTime(
-      (int, (DateTime?, Object)) a, (int, (DateTime?, Object)) b) {
-    final left = a.$2.$1, right = b.$2.$1;
-    final byDate = left == null || right == null ? 0 : left.compareTo(right);
-    return byDate != 0 ? byDate : a.$1.compareTo(b.$1);
   }
 
   /// Work Requests are conversation entries too. The first Work page keeps a
@@ -2759,7 +2754,29 @@ class _ThreadPageState extends State<ThreadPage>
         cached.$5 == widget.isDraft) {
       return cached.$6;
     }
+    final activeRequests = widget.isDraft
+        ? const <String, AxWorkRequest>{}
+        : {
+            for (final request in requests)
+              if (request.status != 'completed' &&
+                  request.status != 'failed' &&
+                  request.status != 'cancelled')
+                request.id: request,
+          };
+    final timelineRequestIds = <String>{};
     final items = state.messages.map((message) {
+      if (message.workRequestId != null) {
+        timelineRequestIds.add(message.workRequestId!);
+      }
+      final activeRequest =
+          message.kind == 'ai_request' && message.workRequestId != null
+              ? activeRequests[message.workRequestId!]
+              : null;
+      if (activeRequest != null) {
+        return _workConversationItem(activeRequest,
+            currentUserId: widget.currentUserId,
+            currentUserName: widget.currentUserName);
+      }
       final isMe =
           widget.currentUserId != null && widget.currentUserId!.isNotEmpty
               ? message.authorUserId == widget.currentUserId
@@ -2795,7 +2812,18 @@ class _ThreadPageState extends State<ThreadPage>
           aiWorkRequestId: message.isAiEntry ? message.workRequestId : null,
           aiKind: message.isAiEntry ? message.kind : null);
     }).toList();
-    if (!widget.isDraft) _mergeWorkIntoConversation(items);
+    // Show requests not yet present in the server timeline (e.g. a newly
+    // submitted request before the timeline refreshes); once its `ai_request`
+    // item is in the server timeline, it renders there without duplication.
+    if (!widget.isDraft) {
+      for (final request in requests) {
+        if (!timelineRequestIds.contains(request.id)) {
+          items.add(_workConversationItem(request,
+              currentUserId: widget.currentUserId,
+              currentUserName: widget.currentUserName));
+        }
+      }
+    }
     _conversationCache = (
       state,
       requests,
@@ -3071,33 +3099,6 @@ class _ThreadPageState extends State<ThreadPage>
               responseAnchorKey:
                   _chatIncomingAnchor.keyFor('work-${request.id}-answer')),
     ]);
-  }
-
-  /// One conversation: Work Requests still in Work history appear between
-  /// Chat messages by request time, each followed by its answer or status.
-  void _mergeWorkIntoConversation(List<_DiscussionItem> messages) {
-    final requests = _workTimeline;
-    if (requests.isEmpty) return;
-    final liveRequestIds = requests.map((request) => request.id).toSet();
-    messages.removeWhere((message) =>
-        message.aiWorkRequestId != null &&
-        liveRequestIds.contains(message.aiWorkRequestId));
-    final groups = <(DateTime?, List<_DiscussionItem>)>[
-      for (final message in messages) (message.date, [message]),
-      for (final request in requests)
-        (
-          DateTime.tryParse(request.createdAt)?.toLocal(),
-          [
-            _workConversationItem(request,
-                currentUserId: widget.currentUserId,
-                currentUserName: widget.currentUserName)
-          ],
-        ),
-    ];
-    final indexed = groups.indexed.toList()..sort(_byConversationTime);
-    messages
-      ..clear()
-      ..addAll(indexed.expand((entry) => entry.$2.$2));
   }
 
   /// Message / Ask AI switch stacked in the composer's 32px left rail.

@@ -654,7 +654,7 @@ void main() {
         AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     final page = await api.loadDiscussionPage(
         threadId: 'w', limit: 30, before: 'cursor+/=');
-    expect(client.lastRequest!.url.path, '/api/threads/w/discussion-messages');
+    expect(client.lastRequest!.url.path, '/api/threads/w/timeline');
     expect(client.lastRequest!.url.queryParameters,
         {'limit': '30', 'cursor': 'cursor+/='});
     expect(page.messages.single.body, '  **source**\n');
