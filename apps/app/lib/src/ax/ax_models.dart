@@ -2897,63 +2897,6 @@ class AxAiCapabilityUpdateService {
   }
 }
 
-/// Allowed execution modes for a Space member granted access to a Worker.
-const axWorkerSpaceAccessModes = ['chat', 'work', 'work+shell'];
-
-/// One Space member's access configuration for a Worker Instance.
-class AxWorkerSpaceMemberAccess {
-  const AxWorkerSpaceMemberAccess({
-    required this.userId,
-    required this.displayName,
-    required this.email,
-    required this.role,
-    this.enabled = false,
-    this.mode = 'chat',
-  });
-
-  final String userId;
-  final String displayName;
-  final String email;
-  final String role;
-  final bool enabled;
-  final String mode;
-
-  AxWorkerSpaceMemberAccess copyWith({
-    bool? enabled,
-    String? mode,
-  }) =>
-      AxWorkerSpaceMemberAccess(
-        userId: userId,
-        displayName: displayName,
-        email: email,
-        role: role,
-        enabled: enabled ?? this.enabled,
-        mode: mode ?? this.mode,
-      );
-
-  factory AxWorkerSpaceMemberAccess.fromJson(Map<String, dynamic> json) {
-    final permissions = json['permissions'];
-    final rawMode = permissions is Map ? permissions['mode'] : null;
-    final mode = rawMode is String && axWorkerSpaceAccessModes.contains(rawMode)
-        ? rawMode
-        : 'chat';
-    return AxWorkerSpaceMemberAccess(
-      userId: _string(json, 'userId', ''),
-      displayName: _string(json, 'displayName', ''),
-      email: _string(json, 'email', ''),
-      role: _string(json, 'role', 'collaborator'),
-      enabled: json['enabled'] == true,
-      mode: mode,
-    );
-  }
-
-  Map<String, dynamic> toUpdateJson() => {
-        'userId': userId,
-        'enabled': enabled,
-        'permissions': {'mode': mode},
-      };
-}
-
 /// Models and efforts the owner allows every member to use on a Worker.
 /// Nothing is allowed until the owner ticks it.
 class AxWorkerMemberModelAccess {
@@ -2992,32 +2935,6 @@ class AxWorkerMemberModelAccess {
             if (e.value.isNotEmpty) e.key: e.value,
         },
       };
-}
-
-/// Space-scoped member access state for a Worker Instance.
-class AxWorkerSpaceAccess {
-  const AxWorkerSpaceAccess({
-    required this.workerId,
-    required this.spaceId,
-    this.members = const [],
-  });
-
-  final String workerId;
-  final String spaceId;
-  final List<AxWorkerSpaceMemberAccess> members;
-
-  factory AxWorkerSpaceAccess.fromJson(Map<String, dynamic> json) {
-    final rawMembers = json['members'] as List? ?? const [];
-    return AxWorkerSpaceAccess(
-      workerId: _string(json, 'workerId', ''),
-      spaceId: _string(json, 'spaceId', ''),
-      members: [
-        for (final item in rawMembers)
-          if (item is Map)
-            AxWorkerSpaceMemberAccess.fromJson(Map<String, dynamic>.from(item)),
-      ],
-    );
-  }
 }
 
 /// One Person Share of a Worker (ADR-043): Chat only, in the person's own

@@ -1516,39 +1516,6 @@ mixin _ThreadApi on _AxApiClientCore
   }
 
   @override
-  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
-      String workerId, String spaceId) async {
-    final uri = Uri.parse(
-            '$baseUrl/workers/${Uri.encodeComponent(workerId)}/space-access')
-        .replace(queryParameters: {'spaceId': spaceId});
-    return AxWorkerSpaceAccess.fromJson(await _getJson(uri));
-  }
-
-  @override
-  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
-    String workerId,
-    String spaceId,
-    List<AxWorkerSpaceMemberAccess> members,
-  ) async {
-    final response = await client.put(
-      Uri.parse(
-          '$baseUrl/workers/${Uri.encodeComponent(workerId)}/space-access'),
-      headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({
-        'spaceId': spaceId,
-        'members': [for (final m in members) m.toUpdateJson()],
-      }),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-          'Could not save Space member access (${response.statusCode})',
-          statusCode: response.statusCode);
-    }
-    return AxWorkerSpaceAccess.fromJson(
-        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
-
-  @override
   Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
       String workerId) async {
     final json = await _getJson(Uri.parse(

@@ -151,10 +151,6 @@ abstract interface class AxWorkerManagementSource {
   Future<McpWorkerPinState> loadMcpWorkerPin(String id);
   Future<void> setMcpWorkerPin(String id, McpWorkerVersion version);
   Future<void> clearMcpWorkerPin(String id);
-  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
-      String workerId, String spaceId);
-  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
-      String workerId, String spaceId, List<AxWorkerSpaceMemberAccess> members);
   Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
       String workerId);
   Future<AxWorkerMemberModelAccess> saveWorkerMemberModelAccess(

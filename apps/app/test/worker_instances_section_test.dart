@@ -450,18 +450,6 @@ class _ManagementSource implements AxWorkerManagementSource {
   @override
   Future<void> clearMcpWorkerPin(String id) async {}
   @override
-  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
-          String workerId, String spaceId) async =>
-      AxWorkerSpaceAccess(workerId: workerId, spaceId: spaceId);
-  @override
-  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
-    String workerId,
-    String spaceId,
-    List<AxWorkerSpaceMemberAccess> members,
-  ) async =>
-      AxWorkerSpaceAccess(
-          workerId: workerId, spaceId: spaceId, members: members);
-  @override
   Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
           String workerId) async =>
       const AxWorkerMemberModelAccess();
