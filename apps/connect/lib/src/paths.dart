@@ -97,7 +97,7 @@ class AgentPaths {
   }
 
   /// Owner-only access on POSIX hosts. Windows relies on the per-user
-  /// application-data ACL; see docs/specifications/WORKER_AGENT_CLI_AND_SERVICES.md.
+  /// application-data ACL; see docs/specifications/CONNECT_CLI_AND_SERVICES.md.
   static Future<void> restrict(FileSystemEntity entity) async {
     if (Platform.isWindows) return;
     final mode = entity is Directory ? '700' : '600';

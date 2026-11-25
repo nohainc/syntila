@@ -3,7 +3,7 @@
 - **Status:** Accepted and implemented
 - **Date:** 2026-11-19, revised 2026-11-24
 - **Depends on:** ADR-032 (Worker identity), ADR-033 (durable commands)
-- **Specifications:** [Worker pairing and sessions](../specifications/WORKER_PAIRING_AND_SESSIONS.md), [Connect CLI and services](../specifications/WORKER_AGENT_CLI_AND_SERVICES.md)
+- **Specifications:** [Worker pairing and sessions](../specifications/WORKER_PAIRING_AND_SESSIONS.md), [Connect CLI and services](../specifications/CONNECT_CLI_AND_SERVICES.md)
 
 ## Context
 

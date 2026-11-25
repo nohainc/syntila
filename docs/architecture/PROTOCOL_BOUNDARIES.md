@@ -1,7 +1,7 @@
 # Syntila Protocol Boundaries
 
-**Status:** Current product boundary contract. Local Worker Protocol 4.1 is the Workspace-to-Engine contract; 4.0 remains a negotiated compatibility version.
-**Applies to:** Syntila, Syntila Cloud, Syntila Workspace, and the CLI Worker Engine.
+**Status:** Current product boundary contract. Local Worker Protocol 4.1 is the Worker-to-Engine contract; 4.0 remains a negotiated compatibility version.
+**Applies to:** Syntila, Syntila Cloud, Syntila Worker, and the CLI Worker Engine.
 
 Syntila has three protocol boundaries. They share domain vocabulary, but each
 boundary has its own endpoints, authentication, transport, versioning, and wire
@@ -11,18 +11,18 @@ schemas.
 Syntila  <->  Syntila Cloud
                  Human Product Protocol
 
-Syntila Workspace  <->  Syntila Cloud
-                       Workspace Runtime Protocol
+Syntila Worker  <->  Syntila Cloud
+                       Worker Runtime Protocol
 
-Syntila Workspace  <->  CLI Worker Engine process
+Syntila Worker  <->  CLI Worker Engine process
                        Local Worker Protocol 4.1
 ```
 
 The arrows show the three product/runtime boundaries. The Human Product
 Protocol is primarily the AX-to-Cloud surface and includes only the
-owner-authenticated Workspace management routes explicitly defined by
+owner-authenticated Worker management routes explicitly defined by
 ADR-013/ADR-014. Cloud may implement both human-facing endpoints and the
-Workspace Gateway, but those are separate surfaces with separate
+Worker Gateway, but those are separate surfaces with separate
 authentication and contracts.
 
 ## 1. AX ↔ Cloud — Human Product Protocol
@@ -35,7 +35,7 @@ endpoints.
 by AX; AX owns human-facing product behavior.
 
 This protocol carries Spaces, Threads, collaboration, Thread
-execution policy, Workspace grants, human-readable Workspace/Worker inventory,
+execution policy, Worker grants, human-readable Worker/Worker inventory,
 results, artifacts, and audit/read models. AX uses it to request product
 actions and display Cloud-authoritative state.
 
@@ -43,74 +43,74 @@ Critical creation routes support the [v1 mutation idempotency contract](../speci
 through an optional `Idempotency-Key` header. AX retains keys for explicit retries;
 connectivity restoration never replays Work execution automatically.
 
-AX MUST NOT open a Workspace Runtime Protocol connection, construct runtime
-messages, or authenticate as a Workspace machine. AX cannot dispatch an
-assignment directly to a Workspace or provider CLI. Cloud authorizes and
-schedules work, then dispatches it through the Workspace Runtime Protocol.
-Workspace executes it with the generic CLI Worker Engine.
+AX MUST NOT open a Worker Runtime Protocol connection, construct runtime
+messages, or authenticate as a Worker machine. AX cannot dispatch an
+assignment directly to a Worker or provider CLI. Cloud authorizes and
+schedules work, then dispatches it through the Worker Runtime Protocol.
+Worker executes it with the generic CLI Worker Engine.
 
-The Workspace CLI's owner-authenticated account and registration requests
+The Worker CLI's owner-authenticated account and registration requests
 remain explicitly scoped management routes on Cloud's human-authenticated HTTP
 surface, as defined by ADR-013/ADR-014. They use the Human Product Protocol's
-HTTPS management surface, not the Workspace Runtime Protocol. Those requests
-do not carry runtime assignments and do not make the Workspace CLI an AX
-client. The separate runtime credential and Workspace Runtime Protocol remain
+HTTPS management surface, not the Worker Runtime Protocol. Those requests
+do not carry runtime assignments and do not make the Worker CLI an AX
+client. The separate runtime credential and Worker Runtime Protocol remain
 required for machine participation.
 
-## 2. Workspace ↔ Cloud — Workspace Runtime Protocol
+## 2. Worker ↔ Cloud — Worker Runtime Protocol
 
-**Endpoints:** the Syntila Workspace runtime and Cloud's Workspace Gateway.  
-**Authentication:** a machine runtime credential bound to one Workspace
+**Endpoints:** the Syntila Worker runtime and Cloud's Worker Gateway.  
+**Authentication:** a machine runtime credential bound to one Worker
 runtime, sent as a Bearer credential in the `Authorization` header. Runtime
 credentials MUST NOT be accepted from WebSocket URL query parameters.
 **Transport:** WSS is primary; HTTPS long-poll is the functional fallback.
-Workspace retries WSS after 5 minutes, doubling the interval after failures
+Worker retries WSS after 5 minutes, doubling the interval after failures
 to a maximum of one hour. Wake/app resume resets the delay and requests a
 fresh WSS attempt while HTTPS is Ready. Each WSS attempt uses a fresh network
 client; timed-out or superseded attempts close late sockets. HTTPS stays active
 during the upgrade attempt. Cloud accepts only one active runtime session, so
-an accepted upgrade fences the HTTPS session; Workspace then tears down its
+an accepted upgrade fences the HTTPS session; Worker then tears down its
 old timers, subscription, transport and session state before authenticating and
 synchronizing WSS. WSS is Ready only after synchronization, inventory and
 assignment reconciliation complete; failure restores HTTPS through reconnect.
 Automatic recovery does not invoke the human owner disconnect workflow.
-**Contract ownership:** the versioned Workspace Runtime Protocol schema and
+**Contract ownership:** the versioned Worker Runtime Protocol schema and
 Cloud Gateway implementation.
 
 This protocol carries runtime hello/heartbeat, safe Worker inventory and
 status, assignment delivery/acknowledgement/progress/results/errors, and
-cancellation. Cloud scheduling and Workspace execution use this boundary;
+cancellation. Cloud scheduling and Worker execution use this boundary;
 transport choice does not change assignment semantics.
 
 Cloud-facing Worker Type IDs are product concepts. Space and Thread
-policy, Workspace inventory, and assignment snapshots use IDs such as
+policy, Worker inventory, and assignment snapshots use IDs such as
 `chatgpt` and `gemini`; internal Worker release identifiers are not accepted
 in this protocol.
-Cloud forwards the selected product Worker Type ID unchanged. Workspace
+Cloud forwards the selected product Worker Type ID unchanged. Worker
 validates it against the selected local Worker slot, then resolves the admitted
 Engine and compatible official Tool Profile Release for that logical Worker.
 AX therefore does not need to know which Engine build or Profile implements a
 product Worker.
 
-Only Syntila Workspace speaks this protocol as a client. Cloud's Workspace
+Only Syntila Worker speaks this protocol as a client. Cloud's Worker
 Gateway is its server. Syntila is not a runtime client. CLI Worker Engine
 processes are not runtime clients and MUST NOT connect to Cloud, invoke
-Workspace Gateway routes, or receive the Workspace runtime credential.
-Workspace translates between runtime messages and Local Worker Protocol 4.1
+Worker Gateway routes, or receive the Worker runtime credential.
+Worker translates between runtime messages and Local Worker Protocol 4.1
 frames.
 
 The current implementation is named
-`syntila.workspace-runtime-protocol` and is defined in
-`packages/workspace-runtime-protocol/src/workspace-runtime.ts`. Keep its runtime identity,
+`syntila.worker-agent-protocol` and is defined in
+`packages/worker-agent-protocol/src/workspace-runtime.ts`. Keep its runtime identity,
 authentication, transport negotiation, and assignment envelopes inside this
 boundary.
 
-## 3. Workspace ↔ CLI Worker Engine — Local Worker Protocol 4.1
+## 3. Worker ↔ CLI Worker Engine — Local Worker Protocol 4.1
 
-**Endpoints:** Syntila Workspace process supervisor and one generic CLI Worker Engine child process.  
+**Endpoints:** Syntila Worker process supervisor and one generic CLI Worker Engine child process.  
 **Authentication:** local admission only; no Cloud/human credential is present.  
 **Transport:** versioned NDJSON over stdin/stdout.  
-**Contract ownership:** Workspace + shared protocol package; Engine implements it.
+**Contract ownership:** Worker + shared protocol package; Engine implements it.
 
 Protocol 4.1 carries:
 - initialize;
@@ -131,17 +131,17 @@ seconds. For live probes, the Engine supplies the fixed Syntila test prompt
 and requires exact final text `OK`; Profiles can define only provider transport
 and output parsing.
 
-Workspace owns Engine/Profile admission, process lifetime, local permissions, CWD, cancellation and safe Cloud synchronization. Workspace does not discover or invoke provider CLIs directly.
+Worker owns Engine/Profile admission, process lifetime, local permissions, CWD, cancellation and safe Cloud synchronization. Worker does not discover or invoke provider CLIs directly.
 
-Cloud-to-Workspace assignments carry only the canonical execution permission
+Cloud-to-Worker assignments carry only the canonical execution permission
 IDs `repository:read`, `repository:write`, `shell:execute`, and `network:use`.
-Cloud derives its assignment set from Space role and Workspace Grant policy;
-Workspace independently enforces that set against local Worker permissions.
+Cloud derives its assignment set from Space role and Worker Grant policy;
+Worker independently enforces that set against local Worker permissions.
 Local permission identifiers are not aliases or Cloud-side boundaries.
 
-The Engine owns provider execution through one Workspace-admitted Worker Profile. It may launch only the resolved provider CLI using structured arguments with shell execution disabled. It never receives Workspace runtime credentials and never connects directly to Cloud.
+The Engine owns provider execution through one Worker-admitted Worker Profile. It may launch only the resolved provider CLI using structured arguments with shell execution disabled. It never receives Worker runtime credentials and never connects directly to Cloud.
 
-Tool Profiles are not protocol peers. They are immutable behavior configuration consumed locally by the Engine after Workspace digest/schema/compatibility admission. Profiles cannot disable Engine security invariants or add arbitrary process execution.
+Tool Profiles are not protocol peers. They are immutable behavior configuration consumed locally by the Engine after Worker digest/schema/compatibility admission. Profiles cannot disable Engine security invariants or add arbitrary process execution.
 
 Provider credentials and provider session IDs are not intentionally sent as
 Local Worker Protocol fields; arbitrary Cloud executable paths and shell commands
@@ -156,12 +156,12 @@ raw provider streams are not protocol fields.
 
 Durable execute requests may carry version 1 `workerSession` metadata: Syntila
 session, Conversation, and Worker IDs plus a frozen context target revision.
-Workspace validates ownership before forwarding it; the Engine retains native
-handles in Workspace-local state only. Model and effort changes do not partition
+Worker validates ownership before forwarding it; the Engine retains native
+handles in Worker-local state only. Model and effort changes do not partition
 sessions. See [Conversation Continuity Phase 6](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-6--workspace-owned-worker-sessions)
 for local file upgrades, context synchronization limits, and coordinated rollout.
 
-Local Worker Protocol 4.1 is the sole Workspace-to-Engine protocol contract;
+Local Worker Protocol 4.1 is the sole Worker-to-Engine protocol contract;
 4.0 remains supported only through version negotiation during migration.
 Provider identity, release state, and executable paths do not cross this
 boundary as caller-controlled values.
@@ -174,9 +174,9 @@ These names describe Syntila domain values used across boundaries:
 | --- | --- |
 | `SpaceId` | Stable identity of a collaboration Space |
 | `ThreadId` | Stable identity of a persistent unit of work |
-| `WorkspaceId` | Cloud identity of a registered machine Workspace |
-| `WorkspaceRuntimeId` | Identity of the connected machine runtime |
-| `WorkerId` | Identity of one Workspace-owned local Worker slot/configuration |
+| `WorkerId` | Cloud identity of a registered machine Worker |
+| `WorkerRuntimeId` | Identity of the connected machine runtime |
+| `WorkerId` | Identity of one Worker-owned local Worker slot/configuration |
 | `WorkerTypeId` | Stable product integration type, such as `chatgpt` or `gemini` |
 | `AssignmentId` | Identity of one immutable unit of scheduled execution |
 | `RunId` | Identity of the orchestration Run containing work |
@@ -189,7 +189,7 @@ These are canonical domain concepts, not a shared message envelope. At the
 wire boundary, each protocol owns its own versioned schemas, required fields,
 field names, validation, and authentication context. A value such as
 `AssignmentId` may appear in multiple protocol payloads, but a Human Product
-Protocol request, Workspace Runtime Protocol frame, and Local Worker Protocol
+Protocol request, Worker Runtime Protocol frame, and Local Worker Protocol
 frame are never interchangeable. Do not import one protocol's envelope or
 transport into another boundary to reuse these names.
 
@@ -203,12 +203,12 @@ wire contracts.
 | Flow | Client | Server/process peer | Protocol | Credentials allowed |
 | --- | --- | --- | --- | --- |
 | Product and collaboration actions/read models | Syntila | Cloud human API/realtime | Human Product Protocol | Human session |
-| Owner/account management | Workspace management CLI | Cloud management routes | Human Product Protocol, HTTPS management surface | Human session |
-| Inventory, assignments, progress, cancellation | Workspace runtime | Cloud Workspace Gateway | Workspace Runtime Protocol | Workspace runtime credential |
-| Local setup, readiness, execution, progress, result | Workspace supervisor | CLI Worker Engine process | Local Worker Protocol 4.1 | Bounded non-secret settings; no provider tokens or account secrets |
+| Owner/account management | Worker management CLI | Cloud management routes | Human Product Protocol, HTTPS management surface | Human session |
+| Inventory, assignments, progress, cancellation | Worker runtime | Cloud Worker Gateway | Worker Runtime Protocol | Worker runtime credential |
+| Local setup, readiness, execution, progress, result | Worker supervisor | CLI Worker Engine process | Local Worker Protocol 4.1 | Bounded non-secret settings; no provider tokens or account secrets |
 
 Cloud may translate and persist domain state between its product API and
-Workspace Gateway. Workspace may translate between its Cloud runtime client
+Worker Gateway. Worker may translate between its Cloud runtime client
 and CLI Worker Engine process. Neither translation forwards a wire envelope
 unchanged across a boundary.
 
@@ -217,11 +217,11 @@ unchanged across a boundary.
 - Human Product Protocol: AX `apps/app/lib/src/ax/ax_data.dart` and
   `apps/app/lib/src/realtime/realtime_client.dart`; Cloud
   `apps/cloud/src/routes/handlers.ts` and `apps/cloud/src/realtime-gateway.ts`.
-- Workspace Runtime Protocol: Workspace
+- Worker Runtime Protocol: Worker
   `apps/workspace/lib/cloud_connection.dart`; schema
-  `packages/workspace-runtime-protocol/src/workspace-runtime.ts`; Cloud
+  `packages/worker-agent-protocol/src/workspace-runtime.ts`; Cloud
   `apps/cloud/src/workspace-gateway.ts`.
-- Local Worker Protocol 4.1: implemented by the Workspace supervisor
+- Local Worker Protocol 4.1: implemented by the Worker supervisor
   `apps/workspace/lib/cli_worker_engine_supervisor.dart`, assignment handler
   `apps/workspace/lib/worker_executor.dart`, generic Engine
   `engines/cli_worker/lib/src/cli_worker_engine.dart`, and shared schema
@@ -229,7 +229,7 @@ unchanged across a boundary.
 - Canonical domain model: domain entities in `packages/core/src` and the
   canonical vocabulary in this document; wire validators remain protocol-owned.
 
-Protocol binding generation covers the product envelope, Cloud Workspace
+Protocol binding generation covers the product envelope, Cloud Worker
 message metadata, and realtime event metadata. It does not generate Local
 Worker Protocol bindings: `packages/syntila_worker_protocol` is the single
 source for Worker Protocol 4.1 models and validation.
@@ -239,30 +239,30 @@ synchronizes on reopening, and reconciles optimistic sends and edits per message
 
 Human Product realtime collaboration signals and independent durable Space/user
 stream sequencing are specified in [Realtime synchronization 1.1](../specifications/REALTIME_SYNCHRONIZATION.md).
-Existing execution Workspace envelopes remain compatible; this does not change
-Workspace Runtime or Local Worker Protocol transport.
+Existing Worker envelopes remain compatible; this does not change
+Worker Runtime or Local Worker Protocol transport.
 
-Workspace Space grant collections and the additive aggregate count in
+Worker Space grant collections and the additive aggregate count in
 `GET /api/workspaces` are Human Product HTTP read models. Their versioned
 read model contract 1.1 preserves
 existing mutation endpoints and authorization. Runtime inventory and grant
-admission still belong to their existing Cloud/Workspace boundaries.
+admission still belong to their existing Cloud/Worker boundaries.
 
 
 For model replacement, version 1 `workerSession` may also contain optional version
 1 `bootstrap`: Syntila Conversation/context IDs, a frozen canonical history
 sequence, and bounded canonical history text. Cloud route modules build this
-snapshot from Syntila history; Workspace validates its scope and forwards it to
+snapshot from Syntila history; Worker validates its scope and forwards it to
 the generic Engine. The Engine consumes it only for a new native session. Provider
 handles remain local. Strict older readers reject the additive field, requiring
-Workspace/Engine rollout before Cloud emits it. See
+Worker/Engine rollout before Cloud emits it. See
 [Conversation Continuity Phase 14](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-14--same-worker-different-model).
 
 
 Phase 15 supplies bootstrap context for every manual durable Conversation Worker.
 An optional version 1 bootstrap `turnRevision` freezes the accepted request; each
 history entry carries `contextRevision`, and `throughSequence` freezes dispatch-time
-facts. Updated Workspace/Engine readers must precede Cloud rollout. The generic
+facts. Updated Worker/Engine readers must precede Cloud rollout. The generic
 Engine forwards full context for new sessions or missed context alongside a resumed
 turn, and records synchronization only after success. Worker switching remains a
 next-turn product selection. See
@@ -272,7 +272,7 @@ next-turn product selection. See
 Phase 16 adds version 1 structured Bootstrap/Delta/Stateless context documents
 inside bounded canonical context text. Stateless assignments and ExecuteRequest
 may include optional `statelessContext`, rejected for durable execution. Workflow
-state is explicit and provider independent. Workspace/Engine updates must precede
+state is explicit and provider independent. Worker/Engine updates must precede
 Cloud emission. See [Context Engine](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-16--provider-independent-context-engine).
 
 

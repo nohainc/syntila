@@ -142,7 +142,7 @@ distinct keys. This changes no persisted schema; previously rejected colon-based
 keys never created usable Engine sessions.
 
 AX exposes explicit repository read, repository write, and shell execution
-choices when connecting a Workspace. Workspace owners can edit an active or
+choices when connecting a Worker. Worker owners can edit an active or
 suspended Space grant through `PATCH /api/workspace-space-grants/:id` with
 `allowedPermissions`; the existing permission validator, ownership check, and
 terminal-state restrictions apply. Omitted permissions remain unchanged.
@@ -151,8 +151,8 @@ Work (`direct`) requires `repository:read` and `repository:write`; Test also req
 Run admission errors are selectable and have a copy action for the full message.
 
 This is the single authoritative catalog and semantic definition for Work v1.
-Architecture v8 preserves Workspace ownership, Thread isolation,
-Cloud/Workspace transport, AX-owned Worker usage policy, and the Workspace
+Architecture v8 preserves Worker ownership, Thread isolation,
+Cloud/Worker transport, AX-owned Worker usage policy, and the Worker
 desktop lifecycle. Work v1 binds logical Workers and is intentionally
 independent from the underlying Engine/Profile implementation. See
 [Persistence Contracts](PERSISTENCE.md),
@@ -160,7 +160,7 @@ Architecture v8, and
 ADR-011 for the
 matching runtime lease and local directory rules. A Work v1 Workflow describes
 the user-visible shape of a Work Request; it does not select a Worker, provider,
-model, Workspace, or execution permission.
+model, Worker, or execution permission.
 
 The product flow is:
 
@@ -227,7 +227,7 @@ and validate their original Workflow snapshot and version; they are not rewritte
 AX offers the latest version of each ID for new requests while using the full
 catalog to display historical versions. The API catalog includes both versions.
 
-Research v2 (ADR-026) runs independent researchers within the Workspace's
+Research v2 (ADR-026) runs independent researchers within the Worker's
 shared parallel-slot budget, then synthesis after every researcher succeeds.
 Excess branches remain durably queued; Research capacity waits do not consume
 the provider execution deadline. A single free slot is sufficient to run the
@@ -285,16 +285,16 @@ are part of the immutable Workflow version.
 
 ## Before submission
 
-Selecting a Workflow Workspace authorizes Cloud scheduling for its ready,
+Selecting a Workflow Worker authorizes Cloud scheduling for its ready,
 locally enabled Workers. Inventory synchronization reconciles that scheduling
 state for Workers configured or verified after the selection, and also repairs
 existing disabled scheduling rows on unchanged inventory reports. It does not
 enable locally disabled or unready Workers, and preserves draining Workers and
 Cloud concurrency limits. Assignment admission still checks active grants,
-permissions, Workspace connectivity and Thread policy independently.
+permissions, Worker connectivity and Thread policy independently.
 
 Before creating a Work Request, Cloud resolves every required Step binding and
-checks that each Worker exists, belongs to an active Space Workspace grant,
+checks that each Worker exists, belongs to an active Space Worker grant,
 is enabled locally and for Cloud scheduling, and is Ready. Cloud also checks
 that the grant allows the permissions needed by the Step. Any explicitly configured model must
 be permitted by the Thread execution policy; if that policy has an explicit
@@ -336,11 +336,11 @@ state using provider-supported read-only commands. It must not create, modify,
 delete or rename files, change Git state, install or update dependencies, or
 perform implementation work. Modification requests receive an explanation and
 guidance to use Work mode. Responses use natural language and Markdown.
-The assignment's `readOnly` policy enforces the existing generic Workspace and
+The assignment's `readOnly` policy enforces the existing generic Worker and
 Tool Profile sandbox path; the prompt does not grant writable access.
 
 Cloud derives `TaskToDispatch.readOnly` from the snapshotted Step's
-`readWritePolicy`; the step definition is authoritative. Workspace maps
+`readWritePolicy`; the step definition is authoritative. Worker maps
 `readOnly: true` or `executionClass: stateless_read` to
 `WorkerExecutionPolicy.providerDefault`, and writable stateful assignments to
 `WorkerExecutionPolicy.restricted`. Workflow names, UI mode labels and provider
@@ -419,7 +419,7 @@ selections; current composer choices never rewrite them.
 
 Failed responses and request details use plain-language execution messages.
 Native session identifiers, resume statuses, assignment IDs, runtime versions
-and raw error codes belong in Workspace/Engine logs and Profile Lab diagnostics,
+and raw error codes belong in Worker/Engine logs and Profile Lab diagnostics,
 not ordinary Chat/Work details. Recovery notices require confirmed recovery;
 an error alone never implies that the conversation context was restored.
 
@@ -489,7 +489,7 @@ surfaces those counts separately as a short Test summary.
 
 ## Run details and observability
 
-**Rollout status:** Local Workspace and Cloud can carry provider failure
+**Rollout status:** Local Worker and Cloud can carry provider failure
 details when encryption is configured. Display in the Work UI is a separate
 phase. The target semantics, credential boundary, rollout and verification are
 specified in
@@ -541,13 +541,13 @@ message, and failed status:
   failures use the current key; older envelopes stay readable until their
   retention ends and the previous key is removed. There is no re-encryption
   tool; envelopes without a `keyId` try every configured key. Database
-  restoration requires the corresponding keys. Workspace replay treats an
+  restoration requires the corresponding keys. Worker replay treats an
   undecryptable local record as "details unavailable" and keeps the canonical
   failure and the rest of the journal readable. Journal compaction is deferred
   while a current record has unavailable details, preserving ciphertext for
   recovery if the original key becomes available again.
   Cloud may advertise `assignment.provider_failure_unavailable.v1` when its
-  failure encryption key is configured. A Workspace replaying a failure whose
+  failure encryption key is configured. A Worker replaying a failure whose
   details cannot be decrypted sends `providerFailureUnavailable: true` only
   with that capability, and never alongside `providerFailure`. Cloud retains
   this content-free marker with the matching attempt and exposes it only on
@@ -571,16 +571,16 @@ message, and failed status:
   version and send canonical-only failures. For MCP Worker failures, original
   plugin-supplied fields use source `plugin`; fields containing detected launch
   secrets are omitted and identified in `omittedFields`.
-  Workspace <-> Cloud `assignment.error` carries `providerFailure` as an
+  Worker <-> Cloud `assignment.error` carries `providerFailure` as an
   optional field; old peers ignore or omit it without rejecting terminal
   messages or losing the canonical failure. Rollout order: (1) Protocol &
-  Profile schemas, (2) Cloud persistence/reads, (3) Engine & Workspace
+  Profile schemas, (2) Cloud persistence/reads, (3) Engine & Worker
   delivery, (4) Work UI.
 
 The Work timeline stays concise and links to a separately loaded Run details
 view. Details use the immutable Work Request and Step records and show the
 Workflow ID/version, original request, and each Step's status, assigned Worker,
-Workspace and Engine versions, provider tool version when known, start/end/duration,
+Worker and Engine versions, provider tool version when known, start/end/duration,
 and bounded final result text. A queued Step may have no start time; a running
 Step has elapsed time through the time details are loaded and no end time.
 
@@ -658,13 +658,13 @@ Step. Cloud acquires one Thread runtime lease before that request starts and
 holds it through a terminal state; a stateless-only Work Request has no lease.
 The request-level lease prevents another stateful Work Request from
 interleaving between Steps and keeps all stateful Steps on the Primary
-Workspace. Research and Plan remain stateless and read-only, and may run on
-another eligible granted Workspace even while their Work Request holds a lease
+Worker. Research and Plan remain stateless and read-only, and may run on
+another eligible granted Worker even while their Work Request holds a lease
 for later stateful Steps. A stateful read-only Step keeps that lease to inspect
 the exact current filesystem, while its effective permissions exclude
 repository write. Shell
 execution is withheld except for Test, which needs it for validation commands;
-Test still has read-only effective filesystem permissions. Workspace passes
+Test still has read-only effective filesystem permissions. Worker passes
 the explicit policy through the generic CLI Worker Engine, which applies the
 signed Tool Profile's bounded provider CLI arguments and sandbox settings.
 Verify always uses its own Work Request-scoped provider session, including when
@@ -869,7 +869,7 @@ Attachments are validated as bounded request inputs and are materialized inside
 the authorized Space work directory. Worker/Profile capability metadata is not
 used to admit or reject them; workflow policy and the Space grant's execution
 permissions remain authoritative. URL references are ordinary text references
-and do not request provider fetching by Workspace. Chat, Work, Research, and
+and do not request provider fetching by Worker. Chat, Work, Research, and
 Implement receive safe relative file references; Plan receives attachment
 metadata, and Test/Verify use their defined handoff inputs.
 Thread-local execution materializes file bytes under
@@ -881,9 +881,9 @@ the client. The same materialized files are immutable across retries.
 
 File inputs follow [Input Delivery v1](INPUT_DELIVERY_V1.md): the request is
 accepted with a file manifest, AX uploads the files afterwards in parallel,
-the target Workspace Service downloads each file over authenticated HTTPS as
+the target Syntila Connect downloads each file over authenticated HTTPS as
 soon as it is uploaded, and the Workflow dispatches the first step only after
-every file is verified on the Workspace. `assignment.start` carries file
+every file is verified on the Worker. `assignment.start` carries file
 references (`fileId`, `contentDigest`), never file content.
 
 This
@@ -924,13 +924,13 @@ rebootstrapped rather than upgraded through a compatibility layer.
 Work Requests selecting Work use the configured `direct` Worker binding and hold a
 Thread runtime lease for the request because Work contains the stateful
 `implement` Step. Cloud dispatches the assignment to
-the selected Worker's Workspace; the Workspace starts the generic CLI Worker
+the selected Worker's Worker; the Worker starts the generic CLI Worker
 Engine, which resolves the signed Tool Profile and starts the provider CLI.
 Work Requests, step progress, logical Worker and Engine/Profile/provider CLI attribution,
 timing, and final results are available to AX through the Thread history
 API. The timeline reconstructs from Cloud after page reload or browser restart,
 and each Run retains its original request text. Work requests use the same
-assignment dispatcher and Workspace execution path as Workflow Steps.
+assignment dispatcher and Worker execution path as Workflow Steps.
 
 Work lifecycle changes publish durable Cloud realtime events: `work_request`
 creation/start/completion/failure/cancellation and Step
@@ -941,8 +941,8 @@ shows product Step names and states such as `running`, `done`, and `waiting`;
 assignment identifiers and lease details remain out of the user-facing card.
 
 Cancellation is available for queued and running Work Requests. For an active
-assignment, Cloud waits for the Workspace runtime to acknowledge cancellation
-after terminating the Worker and its provider process tree. If the Workspace
+assignment, Cloud waits for the Worker runtime to acknowledge cancellation
+after terminating the Worker and its provider process tree. If the Worker
 does not confirm termination, cancellation fails and the Run remains active so
 the user can retry. On confirmation, the current Step and queued downstream
 Steps become cancelled; completed earlier Step results remain available in Run
@@ -998,7 +998,7 @@ StepKind guidance. The run-specific request remains a separate labeled input;
 handoff data continues to be selected and supplied by Syntila.
 
 AX may offer a one-click suggested setup using Ready Workers available through
-Space Workspace grants. The mixed ChatGPT/Gemini suggestion and single-Worker
+Space Worker grants. The mixed ChatGPT/Gemini suggestion and single-Worker
 suggestions are UI conveniences only: they do not constrain the catalog or
 execution model, and users may edit every binding afterward.
 
@@ -1013,7 +1013,7 @@ execution model, and users may edit every binding afterward.
 - custom conditional branches.
 
 Workflow selection does not override AX-owned Step binding/model/fallback
-policy, Cloud authorization, Workspace readiness, local permissions, or
+policy, Cloud authorization, Worker readiness, local permissions, or
 Thread execution rules. The Work request text remains user input; Syntila
 system prompts and the meaning of each `StepKind` remain product-owned.
 
@@ -1025,7 +1025,7 @@ must not maintain a duplicate Workflow list.
 
 ## Architecture v8 runtime note
 
-Work v1 continues to resolve `chatgpt`, `gemini`, and future logical Worker IDs only. Workspace resolves the selected logical Worker to an admitted generic CLI Worker Engine plus official compatible Tool Profile locally. Workflow definitions and Step prompt semantics never depend on Profile IDs or provider CLI command formats.
+Work v1 continues to resolve `chatgpt`, `gemini`, and future logical Worker IDs only. Worker resolves the selected logical Worker to an admitted generic CLI Worker Engine plus official compatible Tool Profile locally. Workflow definitions and Step prompt semantics never depend on Profile IDs or provider CLI command formats.
 
 
 ## Chat catalog schema admission
@@ -1192,9 +1192,9 @@ global defaults. All Threads use the Space configuration. Saving forks a workflo
 resetting restores owner-global inheritance. Advanced execution controls remain
 on global Workflows and this Space tab. Run snapshots retain accepted choices.
 
-Workflow admission is restricted to the global or Space-selected Workspace.
-Every Workflow step must name an explicit Worker from that Workspace; Cloud never
-selects a replacement Worker. A confirmed Workspace change
+Workflow admission is restricted to the global or Space-selected Worker.
+Every Workflow step must name an explicit Worker from that Worker; Cloud never
+selects a replacement Worker. A confirmed Worker change
 resets scope preferences but leaves accepted execution snapshots and retries
-unchanged. Workspace selection, grant authorization, and migration 0022 are
+unchanged. Worker selection, grant authorization, and migration 0022 are
 specified in [User Workflow Configuration v1](USER_WORKFLOW_CONFIGURATION_V1.md#workspace-selection).

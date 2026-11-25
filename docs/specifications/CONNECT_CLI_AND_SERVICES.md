@@ -1,6 +1,6 @@
 # Worker Agent: CLI, local state, reconnect and services
 
-Implements the client side of ADR-034 (Worker-first P4). Package: `apps/worker_agent` (`syntila_worker_agent`, binary `syntila-worker`). Server side: `WORKER_PAIRING_AND_SESSIONS.md`. Runtime design: `WORKER_AGENT_RUNTIME_V1.md`.
+Implements the client side of ADR-034. Package: `apps/connect` (binary `syntila-connect`). Server side: `WORKER_PAIRING_AND_SESSIONS.md`.
 
 ## What is in the package
 

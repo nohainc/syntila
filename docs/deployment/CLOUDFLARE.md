@@ -1,7 +1,7 @@
 # Syntila Cloudflare Deployment
 
 Current product and runtime boundaries are documented in Architecture v8.
-Operational guidance for signed Workspace and Tool Profile releases is in Workspace release operations and
+Operational guidance for signed Worker and Tool Profile releases is in Worker release operations and
 Release Trust and Rotation.
 
 ## Domain plan
@@ -15,7 +15,7 @@ Release Trust and Rotation.
 
 The public site is deployed independently from the authenticated application.
 Its production Worker owns only `conclaveax.com` and `www.conclaveax.com`.
-It does not handle `/api/*`, `syntila.app`, Workspace Gateway traffic, or
+It does not handle `/api/*`, `syntila.app`, Worker Gateway traffic, or
 Better Auth callbacks. PR previews use a separate temporary Workers name with
 no production custom-domain routes; merging to `main` deploys the production
 site through `.github/workflows/deploy-site.yml`.
@@ -62,7 +62,7 @@ repository access. Repository authorization is a separate future integration.
 Set these values in the Worker environment:
 
 - `BETTER_AUTH_URL` — application origin, such as `https://syntila.app`;
-- `SYNTILA_APP_URL` — browser application origin used for desktop Workspace
+- `SYNTILA_APP_URL` — browser application origin used for desktop Worker
   approval pages, such as `https://syntila.app`. Set this separately
   when the Cloud API and browser application use different origins or local
   development ports.
@@ -213,7 +213,7 @@ V9 Profile publication does not require a Profile signing key or Profile trust
 root. Cloud revalidates the candidate JSON, canonical digest, evidence, and
 expected revision, then publishes the current Profile atomically. The
 `SYNTILA_RELEASE_PUBLISHER` and `SYNTILA_RELEASE_TRUST_KEYS_JSON` settings
-remain only for Workspace application-release verification.
+remain only for Worker application-release verification.
 
 Profile Lab requires the active browser account `vitalii@nohainc.com`.
 Both Wrangler configurations set `SYNTILA_PROFILE_LAB_OWNER_EMAIL`; this exclusive
@@ -259,7 +259,7 @@ deployment.
 After applying production D1 migrations and before deploying
 `syntila.app`, the workflow runs
 `scripts/production-workspace-gateway-smoke.mjs --schema-only`. It compares the
-stored `CREATE TABLE` definitions and columns for the Workspace and desktop
+stored `CREATE TABLE` definitions and columns for the Worker and desktop
 auth tables with the versioned migration contract. It explicitly requires
 both supported audiences in both desktop auth constraints and reports a legacy
 single-audience constraint with an instruction to apply pending migrations.
@@ -268,19 +268,19 @@ only reads schema metadata; it never repairs table definitions.
 
 After deploying `syntila.app`, the same script runs as a production
 acceptance gate. It creates one disposable AX browser session and exercises the
-Workspace desktop-auth lifecycle: create an intent, approve it in the browser
+Worker desktop-auth lifecycle: create an intent, approve it in the browser
 session, claim it, and validate the resulting `syntila.desktop.management`
 session. For Profile Lab, it creates an intent and requires browser approval to
 reject the disposable non-owner identity. The rejected intent must remain
-unapproved and unclaimable; Workspace credentials must also be rejected by Lab
+unapproved and unclaimable; Worker credentials must also be rejected by Lab
 administration. Positive owner authentication is covered by the Cloud acceptance
 tests and requires the real owner account for a live browser check.
-The smoke uses the Workspace session to register
-a uniquely named Workspace, performs an HTTP/1.1 WebSocket upgrade, sends
+The smoke uses the Worker session to register
+a uniquely named Worker, performs an HTTP/1.1 WebSocket upgrade, sends
 `workspace.hello`, requires the matching `workspace.hello.ack`, requests
 synchronization and requires a correlated `workspace.sync.result`, verifies the
 persisted Gateway session, and deletes both desktop auth flows plus the
-disposable Workspace and user rows in `finally` cleanup. No Profile release
+disposable Worker and user rows in `finally` cleanup. No Profile release
 operation is part of this smoke.
 
 The GitHub Actions secret `BETTER_AUTH_SECRET` must match the
@@ -293,9 +293,9 @@ Gateway exchange, or cleanup fails the deployment workflow. The smoke uses DML
 only for disposable rows and does not change production table definitions.
 
 That automated deployment acceptance does not replace the packaged desktop
-lifecycle release run. Before publishing a Workspace release, execute
+lifecycle release run. Before publishing a Worker release, execute
 the production scenarios in the
-Workspace lifecycle release validation runbook
+Worker lifecycle release validation runbook
 (written for the earlier desktop app; apply the scenarios that still map to the
 CLI and service, such as restart persistence and reauthentication). The runbook distinguishes automated CI evidence from
 required production-device evidence.
@@ -309,11 +309,11 @@ The custom-domain route in `infra/cloudflare/app.wrangler.jsonc` targets `syntil
 Wrangler applies Durable Object migrations in sequence. Preserve every tag in
 `infra/cloudflare/app.wrangler.jsonc` when deploying or re-provisioning; the
 earlier tags are retained only because Cloudflare applies migration history
-cumulatively. The active runtime binding is `WorkspaceGateway`.
+cumulatively. The active runtime binding is `WorkerGateway`.
 
 ### D1 Database Provisioning
 New development databases use the clean v8 schema from
-`apps/cloud/migrations-v8`. Apply every ordered migration when initializing
+`apps/backend/migrations`. Apply every ordered migration when initializing
 the local database:
 ```bash
 pnpm exec wrangler d1 migrations apply syntila-development --local --config apps/cloud/wrangler.jsonc
@@ -338,14 +338,14 @@ deliver a schema change. The complete lifecycle policy is in
 [Persistence Contracts](../specifications/PERSISTENCE.md#d1-schema-lifecycle).
 Migration `0003_workspace_installations.sql` adds stable installation
 ownership, seeded from runtime identity history and release audit events. If
-legacy history reused an installation ID across multiple Workspaces, it keeps
-the same owner and selects the sole non-revoked Workspace; if every associated
-Workspace is revoked, it selects the newest historical Workspace and retains
-that owner. It fails closed on mixed owners, multiple non-revoked Workspaces,
-live credentials attached to revoked Workspaces, or one Workspace mapped to
+legacy history reused an installation ID across multiple Workers, it keeps
+the same owner and selects the sole non-revoked Worker; if every associated
+Worker is revoked, it selects the newest historical Worker and retains
+that owner. It fails closed on mixed owners, multiple non-revoked Workers,
+live credentials attached to revoked Workers, or one Worker mapped to
 multiple installation IDs. Runtime credentials remain independently rotatable.
 Migration `0004_workspace_runtime_identity_uniqueness.sql` adds the
-database-enforced one-unrevoked-runtime-identity-per-Workspace invariant and
+database-enforced one-unrevoked-runtime-identity-per-Worker invariant and
 fails closed if existing rows violate it. The production schema smoke checks
 the required unique partial indexes before proceeding.
 Migration `0005_workspace_schema_alignment.sql` aligns the deployed
@@ -354,7 +354,7 @@ and indexes with the v8 canonical contract while preserving all existing rows.
 
 The `workspace-gateway-schema-regression.test.ts` test constructs a clean
 SQLite database by applying the ordered SQL migrations in
-`apps/cloud/migrations-v8`, checks critical runtime tables, and exercises the
+`apps/backend/migrations`, checks critical runtime tables, and exercises the
 production Gateway connection, heartbeat, and disconnect statements. The clean
 schema must support every SQL statement used by current Cloud runtime code.
 
@@ -366,8 +366,8 @@ runs with foreign keys enabled and verifies snapshots, indexes and triggers.
 development template; published releases are immutable. Follow the
 [production provisioning order](../operations/PRODUCTION_PROVISIONING.md).
 
-The Workspace Gateway Durable Object is authoritative for live connection
-state. Workspace online/offline fields and session history are persisted
+The Worker Gateway Durable Object is authoritative for live connection
+state. Worker online/offline fields and session history are persisted
 projections: their writes are queued and logged on failure, but cannot reject
 an authenticated connection or interrupt a heartbeat acknowledgement.
 Assignment selection checks the owning Gateway's live socket and runtime ID;
@@ -379,7 +379,7 @@ Both Gateways are built so an idle connection costs no Durable Object duration.
 The Realtime Gateway accepts App sockets with the WebSocket Hibernation API,
 keeps each connection's identity in the socket attachment and its subscriptions
 and stream cursors in Durable Object storage, and lets the runtime answer the
-App's `{"type":"ping"}` by WebSocket auto-response. The Workspace Gateway does
+App's `{"type":"ping"}` by WebSocket auto-response. The Worker Gateway does
 the same for the Service's idle ping. Do not add `accept()`-style sockets,
 standing timers, or per-ping work to either object: each one bills the object
 for the whole time a tab or Service stays connected. Authorization is checked
@@ -388,7 +388,7 @@ on a socket that is still open.
 
 The app Worker runs durable realtime event cleanup hourly. Event records and
 their idempotency keys are retained for 90 days, with up to 10,000 expired
-records deleted per run; per-Workspace sequence cursors are retained
+records deleted per run; per-Worker sequence cursors are retained
 indefinitely. Durable events are notifications, so clients refresh current
 state from Cloud read APIs after reconnect or a sequence gap. See the
 [Persistence Contracts](../specifications/PERSISTENCE.md#durable-realtime-event-retention)
@@ -404,12 +404,12 @@ Before production backend deployment:
 1. provision production D1/R2 resources; the deployment workflow applies the
    checked-in D1 migrations to `syntila`;
 2. configure required application-release, callback, and other production secrets;
-3. run Workspace lifecycle and Cloud runtime release validations;
+3. run Worker lifecycle and Cloud runtime release validations;
 4. run the external-user security gate, including tenant isolation and
    backup/restore verification;
 5. enable API/CI ingress only after the release gates pass.
 
-Cloud owns orchestration and persistence. Syntila Workspace maintains the
+Cloud owns orchestration and persistence. Syntila Worker maintains the
 outbound runtime channel; the generic Engine invokes the provider CLI locally.
 
 At that point the preferred topology is either:
@@ -454,17 +454,17 @@ event publication fails before WebSocket delivery. Run
 `node scripts/align-realtime-event-schema.mjs` and apply the generated SQL once
 after confirming the column is missing. This adds the current nullable field
 and preserves all events and indexes; new baseline databases already include it.
-Workspace HTTP delivery persists queued messages before reporting dispatch
+Worker HTTP delivery persists queued messages before reporting dispatch
 success. Unacknowledged assignments fail after 30 seconds; acknowledged provider
 execution retains its Step deadline.
 
 ## Durable realtime stream alignment
 
 The [1.1 synchronization contract](../specifications/REALTIME_SYNCHRONIZATION.md)
-separates collaboration sequencing from execution Workspace ownership. Fresh v8
+separates collaboration sequencing from Worker ownership. Fresh v8
 baseline databases include the stream columns and indexes.
 
-For an existing database with Workspace-only realtime tables, export/back up the
+For an existing database with Worker-only realtime tables, export/back up the
 `realtime_events` and `realtime_event_cursors` tables first. Confirm that
 `workspace_runtime_id` exists (apply the preceding nullable-field alignment if
 needed) and that `stream_kind` does not yet exist. Run
@@ -474,7 +474,7 @@ schema and apply its ordered statements as one transactional D1 batch during a
 publication maintenance window, before deploying the new publisher. Do not
 reapply it to an already aligned database.
 
-The alignment copies all existing events/counters into execution Workspace
+The alignment copies all existing events/counters into Worker
 streams and rebuilds the current indexes. It preserves payloads, runtime IDs,
 idempotency keys and sequence counters, including counters ahead of retained
 rows. Verify row counts and counters against the backup before deploying Cloud
@@ -507,7 +507,7 @@ database (`6130c425-59e2-4ec7-b7bd-d3fe8a8ea6a7`), and its artifact bucket is
 `syntila-artifacts-production`. The public site retains `conclaveax.com` and
 `www.conclaveax.com`; its app links use `https://syntila.app`.
 
-No previous users, sessions, or Workspace registrations were migrated. Recreate
+No previous users, sessions, or Worker registrations were migrated. Recreate
 accounts and reconnect desktop clients to the new origin. Local application
 paths, marker filenames, token prefixes and auth audiences now use Syntila.
 The former database and app deployment remain intact. Existing email sender

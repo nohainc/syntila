@@ -6,7 +6,7 @@
 
 ## Context
 
-There are two transport stacks: the per-user realtime gateway and the Workspace runtime gateway. They have separate contracts, queues and authentication. Maintaining both doubles the backpressure, replay and security work.
+Human clients and Worker Agents share one realtime transport architecture (`syntila.messaging/1`) with unified framing, backpressure, replay, and subscription management, while keeping principal authentication, scopes, and rate limits strictly separated.
 
 ## Decision
 

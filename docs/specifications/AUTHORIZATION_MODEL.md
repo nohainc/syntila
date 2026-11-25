@@ -1,8 +1,8 @@
 # Authorization Model
 
-**Status:** Current security policy for Syntila, Cloud, Workspace ownership, Threads, and Tool Profiles.
+**Status:** Current security policy for Syntila, Cloud, Worker ownership, Threads, and Tool Profiles.
 
-Cloud resolves the authenticated Better Auth session to an active Syntila user. It derives Space roles from `space_memberships`; it does not trust client-supplied organization or Workspace membership claims.
+Cloud resolves the authenticated Better Auth session to an active Syntila user. It derives Space roles from `space_memberships`; it does not trust client-supplied organization or Worker membership claims.
 
 ## Space access
 
@@ -49,11 +49,11 @@ A `direct` Space represents a dedicated one-to-one conversation between two appr
 - Existing default General Threads are preserved and cannot be deleted by either participant.
 - Thread deletion and conversation clearing strictly enforce the contribution rule: a Thread can only be cleared or deleted if the user created the Thread and no other human has contributed (`has_other_contributions == 0`). These Thread restrictions do not prevent either participant from deleting the entire Direct Space and its shared history.
 
-### 4. Workspace and execution isolation
-- Membership in a Direct Space does not grant access to the other participant's local Workspace or file tree.
-- Direct Spaces do not support Space-level Workspace attachments; callers attempting to attach a Workspace receive `403 Forbidden`.
+### 4. Worker and execution isolation
+- Membership in a Direct Space does not grant access to the other participant's local Worker or file tree.
+- Direct Spaces do not support Space-level Worker attachments; callers attempting to attach a Worker receive `403 Forbidden`.
 - Workflows execute under existing isolation boundaries: requesters use their own Workers in Chat, which follows the `chat` right (Direct Spaces always allow it), or explicitly authorized Person Grants (ADR-020).
-- Tool calls (`input.toolCall`) in a Direct Space require that the requester owns the target execution Workspace.
+- Tool calls (`input.toolCall`) in a Direct Space require that the requester owns the target Worker.
 - Local credentials, provider tokens, and filesystem paths remain protected within each participant's own environment.
 
 ### 5. Removal, retention, and account deletion
@@ -97,22 +97,22 @@ opened. Personal visibility uses the existing per-user Space state table.
 | **Transfer Ownership** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
 | **Global Space Rename** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
 | **Global Space Archive** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
-| **Attach Space Workspace** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
-| **Tool Call on Own Workspace** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403`) |
-| **Tool Call on Peer's Workspace** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Attach Space Worker** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Tool Call on Own Worker** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403`) |
+| **Tool Call on Peer's Worker** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
 
-## Workspace execution access
+## Worker execution access
 
-A Workspace has one Cloud owner. The owner manages the Workspace runtime. Space
+A Worker has one Cloud owner. The owner manages the Worker runtime. Space
 execution access is selected by the Space owner in Workflows; Cloud materializes
-and validates the internal Space-to-Workspace Grant used for admission. The
-grant is not managed from the Workspaces page and does not change Workspace
+and validates the internal Space-to-Worker Grant used for admission. The
+grant is not managed from the Workers page and does not change Worker
 ownership.
 
-Cloud authorizes each Thread operation and assignment using Space membership, Workspace ownership/grants, Thread state, logical Worker readiness, and scheduling policy. Workspace independently enforces local permissions, readiness, concurrency, deadlines, cancellation, and process cleanup.
+Cloud authorizes each Thread operation and assignment using Space membership, Worker ownership/grants, Thread state, logical Worker readiness, and scheduling policy. Worker independently enforces local permissions, readiness, concurrency, deadlines, cancellation, and process cleanup.
 
 Assignment execution uses one canonical permission vocabulary across Cloud,
-Workspace Runtime Protocol, Workspace, and Engine admission:
+Worker Runtime Protocol, Worker, and Engine admission:
 
 - `repository:read`
 - `repository:write`
@@ -122,15 +122,15 @@ Workspace Runtime Protocol, Workspace, and Engine admission:
 Cloud intersects only the permissions allowed by the requester's Space member rights
 with `workspace_space_grants.allowed_permissions_json`, then applies the
 request's read-only Step policy. Cloud does not pretend to know the local
-Worker permission set. Workspace compares the exact permission IDs in the
+Worker permission set. Worker compares the exact permission IDs in the
 assignment snapshot against the installed Worker's local permission ceiling;
 unknown names are rejected. Space access policy values such as `view`,
 `discuss`, and `execute` are a separate vocabulary and are not assignment
 execution permissions.
 
-Workspace Grant writes validate permission IDs against that four-value set and
+Worker Grant writes validate permission IDs against that four-value set and
 reject duplicates. Explicit Worker IDs must be bounded IDs of Workers already
-inventoried on the granted Workspace; an empty list leaves all its Workers
+inventoried on the granted Worker; an empty list leaves all its Workers
 eligible (with at most 64 explicit IDs). There is no Worker capability filter;
 workflow enablement and access policy are Cloud-owned. Network policy accepts only
 `deny_all` with no hosts or `allowlist` with unique, lowercase exact DNS
@@ -148,12 +148,12 @@ driven by `expiresAt` and is not a client-settable status.
 Profile administration and publication use the dedicated `profiles:admin` and
 `profiles:release:manage` permissions. Cloud resolves authorized operators
 from its configured identity set. V9 Profile payloads are canonical,
-schema-validated revisions; authorization, digest validation, and Workspace
+schema-validated revisions; authorization, digest validation, and Worker
 admission protect them without a separate Profile signature.
 
 ## MCP server configuration
 
-MCP servers (ADR-028) are installation-local data owned by the Workspace
+MCP servers (ADR-028) are installation-local data owned by the Worker
 Service. Only the Service decides which servers an execution may use: a server
 must be consented (hash of the consent document, including its command and the
 hash of every tool definition) and enabled for the Step. The Service then puts
@@ -167,11 +167,11 @@ logged, persisted in Engine state, or included in diagnostics.
 
 ## Step-up authentication and audit
 
-Sensitive ownership or release operations may require a recent step-up proof tied to the current human session. Each route declares its required assurance and Cloud checks it before mutation. Security-relevant authorization, ownership, Workspace, Thread, and Profile changes are written to the applicable audit stream without credentials or secret payloads.
+Sensitive ownership or release operations may require a recent step-up proof tied to the current human session. Each route declares its required assurance and Cloud checks it before mutation. Security-relevant authorization, ownership, Worker, Thread, and Profile changes are written to the applicable audit stream without credentials or secret payloads.
 
-Workspace ownership reconciliation is a narrow migration recovery operation.
+Worker ownership reconciliation is a narrow migration recovery operation.
 It requires a desktop session created by fresh browser approval and an exact
-local Workspace/runtime identity that Cloud can prove belongs to the signed-in
+local Worker/runtime identity that Cloud can prove belongs to the signed-in
 user. Cloud may reconstruct a missing v8 installation binding only when there
 is no competing active binding and no recorded Release. It never transfers an
 active foreign-owned installation or uses email equality as ownership proof.
@@ -179,13 +179,13 @@ The reconciliation is audited; ambiguous state requires operator investigation.
 
 ## Secret boundary
 
-`POST /api/desktop-auth/password` supports headless Workspace setup with an
+`POST /api/desktop-auth/password` supports headless Worker setup with an
 existing account's email/password. It delegates verification and rate limiting
 to the same Better Auth sign-in route as AX, refuses incomplete/MFA challenges,
 then issues only a `syntila.desktop.management` session using the existing
 single-use claim mechanism. Its temporary authentication cookie is not returned
 to the caller and the temporary web session is signed out. Passwords are never
-persisted by Workspace or Syntila application tables. Responses are no-store.
+persisted by Worker or Syntila application tables. Responses are no-store.
 This does not transfer installation ownership or create a Profile Lab session;
 normal ownership and registration checks still apply.
 
@@ -207,11 +207,11 @@ creation-time `lead_user_id`; the API does not reassign this field.
 The v1 rights map lives at `spaces.settings_json.memberPermissions[userId]`.
 Missing maps preserve role defaults: collaborators have Chat, Work and Thread creation;
 viewers can read; owners have all rights. Own Workers in Chat is not a granted right:
-it is derived from `chat` (see "Three-right contract" below). Workspace
+it is derived from `chat` (see "Three-right contract" below). Worker
 attachment requires an explicit grant for non-owners; member invitations remain
 owner-only.
 Malformed stored overrides fail closed. Removing a member removes their override
-and revokes their contributed Workspace Grants.
+and revokes their contributed Worker Grants.
 
 `PATCH /api/spaces/:id/members/:userId/permissions` accepts
 `{ permissions: { chat, useOwnWorkers, work, manageOwnThreads } }`.
@@ -225,31 +225,31 @@ omit the internal member and invitation permission maps. General Space
 settings writes cannot change the member or invitation permission maps.
 
 Workflow enablement is configured on global/Space Workflows, together with its
-selected Workspace. Only the Space owner may change Space workflow settings.
+selected Worker. Only the Space owner may change Space workflow settings.
 Submission and validation enforce the effective workflow enabled flag and the
 requester's member rights. Dispatch continues to check current member rights,
-Workspace grants, and accepted execution snapshots. Chat requires Chat permission.
+Worker grants, and accepted execution snapshots. Chat requires Chat permission.
 Migration 0022 converts existing Space-wide Work denials to per-workflow disabled
 flags and removes `settings.allowWork`; obsolete writes receive 400. History is
 preserved, and accepted runs retain their execution evidence. Already-running
 provider calls are not cancelled by a settings change.
 
 Own Workers in Chat (derived from `chat`) lets a member answer the Chat workflow
-with a Worker from a Workspace they own, instead of a Worker from the Space's
-Workflow Workspace. Only Workers the member owns qualify; Workers other people
-share with them (Person Grants, the Space Workspace) do not. On first use the
-member's Workspace receives a read-only Space grant (`repository:read`, one
+with a Worker from a Worker they own, instead of a Worker from the Space's
+Workflow Worker. Only Workers the member owns qualify; Workers other people
+share with them (Person Grants, the Space Worker) do not. On first use the
+member's Worker receives a read-only Space grant (`repository:read`, one
 concurrent assignment) made by that member and audited as
 `chat.own_workspace.authorized`. Admission rejects a non-Chat workflow, a
 missing right, or a Worker the requester does not own. Dispatch rejects any
-Chat candidate outside the Space Workflow Workspace unless the requester owns
+Chat candidate outside the Space Workflow Worker unless the requester owns
 it and currently holds the right (`own_worker_not_allowed`), so other members
 can never run someone's personal Worker. The Worker sees only the
-conversation context the Thread provides and runs in its owner's Workspace,
+conversation context the Thread provides and runs in its owner's Worker,
 not in Space files. The assignment snapshot records `workerOwnerUserId` and
 `workerOwnerName`; `workerOwnerName` is set only when the Worker ran outside
-the Space Workflow Workspace. Conversation turns expose it, and the message
-header shows it after the Worker name; responses from the Space Workspace show
+the Space Workflow Worker. Conversation turns expose it, and the message
+header shows it after the Worker name; responses from the Space Worker show
 no owner.
 
 Own Thread management permits creation and management of Threads created by
@@ -258,14 +258,14 @@ the narrower shared-history policy below, independently of `manageOwnThreads`. I
 to execute Chat or Work. Composer choices configure the next turn and do not
 change historical execution metadata.
 
-Workspace attachment is an explicit Workspace grant, separate from member
-permissions. Workspace ownership is checked independently of Space rights;
-Workspace owners must explicitly authorize a contribution when they are not
-the Space owner. The Space owner or Workspace owner may revoke the attachment;
-only the Workspace owner manages the Workspace itself.
+Worker attachment is an explicit Worker grant, separate from member
+permissions. Worker ownership is checked independently of Space rights;
+Worker owners must explicitly authorize a contribution when they are not
+the Space owner. The Space owner or Worker owner may revoke the attachment;
+only the Worker owner manages the Worker itself.
 The Space UI replaces the technical grant-permission editor with the Work
 switch. New UI attachments allow repository reads/writes and shell execution,
-subject to the Workspace's local Worker permission ceiling. Existing grant
+subject to the Worker's local Worker permission ceiling. Existing grant
 restrictions and network policy still apply. Work rights provide the execution
 ceiling, intersected with the grant and the request's read-only Step policy.
 
@@ -289,8 +289,8 @@ direct-Space participants = collaborator defaults.
 
 | Right | Semantics | Enforcement points |
 |---|---|---|
-| `chat` | Run the Chat workflow. Includes answering with a Worker from a Workspace the member owns (the "personal Worker"). Plain messages never need it. | `requireWorkflowPermission`, scheduler `rights.chat`, thread `execute` |
-| `work` | Run non-Chat workflows; sets the execution ceiling, intersected with Workspace grant and Step policy. **Includes `chat`**: the effective and stored `chat` is `chat \|\| work`, and the Members grid and invitation dialog grant Chat with Work and remove Work with Chat. There is no Work-only member. | `requireWorkflowPermission`, scheduler `rights.work` |
+| `chat` | Run the Chat workflow. Includes answering with a Worker from a Worker the member owns (the "personal Worker"). Plain messages never need it. | `requireWorkflowPermission`, scheduler `rights.chat`, thread `execute` |
+| `work` | Run non-Chat workflows; sets the execution ceiling, intersected with Worker grant and Step policy. **Includes `chat`**: the effective and stored `chat` is `chat \|\| work`, and the Members grid and invitation dialog grant Chat with Work and remove Work with Chat. There is no Work-only member. | `requireWorkflowPermission`, scheduler `rights.work` |
 | `manageOwnThreads` | Create Threads and manage Threads the member leads. Never grants Chat or Work. | `requireSpaceRight`, `canManageThread` |
 
 **Personal Worker behavior.** `useOwnWorkers` is no longer an independent right. The
@@ -299,7 +299,7 @@ effective value is `chat`, computed in `spaceMemberPermissions` and
 unchanged: only Workers the requester owns qualify, only for Chat, with a read-only
 `repository:read` Space grant created on first use, and the scheduler still rejects other
 members' personal Workers (`own_worker_not_allowed`). The member is never granted the
-Space's Workflow Workspace by this derivation.
+Space's Workflow Worker by this derivation.
 
 **Data conversion.** No data rewrite is required for correctness. Stored
 `memberPermissions[userId].useOwnWorkers` is ignored on read and may stay until a later
@@ -378,16 +378,16 @@ cannot be reconstructed, so all preexisting Threads conservatively require the
 Space owner for clear/delete. Newly created Threads use the precise creator
 exception. Apply the migration before deploying the updated Cloud routes; older
 clients may display notices as ordinary messages, while Cloud still protects
-them from edits/deletion. No local Workspace or provider credential migration
+them from edits/deletion. No local Worker or provider credential migration
 is required. Personal hide/unhide is outside this feature.
 
 ## Direct Space authorization
 
 Direct Spaces (`spaces.kind = 'direct'`) represent approved 1:1 personal connections and enforce distinct authorization semantics:
 - **Strict Two-Participant Invariant:** Direct Spaces are permanently fixed to exactly two members. Member invitations, third-party additions, role mutations, ownership transfers, and converting the Space to a group are rejected (`403 Forbidden`).
-- **Symmetric Conversation & Execution Rights:** Both participants can create custom Threads, post messages, and run Chat with Workers in their own Workspaces. Personal Spaces do not permit other workflows or another participant's Workers.
+- **Symmetric Conversation & Execution Rights:** Both participants can create custom Threads, post messages, and run Chat with Workers in their own Workers. Personal Spaces do not permit other workflows or another participant's Workers.
 - **Protected General Thread & Destructive Actions:** The default `General` Thread cannot be deleted by either participant. Either participant may delete the Direct Space itself via `DELETE /api/spaces/:id`, removing its shared history.
-- **Workspace Isolation:** Direct Space participation never grants access to the peer's personal Workspace or AI credentials. Workflows execute only on Workspaces explicitly owned by the requesting member or granted via explicit Person Grants.
+- **Worker Isolation:** Direct Space participation never grants access to the peer's personal Worker or AI credentials. Workflows execute only on Workers explicitly owned by the requesting member or granted via explicit Person Grants.
 - **Contact Removal & Blocking:** Disconnecting freezes the Direct Space into a read-only state, preventing new direct messages or AI runs until reconnected. Blocking (`POST /api/people/blocks/:userId`) halts messaging and AI execution bidirectionally.
 - **Account Deletion Ownership Transfer:** Deleting an account transfers technical ownership of Direct Spaces to the active surviving participant, preserving thread history without orphan foreign keys.
 
@@ -397,8 +397,8 @@ Owners grant exactly three rights per member, stored under `settings.memberPermi
 
 | Right | Default (owner / collaborator / viewer) | Enforcement |
 | --- | --- | --- |
-| `chat` | yes / yes / no | Start Chat runs (`run.start`); run Chat on the member's own Workers outside the Space Workflow Workspace. |
-| `work` | yes / yes / no | Start Workflow runs on the Space Workflow Workspace (`run.start`). |
+| `chat` | yes / yes / no | Start Chat runs (`run.start`); run Chat on the member's own Workers outside the Space Workflow Worker. |
+| `work` | yes / yes / no | Start Workflow runs on the Space Workflow Worker (`run.start`). |
 | `manageOwnThreads` | yes / yes / no | Create and manage the member's own Threads (`spaces:write`). |
 
 - `spaces:write` needs any right; `run.start` needs `chat` or `work`; read is inherent in membership. Owners hold all rights and cannot be overridden; invitation management, `runs:control` and `spaces:manage` are owner-only. Direct Spaces ignore stored overrides and use collaborator defaults.

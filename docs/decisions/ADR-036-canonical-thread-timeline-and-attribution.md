@@ -6,7 +6,7 @@
 
 ## Context
 
-`discussion_messages` already has `kind IN ('message','ai_request','ai_answer')`, `work_request_id` and `worker_display_name`, but it attributes messages only through `author_user_id`. The client merges Work history separately. ADR-031 proposed a new `thread_messages` table. That would need a dual-write migration it doesn't need.
+`discussion_messages` stores the canonical Thread timeline (`kind IN ('message','ai_request','ai_answer')`, `work_request_id`, `worker_display_name`). Extending it in place with actor attribution (`author_actor_id`, `worker_instance_id`, `author_display_snapshot`) gives the web app one authoritative server timeline without maintaining a separate `thread_messages` table or client-side merge logic.
 
 ## Decision
 

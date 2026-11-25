@@ -10,7 +10,7 @@ Historical `direct:v1` remains Direct. Tests cover these independent contracts:
 | Immutable versions, read/write Step policies and Full Cycle isolation | [Core workflows](../../packages/core/test/thread.test.ts) |
 | Read-only Chat instructions, implementation Work intent, Markdown source | [Prompt profiles](../../apps/backend/test/domain/workflow-prompts.test.ts) |
 | Stateless Chat without mutation lease, coordinated Work | [Request coordination](../../apps/backend/test/domain/work-request-coordination.test.ts) |
-| Generic Workspace execution policies and fail-closed Profile admission | [Workspace policy](../../apps/workspace/test/assignment_execution_policy_test.dart) |
+| Generic Connect execution policies and fail-closed Profile admission | [Connect agent matrix](../../apps/connect/test/agent_matrix_test.dart) |
 | Actual Codex argv, explicit approval policy, sandbox policy in normal/compatibility layouts and fresh/resumed sessions | [Profile interpreter](../../packages/tool-profile/test/interpreter.test.ts) |
 | Durable Chat reuse, cross-Thread and Chat/Work session isolation | [Session keys](../../apps/backend/test/domain/work-session-key.test.ts) |
 | Canonical starter synchronization and preservation of existing templates/releases | [Starter provisioning](../../scripts/provision-profile-starter-templates.test.mjs) |

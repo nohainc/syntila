@@ -6,7 +6,7 @@
 
 ## Context
 
-Today a local Worker is a slot inside a Workspace (`workspace_worker_inventory`). It has no durable identity of its own. Routing, authorization and history attribution go through `execution_workspace_id` and `worker_display_name`. Before we can connect, route or attribute Workers independently, a Worker needs its own stable identity.
+Every local Worker needs its own durable, user-owned identity (`worker_instances.id`) separate from its Worker Type and signed Profile, so that Syntila can connect, route, authorize, and attribute Workers independently across Spaces and Threads.
 
 ## Decision
 

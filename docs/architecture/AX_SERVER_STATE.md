@@ -99,10 +99,10 @@ source order retained for ties. Manual Thread ordering is not part of the
 presentation contract.
 
 Both internal and browser navigation ensure the target collection rather than
-reloading Spaces/session/Workspaces. Space views share the same query;
+reloading Spaces/session/Workers. Space views share the same query;
 opening a Thread does not trigger a duplicate snapshot load. Space-view
 collaboration loading shares the query and cannot overwrite cached collections.
-Changes to a collection do not reload unrelated collaboration/Workspace data.
+Changes to a collection do not reload unrelated collaboration/Worker data.
 Thread create/update/delete actions refresh only the owning collection.
 Shell Thread creation uses its authoritative Cloud method rather than
 fabricating a local entity.
@@ -142,7 +142,7 @@ Session loss/logout clear both resource kinds; archive/delete remove only the
 owning Space's entries.
 
 `loadBootstrapState()` keeps its current public name temporarily. Its conceptual
-role is **load bootstrap state**: initial/recovery catalog, Workspaces, and
+role is **load bootstrap state**: initial/recovery catalog, Workers, and
 session data. Production bootstrap no longer fetches selected Space details
 or Threads; deep links ensure those focused queries separately after
 bootstrap. Its `spaceId` argument remains accepted but does not select or
@@ -361,10 +361,10 @@ an entity event are recovered on reconnect or explicit refresh.
 
 ## Phase 9: Collaboration synchronization signals
 
-Cloud now emits the durable Space, Thread, Discussion and Workspace Grant
+Cloud now emits the durable Space, Thread, Discussion and Worker Grant
 signals in the [realtime synchronization contract 1.1](../specifications/REALTIME_SYNCHRONIZATION.md).
 Collaboration has its own Space/user stream identity; `workspaceId` continues
-identifying real execution Workspaces on existing execution events only.
+identifying real Workers on existing execution events only.
 
 The browser connects and subscribes to user scope without requiring execution
 infrastructure. Transport cursors distinguish stream kinds even when their IDs
@@ -395,7 +395,7 @@ Repeated recovery frames for one scope share the pending recovery operation.
 | --- | --- |
 | Space | Space details and its Thread collection, without child Chat reads |
 | Thread | Forward Discussion pages from the newest cursor; active/recent Work discovery and known active/dirty requests by ID |
-| Execution Workspace | Workspace state and Worker inventory; existing visible execution recovery remains bounded |
+| Worker | Worker state and Worker inventory; existing visible execution recovery remains bounded |
 | User/ready | Observed migrated resources and catalog recovery; no bootstrap snapshot reload |
 
 Discussion reconnect handling belongs to the session cache router rather than
@@ -405,15 +405,15 @@ history stay visible during recovery and failures. Transport stale/disconnected
 states use the existing subtle reconnect status. A completed gap cannot clear a
 newer connection status, and session clearing fences delayed cache writes.
 
-Workspace HTTP APIs currently return user-wide lists. Recovery shares those
-reads under Workspace-specific query keys and merges only the affected Workspace
+Worker HTTP APIs currently return user-wide lists. Recovery shares those
+reads under Worker-specific query keys and merges only the affected Worker
 and its Workers into the existing view projection. This does not introduce a
 new endpoint or reload `loadBootstrapState`. Catalog recovery remains a focused list
 read for user/ready frames; Space/Thread gaps do not reload the catalog.
 Unmigrated execution mutation events retain their existing read-model handler,
 which is separate from reconnect recovery.
 
-Router, Work realtime, Discussion widget and Workspace recovery tests cover scope
+Router, Work realtime, Discussion widget and Worker recovery tests cover scope
 isolation, in-flight generations, shared recovery, cache preservation, immutable
 pages, incremental cursors, failures and session clearing. Phase 10 introduces
 no Cloud schema, protocol, dependency or compatibility migration. Live browser
@@ -428,9 +428,9 @@ navigation, share in-flight reads, and clear with other server state on logout
 or session loss. Fresh empty responses are valid cached results. There is no
 IndexedDB, cache eviction timer or background polling for these queries.
 
-The shell, Thread pages and execution Workspace recovery all use the same
+The shell, Thread pages and Worker recovery all use the same
 Worker query. `/workers` remains the existing user-wide HTTP read. A Thread
-spaces that inventory through its own Space Workspace grants and applies
+spaces that inventory through its own Space Worker grants and applies
 activation, readiness and catalog eligibility filters locally. The Space
 grant read remains separate; grant-change signals reload the affected view's
 grants without bypassing the Worker cache. A delayed grant read uses the latest
@@ -444,7 +444,7 @@ Explicit scopes and user/ready recovery invalidate the Worker inventory where
 appropriate; reconnect does not expire the rarely-changing Workflow catalog.
 
 `worker.inventory.*` signals revalidate only the global Worker query, independently
-of the selected Space/Workspace. The legacy shell handler no longer requests
+of the selected Space/Worker. The legacy shell handler no longer requests
 another inventory copy. `invalidateWorkflows()` is an explicit cache hook for
 publication/admin integrations: observed catalog views refresh immediately,
 while detached queries revalidate on the next ensure. No new Workflow publication
@@ -453,17 +453,17 @@ wire event is introduced; such a publisher can call this hook when available.
 `ax_session_catalogs_test.dart` covers stale-time boundaries, retained stale data,
 immutable results, in-flight sharing, observer updates, explicit invalidation,
 errors, session fencing, reconnect behavior and Thread recreation. Existing
-Workspace recovery and Space/Thread widget tests remain regression coverage.
+Worker recovery and Space/Thread widget tests remain regression coverage.
 No HTTP contract, Cloud schema, protocol or compatibility migration is required.
 Standalone Thread consumers may inject the session catalog cache; the default
 source-associated fallback shares reads for consumers using the same data source.
 
-Workflow Workspace selection is the only user-facing Space-to-Workspace
+Workflow Worker selection is the only user-facing Space-to-Worker
 authorization surface. The Workflows query is cached by Space and the Thread
-page derives its Worker list from the selected Workflow Workspace; it does not
+page derives its Worker list from the selected Workflow Worker; it does not
 load a separate grant collection. Cloud repairs a missing internal grant when
-the selected Workspace is read and keeps the grant table authoritative for
-admission and dispatch. The Workspaces list does not compute or display Space
+the selected Worker is read and keeps the grant table authoritative for
+admission and dispatch. The Workers list does not compute or display Space
 grant counts.
 
 
@@ -478,8 +478,8 @@ cached results immediately and refreshes stale results in the background.
 Members/invitations use the default one-minute stale interval. Space gap
 recovery recognizes these queries and the audit query alongside existing keys.
 
-Owned Workspace inventory (`workspaces`, 30-second stale interval) is ensured
-only when Connect Workspace opens. The current Space page has no visible audit
+Owned Worker inventory (`workspaces`, 30-second stale interval) is ensured
+only when Connect Worker opens. The current Space page has no visible audit
 section, so it no longer fetches audit on entry. `space:<id>:audit` is available
 for an explicit future consumer; membership and Thread writes invalidate it
 without fetching it. Membership writes revalidate only the affected Members or
@@ -494,26 +494,26 @@ unchanged; this phase requires no schema migration.
 
 Widget and query tests cover request isolation, cache reuse across navigation,
 stale background refresh, completion after leaving a tab, error recovery, lazy
-Workspace inventory, targeted membership reconciliation, and session-clear race
+Worker inventory, targeted membership reconciliation, and session-clear race
 protection. Live-browser interaction is not part of this automated verification.
 
 
 ## Phase 15: selective rendering
 
 `AxStore` owns the bootstrap/recovery projection and observable Space and
-Workspace lists. The shell retains navigation, expansion, authentication flow,
+Worker lists. The shell retains navigation, expansion, authentication flow,
 and presentation state, with read accessors for the store rather than independent
 server-data copies. Worker inventory is read from the shared query; the shell
 has no Worker subscription that calls root `setState`.
 
 SpaceTree subscribes to the Space list and each expanded Space's Thread
 query. The collapsed rail's Space menu subscribes locally without fetching
-unopened Threads. Home and Workspaces subscribe to the lists and Worker
+unopened Threads. Home and Workers subscribe to the lists and Worker
 inventory they display. Focused execution views subscribe to their retained
-execution projection, which does not emit for Space/Workspace-only writes.
+execution projection, which does not emit for Space/Worker-only writes.
 Search observes existing Thread collections without eagerly loading them.
 Navigation and bootstrap loading/error transitions may still rebuild the shell.
-Background Space/Workspace refreshes and successful recovery update their
+Background Space/Worker refreshes and successful recovery update their
 stores without shell rebuilds; existing HTTP APIs remain unchanged.
 
 Within ThreadPage, Discussion observes its own cached query. Work history
@@ -531,7 +531,7 @@ Session clearing removes list projections, notifications, security data, and
 query caches. Delayed list/bootstrap reads are fenced across clearing/disposal;
 failed refreshes retain existing data. Build-count widget tests verify update
 isolation for Worker inventory, Workflow publication, Space lists, Chat, Work
-history, Workspace consumers, reconnect notices, and notification counts.
+history, Worker consumers, reconnect notices, and notification counts.
 Existing navigation, optimistic write, reconnect, and responsive-layout tests
 remain regression coverage. No HTTP, database, or protocol migration is needed.
 Live-browser profiling remains outside this automated verification.
@@ -548,7 +548,7 @@ Session clearing releases leases and fences late completions.
 queries. Temporary entities appear immediately and are replaced by server IDs.
 Pending temporary entities cannot be selected. Independent optimistic layers
 remain visible during reads; rollback removes only its own layer and preserves
-newer canonical data and unrelated writes. Discussion and Workspace grant writes
+newer canonical data and unrelated writes. Discussion and Worker grant writes
 use the same lifecycle with their retained collection overlays.
 
 Work Request creation, eligibility progress, temporary IDs, and reconciliation
@@ -601,7 +601,7 @@ Space/Chat/Work text is cached as product data, not interpreted as credentials.
 Cached roles and Worker readiness are display hints, never authorization.
 
 Hydration restores Spaces, per-Space Threads, Space detail, recent Chat
-and Work, Workflow catalog, Workspace summaries, and safe Worker descriptors.
+and Work, Workflow catalog, Worker summaries, and safe Worker descriptors.
 All restored queries are stale. Their data renders before bootstrap completes;
 active navigation queries and bootstrap revalidate in the background. Failed
 reads retain cached UI. Hydration cannot overwrite a newer value or a pending
@@ -640,7 +640,7 @@ Chat/Work tab, selected Workflow, currently available one-step Worker/model/
 effort selection, and Chat/Work draft text. Drafts and selections never enter
 Cloud queries, mutation payloads, or Workflow configuration APIs. Attachments,
 pending mutations, and credentials are excluded. Restore reconciles the saved
-Workflow and execution choices against the current catalog, selected Workspace,
+Workflow and execution choices against the current catalog, selected Worker,
 Worker readiness and signed Profile execution options; stale choices are ignored rather than
 silently substituted. Logout removes the authenticated user's local view records.
 
@@ -747,7 +747,7 @@ call `_loadBootstrapState()`. Events carrying `workRequestId` and `threadId` ent
 the shared Work realtime reconciler: complete payloads patch the cached request;
 otherwise one `GET /work-requests/:id` supplies authoritative details. The existing
 request deduplication, event sequencing, identity validation, and late-read fences
-apply. No Work history list, Space list, Workspace list, or session read is
+apply. No Work history list, Space list, Worker list, or session read is
 needed for those execution signals.
 
 Progress-only execution bursts trigger no HTTP reads. Execution frames without a
@@ -767,7 +767,7 @@ visible scope cancels it as well. The unrelated desktop authentication approval
 status timer remains part of its explicit sign-in flow.
 
 Shell regression tests advance an active Run beyond five seconds and a full
-minute without another bootstrap/Space/Workspace/session request. Execution
+minute without another bootstrap/Space/Worker/session request. Execution
 frames produce exactly one detail request each without broad reads. Shared
 realtime tests verify no healthy-socket polling, visible-only outage fallback,
 no overlapping fallback reads, and cancellation after recovery/view disposal.
@@ -777,17 +777,17 @@ No HTTP, realtime schema, database, or persistent read-cache migration is needed
 
 `AxStore.snapshot`, `replaceSnapshot()` and `reload()` are removed. Bootstrap is
 explicitly named `loadBootstrapState()` in both the store and data-source
-interface. It initializes independent Space, Workspace and session stores;
+interface. It initializes independent Space, Worker and session stores;
 Space rows discard nested Threads. Navigation, reconnect and realtime
 continue to use scoped queries and never use bootstrap as their routine loader.
 Earlier phase notes describing retained snapshot paths are superseded here.
 
 `AxStore.execution` is a read-only legacy Run/execution projection, updated by
-`replaceExecution()`. It excludes Spaces, Workspaces and viewer state, and
+`replaceExecution()`. It excludes Spaces, Workers and viewer state, and
 copies its execution collections into immutable lists. Replacing it cannot write
 collaboration caches or session state. Space archive/delete writes target the
 Space query directly. Search and command-palette inputs are explicit Space,
-Workspace and cached per-Space Thread collections instead of a snapshot.
+Worker and cached per-Space Thread collections instead of a snapshot.
 Search observes cached collections without fetching every Space.
 
 The list-shaped `loadThreadWorkRequests()` and `loadDiscussionMessages()`
@@ -819,7 +819,7 @@ Request counts measure data-source invocations, not wall-clock Cloud latency.
 | 5,000-row Chat and Work histories load 50 initially; next 50 only on demand, no cursor traversal | `ax_discussion_cache_test.dart`, `ax_work_history_test.dart` |
 | Scrolling requests older pages once, deduplicates rows, preserves viewport and does not refetch exhausted history | Widget and engine cases in both history suites |
 | Non-selected expanded A receives realtime changes while selected B remains untouched | `ax_space_cache_test.dart`, `ax_realtime_cache_router_test.dart` |
-| Scoped reconnect keeps both cached collections visible during the pending read | `ax_space_cache_test.dart`; router, Discussion and Workspace recovery suites |
+| Scoped reconnect keeps both cached collections visible during the pending read | `ax_space_cache_test.dart`; router, Discussion and Worker recovery suites |
 | Execution events and a minute of active Run time cause no application bootstrap reload | `ax_snapshot_polling_test.dart` |
 
 Measured expectations are deterministic: fresh A/B list totals are 1/1, fresh
@@ -848,8 +848,8 @@ membership checks remain enforced; no Space access is granted by an invitation
 notification. Offline recipients recover through their user stream or initial
 invitation loading. Existing pending invitation records need no migration.
 
-Owned Workspace inventory uses the shared `ownedWorkspacesQuery` definition for
-WorkspaceStore, the Space Connect Workspace picker and persisted-cache restore.
+Owned Worker inventory uses the shared `ownedWorkersQuery` definition for
+WorkerStore, the Space Connect Worker picker and persisted-cache restore.
 The `workspaces`
 key has a single 30-second freshness policy and immutable list result shape.
 Consumers may register in either order without conflicting query definitions;
@@ -914,7 +914,7 @@ Retry Members button; reopening the tab retries its stale query.
 ## Global Workflows page
 
 `/workflows` is a user-wide destination in the application menu. Workflows and
-Workspaces have no dedicated sidebar or collapsed-rail buttons. It has no Space/Thread route arguments. It renders the
+Workers have no dedicated sidebar or collapsed-rail buttons. It has no Space/Thread route arguments. It renders the
 newest version per stable catalog ID; historical definitions remain available to
 execution history. Cards combine definitions with typed user preferences and
 owned Worker presentation metadata, including unavailable selections.
@@ -976,20 +976,20 @@ Thread controls project these Space choices without a second draft or an executi
 override. Authored Thread configuration retains instructions and initial Workflow
 selection. Immutable Run/Step configurations remain independent of live preferences.
 
-Workspace selectors share typed `AxWorkflowWorkspaceSettings` queries at
+Worker selectors share typed `AxWorkflowWorkerSettings` queries at
 `['workflow-workspace', 'user' | spaceId]`, with cache-first navigation and the
 same 45-minute preference freshness. Global/Space selectors filter the shared
-Worker inventory by selected Workspace before presenting Profile choices.
+Worker inventory by selected Worker before presenting Profile choices.
 Confirmation cancellation restores the displayed selection. Pending switches
 disable editing; mutation failure retains current preferences.
 
-A confirmed switch updates the Workspace query, then refreshes reset preferences.
-Global selection invalidates registered Space preference/Workspace queries;
+A confirmed switch updates the Worker query, then refreshes reset preferences.
+Global selection invalidates registered Space preference/Worker queries;
 Space selection only updates that scope. Grant queries refresh after authorization
-changes. Existing `space.updated` events revalidate affected Workspace/preference
+changes. Existing `space.updated` events revalidate affected Worker/preference
 queries, including other members' open views; reconnect recovery recognizes the
 same scoped keys. Normal Space/Thread/sidebar navigation does not reload global
-Workspace settings. The Space Workspaces tab and its obsolete connection controls
+Worker settings. The Space Workers tab and its obsolete connection controls
 are removed, leaving Threads, Members, and Workflows.
 
 ## People directory
@@ -1218,7 +1218,7 @@ Only explicit Thread choices are stored: the Workflow configuration default
 shown when nothing is chosen is never written as the Thread's Worker, model,
 or effort. Restore rules: when the stored `workerId` no longer exists (Worker
 rebuilt or re-registered), the app re-binds by the stable `workerTypeId` only
-when exactly one of the viewer's Workers (Space Workspace or own) has that
+when exactly one of the viewer's Workers (Space Worker or own) has that
 type, and refreshes `catalogRevision`; model and effort codes are kept as
 saved. A stored `workflowReference` whose version was superseded resolves to
 the current version of the same workflow id; a stored Workflow that no longer
@@ -1244,10 +1244,10 @@ requires an explicit name unique within the Space (trimmed and case-insensitive,
 including archived Threads); cached Thread queries provide inline validation,
 and Cloud remains authoritative for concurrent conflicts. Errors display below
 the field. The Space page has no message composers or Discussion/Work tabs.
-Workspace selection retains owner editing and read-only display for other members.
+Worker selection retains owner editing and read-only display for other members.
 The landing content shares the Members title’s left edge at all viewport widths.
 Below the field, Settings (when available), Members, and Archived Threads appear
-in that order. Settings holds Workspace selection. Members is collapsed by
+in that order. Settings holds Worker selection. Members is collapsed by
 default and expandable from its title,
 with a rotating arrow immediately beside the Members label;
 Share Space is in the member grid’s name/email
@@ -1288,7 +1288,7 @@ this change does not enable unlinking the last sign-in method.
 The About dialog describes Syntila as collaboration between people and AI
 Workers in Spaces and Threads, with team conversations, AI requests, and results
 kept together. It introduces Workflows and local execution through Syntila
-Workspace and provider CLIs without presenting AI orchestration as the sole
+Worker and provider CLIs without presenting AI orchestration as the sole
 product purpose.
 
 ### Login presentation
@@ -1378,11 +1378,11 @@ Threads or change their permissions.
 The Members name/email column header shows only the + Share Space control
 when the viewer can invite; its tooltip retains the action label.
 
-Settings holds the Space's Workspace choice. Owners change it through the same
+Settings holds the Space's Worker choice. Owners change it through the same
 compact list selector used by the Work composer and workflow model pickers;
-other members see the current Workspace read-only.
+other members see the current Worker read-only.
 
-### Workspace sharing controls
+### Worker sharing controls
 
 Each shared-person card places its At once and monthly run-time selectors
 directly below usage statistics, before the access table. Both selectors use

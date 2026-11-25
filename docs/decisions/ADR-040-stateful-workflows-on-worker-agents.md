@@ -6,7 +6,8 @@
 - **Closes:** the P5 gap "stateful Workflows" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`
 
 ## Context
-A `stateful_thread` step (Work, Implement) changes a repository and must have exactly one writer per Thread. Today the writer is fixed by a row in `thread_runtime_leases`, which names an `execution_workspaces` row (`workspace_id NOT NULL`), a fencing token and an expiry; `scheduler.ts` only admits such a step while a lease for the same Work Request is active. Worker-targeted requests (`work-creation.ts`) refuse every Workflow that has a stateful step, so on the Worker path Work and Implement cannot run at all.
+
+A `stateful_thread` step (Work, Implement) modifies a local repository and must have at most one writer per Thread. Syntila enforces single-writer exclusivity using `thread_runtime_leases` keyed to a Worker Instance (`worker_instance_id`), a fencing token tied to the Agent session epoch (ADR-034), and an expiry.
 
 ## Options
 

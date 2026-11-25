@@ -12,7 +12,7 @@ Code references below were checked against the repository on 2026-11-03.
 > Notable corrections to the text below: consent is accepted by passing the
 > consent-document **hash** (`--accept <hash>`), not a one-time token;
 > signer recognition is installation-local and never bypasses consent; library routes
-> and Workspace pins live in `apps/cloud/src/routes/worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
+> and Worker pins live in `apps/cloud/src/routes/worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
 > the `worker_catalog.origin/owner_user_id` and
 > `workspace_worker_inventory.executor_json` columns; plugin Workers use
 > `pluginRef` with revision `1` as their stable "profile" identity.
@@ -23,9 +23,9 @@ owns it today.
 
 ```text
 Cloud (account library metadata, enablement, entitlement, catalog row, scheduler)
-  │  Workspace Runtime Protocol (additive fields; capability workspace.worker_plugins.v1)
+  │  Worker Runtime Protocol (additive fields; capability workspace.worker_plugins.v1)
   ▼
-Workspace Service ── authenticated IPC ── syntila CLI (display only)
+Syntila Connect ── authenticated IPC ── syntila CLI (display only)
   │  Local Worker Protocol 4.2 (additive `executor`)
   ▼
 CLI Worker Engine (generic; plugin host)
@@ -42,7 +42,7 @@ secret, or a local path. The CLI never executes anything.
 | Field | Meaning | Rules |
 | --- | --- | --- |
 | `pluginId` | Author-chosen stable name, e.g. `acme-reviewer` | `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, ≤ 48 chars. Unique per account. Not globally unique. |
-| `pluginRef` | Cloud-allocated opaque Worker Type ID, `plugin-` + 12 lowercase hex | Allocated once per `(owner, pluginId)`. Used as `worker_type_id` everywhere a Logical Worker ID is used. 19 chars, so it satisfies `WorkspaceProductWorkerTypeIdSchema` (≤ 128, kebab) and the Engine's `maxWorkerTypeIdLength = 64`. |
+| `pluginRef` | Cloud-allocated opaque Worker Type ID, `plugin-` + 12 lowercase hex | Allocated once per `(owner, pluginId)`. Used as `worker_type_id` everywhere a Logical Worker ID is used. 19 chars, so it satisfies `WorkerProductWorkerTypeIdSchema` (≤ 128, kebab) and the Engine's `maxWorkerTypeIdLength = 64`. |
 | `version` | Author semver `MAJOR.MINOR.PATCH` | Immutable once imported: re-importing the same version with a different digest is rejected (`plugin_version_conflict`). |
 | `manifestDigest` | `sha256` of the canonical JSON manifest | **This is the pinned identity.** The manifest lists every platform artifact with its own `sha256` and size, so it transitively covers all executable bytes. Canonicalisation reuses the rule in `apps/cloud/src/canonical-json.ts`. |
 | `artifactDigest` | `sha256` of the one artifact for this OS/arch | Must equal `manifest.artifacts[platform].sha256`. Reported in inventory so Cloud can freeze it. |
@@ -69,24 +69,24 @@ account_worker_plugin_versions    one row per (plugin_ref, version): manifest_js
 
 Cloud stores no executable and no local path. It is private: reads and writes
 are scoped to `owner_user_id`; no other account (including Space members or
-Workspace borrowers) can list or fetch library rows. The library is where
+Worker borrowers) can list or fetch library rows. The library is where
 `pluginRef` is allocated and where the paid-feature check for import runs.
 
 D1 stays owned by Cloud route/service modules (a new `worker-plugins` route and
 service module); Core stays provider-independent and imports nothing about
 plugins beyond opaque IDs.
 
-### 1.3 Per-Workspace enablement and readiness
+### 1.3 Per-Worker enablement and readiness
 
-Two separate facts, as with official Workers (ADR-021/Workspace architecture:
+Two separate facts, as with official Workers (ADR-021/Worker architecture:
 lifecycle is separate from activation):
 
-- **Enablement** (user intent, per Workspace, Cloud-recorded): which library
-  version is pinned on this Workspace and whether the user turned it on.
+- **Enablement** (user intent, per Worker, Cloud-recorded): which library
+  version is pinned on this Worker and whether the user turned it on.
   `workspace_worker_plugin_enablements(workspace_id, plugin_ref, pinned_version,
   pinned_manifest_digest, consent_json, intent ∈ enabled|disabled, updated_at)`.
   `consent_json` records what was shown and accepted (§4.1).
-- **Readiness** (machine fact, per Workspace, Service-reported): reuses the
+- **Readiness** (machine fact, per Worker, Service-reported): reuses the
   existing `workspace_worker_inventory` row and its `activation_state` /
   `readiness_state` enums. No new enum values are needed; plugin-specific causes
   use `readinessIssueCode`: `plugin_not_installed`, `plugin_digest_mismatch`,
@@ -135,7 +135,7 @@ under `executionSelection.executor`:
 Rules:
 
 1. Cloud copies `manifestDigest` and `artifactDigest` from the inventory row the
-   Service reported **and** requires `manifestDigest` to equal the Workspace
+   Service reported **and** requires `manifestDigest` to equal the Worker
    enablement pin. A mismatch is a scheduler rejection `plugin_digest_not_pinned`;
    nothing is dispatched.
 2. The snapshot is immutable, like the existing `executionSelection` snapshot.
@@ -160,23 +160,23 @@ Rules:
 
 ## 2. Cloud contracts: changed and preserved
 
-Verified against `apps/cloud/src`, `apps/cloud/migrations-v8` and
-`packages/workspace-runtime-protocol/src` on 2026-11-03.
+Verified against `apps/cloud/src`, `apps/backend/migrations` and
+`packages/worker-agent-protocol/src` on 2026-11-03.
 
 ### 2.1 Must change
 
 | # | Contract (owner) | Change | Why it cannot be avoided |
 | --- | --- | --- | --- |
-| C1 | `worker_catalog` (`migrations-v8/0001`) | Add `origin TEXT NOT NULL DEFAULT 'official' CHECK (origin IN ('official','plugin'))` and `owner_user_id TEXT NULL REFERENCES users(id)`, with `CHECK ((origin='plugin') = (owner_user_id IS NOT NULL))`. One plugin row per `pluginRef`: `engine_family='cli'` (kept; the Engine family is unchanged), `release_stage='stable'`, `visibility_state='visible'`. | `worker_assignments.worker_type_id` has `REFERENCES worker_catalog(worker_type_id) ON DELETE RESTRICT` and the scheduler `JOIN`s the catalog. A plugin needs a catalog row or the assignment INSERT fails. Alternative (drop the FK) needs a table rebuild of the hot assignment table and loses an integrity guarantee. |
-| C2 | Every `worker_catalog` reader | Add `origin='official' OR owner_user_id = :caller`. Concretely: `router.ts` `GET /api/workers/catalog` (line ~469) and `GET /api/workspace-runtime/workers/catalog` (~496); `worker-profile-registry.ts` list query (~144, `LIMIT 256`) and `requireWorkerCatalogRow` (~224); `scheduler.ts` (~319 `JOIN worker_catalog`); `routes/profiles.ts` (~44); `routes/thread-policy.ts` (~545); `routes/reply-references.ts` (~119); `routes/work-lifecycle.ts` (~760, label only, snapshot-first so low risk). | Without the filter, one account's plugin name appears in every account's catalog and in Profile Lab's admin list. The runtime catalog for a Workspace returns official rows plus **that Workspace owner's** enabled plugin rows only. |
+| C1 | `worker_catalog` (`apps/backend/migrations/0001_initial.sql`) | Add `origin TEXT NOT NULL DEFAULT 'official' CHECK (origin IN ('official','plugin'))` and `owner_user_id TEXT NULL REFERENCES users(id)`, with `CHECK ((origin='plugin') = (owner_user_id IS NOT NULL))`. One plugin row per `pluginRef`: `engine_family='cli'` (kept; the Engine family is unchanged), `release_stage='stable'`, `visibility_state='visible'`. | `worker_assignments.worker_type_id` has `REFERENCES worker_catalog(worker_type_id) ON DELETE RESTRICT` and the scheduler `JOIN`s the catalog. A plugin needs a catalog row or the assignment INSERT fails. Alternative (drop the FK) needs a table rebuild of the hot assignment table and loses an integrity guarantee. |
+| C2 | Every `worker_catalog` reader | Add `origin='official' OR owner_user_id = :caller`. Concretely: `router.ts` `GET /api/workers/catalog` (line ~469) and `GET /api/workspace-runtime/workers/catalog` (~496); `worker-profile-registry.ts` list query (~144, `LIMIT 256`) and `requireWorkerCatalogRow` (~224); `scheduler.ts` (~319 `JOIN worker_catalog`); `routes/profiles.ts` (~44); `routes/thread-policy.ts` (~545); `routes/reply-references.ts` (~119); `routes/work-lifecycle.ts` (~760, label only, snapshot-first so low risk). | Without the filter, one account's plugin name appears in every account's catalog and in Profile Lab's admin list. The runtime catalog for a Worker returns official rows plus **that Worker owner's** enabled plugin rows only. |
 | C3 | `worker_profiles` publishing | `requireWorkerCatalogRow` must reject `origin='plugin'` rows. | Plugins have no Profile; Profile Lab must not be able to attach one. |
 | C4 | `workspace_worker_inventory` | Add nullable `executor_kind` (`profile`\|`plugin`, default `profile`), `plugin_ref`, `plugin_version`, `plugin_manifest_digest`, `plugin_artifact_digest`, `plugin_isolation_json`. Existing `profile_definition_id`/`profile_release_version` stay `NULL` for plugins. | Inventory is the single source of readiness the scheduler reads. |
-| C5 | `WorkspaceWorkerInventoryEntrySchema` (`workspace-runtime.ts` ~322, `.strict()`) | Add optional `executor` object (`kind`, `pluginId`, `version`, `manifestDigest`, `artifactDigest`, `pluginProtocol`, `isolation`). Service sends it **only after** Cloud announces `workspace.worker_plugins.v1` in `hello.ack` `cloudCapabilities` (same gating the Allowed Folders contract uses; `cloud_connection.dart` ~1711). | Strict schema rejects unknown keys; an older Cloud must never see the field. |
+| C5 | `WorkerWorkerInventoryEntrySchema` (`workspace-runtime.ts` ~322, `.strict()`) | Add optional `executor` object (`kind`, `pluginId`, `version`, `manifestDigest`, `artifactDigest`, `pluginProtocol`, `isolation`). Service sends it **only after** Cloud announces `workspace.worker_plugins.v1` in `hello.ack` `cloudCapabilities` (same gating the Allowed Folders contract uses; `cloud_connection.dart` ~1711). | Strict schema rejects unknown keys; an older Cloud must never see the field. |
 | C6 | Scheduler admission (`scheduler.ts` ~495-560) | The `engine_profile_unavailable` check requires a Profile definition and release. Add an `executor_kind='plugin'` branch: require `plugin_manifest_digest`, `engine_version` ≥ 1.4.0 (same pattern as `supportsExecutionCatalogPin`), a pin match, and the entitlement (§3). New rejection codes: `plugin_entitlement_required`, `plugin_digest_not_pinned`, `plugin_not_enabled`, `plugin_read_only_unenforceable`, `plugin_additional_folders_unsupported`. | Today a Worker without a Profile is rejected. |
 | C7 | Dispatcher snapshot + target (`assignment-dispatcher.ts`, ~420-480; `execution-selection-snapshot.ts`) | Write `executionSelection.executor` (§1.4); `profileDefinitionId`/`profileReleaseVersion` target fields become optional and `engineVersion` stays required. Add the plugin entitlement predicate to the assignment `INSERT … SELECT … WHERE`, beside `executionSlotAdmissionSql`, so admission and the entitlement check are one atomic write. | Race: a plan could expire between the scheduler read and the INSERT. |
 | C8 | Execution selection snapshot schema (`workspace-runtime.ts` ~457-506, strict) | Additive optional `executor`. | Same strict-schema reason as C5. |
 | C9 | `account-plan.ts` | Add `"workers.custom_plugins"` to `PAID_FEATURES` and a label; add `paidPluginOwnerSql()` thin wrapper over `paidOwnerSql`. `GET /api/me/plan` then lists the feature automatically (`features: tier==='paid' ? PAID_FEATURES : []`). | The existing mechanism; see §3. |
-| C10 | New routes | `GET/POST /api/me/worker-plugins[/…]` (library), `GET/PUT/DELETE /api/workspaces/:id/worker-plugins/:pluginRef` (enablement), `POST /api/workspace-runtime/worker-plugins/entitlement` (lease). Human-session routes use the Desktop human session (`syntila login`); runtime routes use the Workspace runtime credential. All in a new route module that owns its D1 access. | New surface. No compatibility aliases. |
+| C10 | New routes | `GET/POST /api/me/worker-plugins[/…]` (library), `GET/PUT/DELETE /api/workspaces/:id/worker-plugins/:pluginRef` (enablement), `POST /api/workspace-runtime/worker-plugins/entitlement` (lease). Human-session routes use the Desktop human session (`syntila login`); runtime routes use the Worker runtime credential. All in a new route module that owns its D1 access. | New surface. No compatibility aliases. |
 | C11 | Local Worker Protocol (`packages/syntila_worker_protocol`) | 4.2: optional `executor` on `initialize.request`/`execute.request` and the identity block; `supportedLocalWorkerProtocolVersions` gains `'4.2'`; limits for plugin frames. 4.0 and 4.1 frames decode unchanged. | Version negotiation already picks the newest common version. |
 | C12 | Hello/ack capabilities | Announce `workspace.worker_plugins.v1`. | Capability-gated additive rollout (Service and Cloud deploy independently). |
 
@@ -186,12 +186,12 @@ Verified against `apps/cloud/src`, `apps/cloud/migrations-v8` and
 | --- | --- |
 | `worker_assignments` columns and the idempotent `INSERT … RETURNING` admission pattern, the active-status set, assignment state machine and terminal-outcome journal/ack reconciliation | Plugin assignments use the same table; only the snapshot JSON and one predicate are added. |
 | `workspace_space_grants.allowed_worker_ids_json` and `thread_execution_policies.allowed_worker_type_ids_json` | Both are opaque ID allow-lists, so `workerId`/`pluginRef` work. A plugin Worker is subject to the same grant and Thread policy as any Worker. |
-| `worker_scheduling` (Cloud scheduling toggle) and Workspace slot accounting | Plugin Workers consume the same Workspace-wide `parallel_slots`. |
+| `worker_scheduling` (Cloud scheduling toggle) and Worker slot accounting | Plugin Workers consume the same Worker-wide `parallel_slots`. |
 | `workspace_worker_inventory` readiness and activation enums and their `CHECK`s | Plugin causes are issue codes, not new enum values (avoids a table rebuild). |
-| Free-tier admission SQL (`executionSlotAdmissionSql`, personal Workspace allowance, Space member limit, attachment limits) | A plugin run is an ordinary execution for the requester's concurrency rule. |
+| Free-tier admission SQL (`executionSlotAdmissionSql`, personal Worker allowance, Space member limit, attachment limits) | A plugin run is an ordinary execution for the requester's concurrency rule. |
 | Thread mutation leases, fencing tokens, Space-wide lock, Space directory resolution, Allowed Folders | Unchanged. Plugin receives the resolved Space directory and nothing broader. |
 | Context Engine, Conversation Router, canonical history, frozen context snapshot | Plugins receive the same canonical envelope the Engine builds for a provider CLI, or a bootstrap prompt when they cannot resume. |
-| `workflow-workspace.ts` auto-enabling Cloud scheduling for ready, enabled Workers on the selected Workflow Workspace | Plugin Workers are enabled the same way. **Note:** this makes a ready plugin schedulable as soon as the Workspace is the Workflow Workspace, so the entitlement and pin checks in C6/C7 are mandatory, not an optimisation. |
+| `workflow-workspace.ts` auto-enabling Cloud scheduling for ready, enabled Workers on the selected Workflow Worker | Plugin Workers are enabled the same way. **Note:** this makes a ready plugin schedulable as soon as the Worker is the Workflow Worker, so the entitlement and pin checks in C6/C7 are mandatory, not an optimisation. |
 | Per-installation lock, `service stop`, Disconnect Cloud, `workspace.nano` restart-applied config | Not touched (§5). |
 | Profile schema, Profile publication, Profile Lab, official catalog sync (`WorkerCatalogCoordinator`) | Plugins neither read nor write them. |
 | Realtime events, AX server-state caching | Inventory change events already carry plugin rows. AX renders by descriptor. |
@@ -221,9 +221,9 @@ ADR-022 already provides everything needed except offline persistence:
   work finishes* (`worker.sharing`).
 
 Add one feature: `workers.custom_plugins`. No new tier, no new table for plans.
-The owner of the library and of the Workspace is the entitled principal; the
+The owner of the library and of the Worker is the entitled principal; the
 requester's plan is irrelevant for plugin gating (a borrower can only reach an
-owner's Workspace while the owner is Plus anyway, because sharing is itself a
+owner's Worker while the owner is Plus anyway, because sharing is itself a
 paid feature).
 
 > **Superseded (2026-11-04).** The entitlement lease (§3.4), the local Plus
@@ -231,7 +231,7 @@ paid feature).
 > enforced only by Cloud, only when plugin work is used: scheduler eligibility,
 > thread policy and the atomic assignment INSERT. Importing, testing,
 > registering, enabling and every other management action is free on any plan,
-> and the Workspace does no local plan check. Running work finishes after a
+> and the Worker does no local plan check. Running work finishes after a
 > lapse; only new assignments are refused. The remaining text in §3 is kept for
 > history.
 
@@ -243,7 +243,7 @@ paid feature).
 | **Enablement** (`PUT /api/workspaces/:id/worker-plugins/:ref`) | None (free); checks the version exists in the owner's library | — |
 | **Assignment eligibility** (scheduler) | Plugin branch rejects with `plugin_entitlement_required` unless `paidOwnerSql(ew.owner_user_id)` | Candidate skipped; other Workers still considered |
 | **Assignment INSERT** | Same predicate inside the `WHERE`, atomic with the write | Nothing written; scheduler re-evaluates |
-| **Workspace start-up / reconnect** | On `hello` Cloud evaluates the owner's entitlement, announces it in `hello.ack`, and issues a lease. If not entitled, Cloud marks plugin inventory rows `plugin_entitlement_lapsed` and the Service does not probe or spawn plugins | Official Workers unaffected |
+| **Worker start-up / reconnect** | On `hello` Cloud evaluates the owner's entitlement, announces it in `hello.ack`, and issues a lease. If not entitled, Cloud marks plugin inventory rows `plugin_entitlement_lapsed` and the Service does not probe or spawn plugins | Official Workers unaffected |
 | **Lease renewal** | Every connect and every ≤ 12 h while connected | See §3.4 |
 
 Read paths stay free so a downgraded user can see, export and remove their
@@ -287,7 +287,7 @@ answer without trusting editable files.
   grace is exactly the remaining lease time: no extra grace period, no
   "last known good forever". After expiry the Service treats plugins as
   `plugin_entitlement_lapsed` until it reaches Cloud again.
-- **What an unreachable Cloud affects:** an offline Workspace receives no Cloud
+- **What an unreachable Cloud affects:** an offline Worker receives no Cloud
   assignments, so the lease governs only *local* actions: probing/readiness,
   `test`, starting a new plugin process for an admitted assignment that arrived
   before the disconnect, and in-flight work (§3.5).
@@ -317,7 +317,7 @@ check evaluates it live, as ADR-022 does.
 | Subject | Decision | Rationale |
 | --- | --- | --- |
 | **Running work** | **Finishes**, but capped. Cloud admits nothing new. The Service stops spawning any new plugin process (new assignments, resumes, probes, tests) as soon as it learns of the lapse or its lease expires. Already-spawned assignments run to completion or their own timeout, with a hard cap `PLUGIN_LAPSE_DRAIN_MAX_MS = 30 min` after the lapse, then the normal cancel path ends them with `plugin_entitlement_lapsed`. | Matches ADR-022 ("Work already admitted finishes") and avoids half-written Space files. The cap exists because, unlike a provider CLI, a plugin is user-supplied code that Syntila would otherwise let run for up to the 24 h protocol maximum without entitlement. |
-| **Plugins** | Effective state = `intent AND entitled`. Intent (`enabled`) is **preserved**; the plugin shows `disabled (Plus required)`. Library rows, versions, Workspace enablements, local files and consent records are **never deleted**. Renewing restores them without re-consent, provided the pinned digest still matches. | Same pattern as paused Person Grants. |
+| **Plugins** | Effective state = `intent AND entitled`. Intent (`enabled`) is **preserved**; the plugin shows `disabled (Plus required)`. Library rows, versions, Worker enablements, local files and consent records are **never deleted**. Renewing restores them without re-consent, provided the pinned digest still matches. | Same pattern as paused Person Grants. |
 | **Exports** | Remain possible, offline and lapsed, because export reads only local files and the user's own data. | Data portability; the user must never be locked out of their own artefacts. |
 | **Remove / disable / validate / list** | Allowed. | Like cancelling invitations after a downgrade. |
 | **Import / register / enable / test / update-pin** | 402 `paid_plan_required`. | These grow the paid footprint. |
@@ -388,7 +388,7 @@ same `pluginId`. A digest the Service finds on disk that differs from the pin is
   grants entitlement, bypasses conformance or moves a pin. Forgetting a signer
   does not disable existing plugin versions; that requires `plugins disable`.
 - Default policy: **signing optional** (decision D2). A Cloud-level organisation
-  policy "require signed plugins" is a future per-Workspace setting; the data
+  policy "require signed plugins" is a future per-Worker setting; the data
   model reserves `consent_json.signer`.
 - No Syntila-operated CA or marketplace. No signing key ever passes through
   Cloud; Cloud stores fingerprints and the verification result.
@@ -419,7 +419,7 @@ The table includes remaining target requirements explicitly:
 | Max prompt / output | 512 KiB / 768 KiB (existing limits) | Truncate-with-error, never silent |
 | Progress rate | 20 frames/s, 4 KiB each, burst 100 | Excess dropped, counted, reported |
 | Stderr capture | 64 KiB ring, redacted | Diagnostics only |
-| Concurrency | `manifest.limits.maxConcurrent` clipped by `min(Workspace parallel_slots, 4)`; default 1 per plugin | Scheduler uses inventory `localConcurrencyLimit`; Engine enforces |
+| Concurrency | `manifest.limits.maxConcurrent` clipped by `min(Worker parallel_slots, 4)`; default 1 per plugin | Scheduler uses inventory `localConcurrencyLimit`; Engine enforces |
 | Processes | 1 plugin process per active assignment; at most 64 descendants | POSIX: observed tree count every second. Windows: hard job count 66 including launcher and plugin; no breakaway flag |
 | Memory | 1 GiB | POSIX: observed sum of tree RSS every second (shared pages may be counted twice). Windows: hard aggregate job committed-memory limit including launcher |
 | CPU time | 1 h | POSIX: inherited hard `RLIMIT_CPU` per process plus a monotonic sampled aggregate tree budget; children unseen between samples escape accounting. Windows: hard job user-time limit |
@@ -501,7 +501,7 @@ Consequences built into the design:
 | Invariant | How this feature respects it |
 | --- | --- |
 | Only the headless Service tree spawns processes | Service → Engine → plugin. The CLI only calls IPC; architecture tests extend the existing "CLI does not spawn" test to the new commands. |
-| No Workspace GUI | CLI only. AX shows plugin Workers like any Worker. |
+| No Worker GUI | CLI only. AX shows plugin Workers like any Worker. |
 | Official Workers keep the shared Engine and Profiles; no Profile editor; Profile schema not public | Untouched. The manifest is a separate, public, small schema and is not a Profile. |
 | No plaintext credentials; no managed provider credentials; no compatibility APIs | None stored or added; new fields are additive behind a capability, not aliases. |
 | Cloud route/service modules own D1; Core provider-independent | New module owns its tables; Core sees opaque IDs only. |
@@ -516,7 +516,7 @@ Consequences built into the design:
 Custom plugins now use the shared model catalog and Cloud selection validation.
 Metadata-only `models.list` stays below the Engine boundary; Service reports the
 catalog bound to the enabled manifest digest and package version. There are no
-provider-specific branches in Cloud, Core, Workspace, or the Engine.
+provider-specific branches in Cloud, Core, Worker, or the Engine.
 
 Continuity capabilities distinguish replay, native handles, and checkpoint
 adapters. Canonical history remains Syntila-owned. The Engine uses its existing

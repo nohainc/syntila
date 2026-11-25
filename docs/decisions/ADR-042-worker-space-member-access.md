@@ -14,13 +14,7 @@
 
 ## Context
 
-Worker Instances (`worker_instances`, ADR-032) are owned by a single user (`owner_user_id`). Today, every Worker management route in `apps/backend/src/domain/routes/workers.ts` and every execution eligibility check in `apps/backend/src/domain/worker-eligibility.ts` (`acceptWorkerTarget`) is strictly owner-only:
-
-1. `handleListEligibleWorkers` (`apps/backend/src/domain/routes/work-creation.ts`) queries only `worker_instances WHERE owner_user_id = requesterUserId AND revoked_at IS NULL`.
-2. `acceptWorkerTarget` (`apps/backend/src/domain/worker-eligibility.ts`), called at admission (`resolveWorkerTargetBindings` / `recheckWorkerTarget` in `worker-target-bindings.ts`) and at every step dispatch (`dispatchWorkerAssignment` in `worker-dispatch.ts`), requires `w.owner_user_id = request.requesterUserId`. Any non-owner request fails with `worker_not_found` (404).
-3. Legacy sharing in `apps/backend/src/domain/routes/workspace-member-access.ts` (`workspace_member_access` and `workspace_member_overrides`) is keyed by `workspace_id` and `workspace_worker_inventory`, which belongs to the Workspace execution path rather than user-owned Worker Instances.
-
-Owners need a way on the Worker detail page to share a Worker with selected members of one of their Spaces, with per-member enable/disable state and permission levels.
+Worker Instances (`worker_instances`, ADR-032) are owned by a single user (`owner_user_id`). By default, Worker management and execution eligibility (`acceptWorkerTarget` in `apps/backend/src/domain/worker-eligibility.ts`) are owner-only. Owners need a way on the Worker detail page to share a Worker with selected members of one of their Spaces, with per-member enable/disable state and permission levels.
 
 ## Decision
 

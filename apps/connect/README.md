@@ -1,6 +1,6 @@
 # syntila-connect (Standalone Syntila Connect)
 
-One Agent is one Worker Instance: one credential, one journal, one connection. It runs with no Workspace installed. Design: `docs/specifications/WORKER_AGENT_RUNTIME_V1.md`, `docs/specifications/WORKER_AGENT_CLI_AND_SERVICES.md`, ADR-034.
+One Agent is one Worker Instance: one credential, one journal, one connection. Design: `docs/specifications/CONNECT_CLI_AND_SERVICES.md`, ADR-034.
 
 ```shell
 cd apps/connect

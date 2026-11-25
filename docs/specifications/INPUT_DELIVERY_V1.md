@@ -1,6 +1,6 @@
 # Input Delivery v1
 
-> **Superseded in part (P10).** Workspaces are replaced by Worker Agents ([ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution.md)). This document describes the legacy Workspace path, which is closed in stages and then removed ([LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md)). Do not build new features on it.
+> **Current architecture:** Workers run under Syntila Connect ([ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution.md)). Request files and handoffs are delivered through R2 ([ADR-037](../decisions/ADR-037-files-and-artifacts.md)).
 
 Status: implemented. Owners: Cloud (`routes/work-request-inputs.ts`,
 `workflow.ts` gate), Workspace Service (`input_delivery.dart`,

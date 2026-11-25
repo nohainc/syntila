@@ -26,4 +26,4 @@ Status: **checklist only; no item has been reviewed yet.** Each line names what 
 - [ ] No local path is stored in or sent to Cloud (grep the payloads and `worker_assignments`).
 
 ## Cutover
-- [ ] After `close-gateway`, no Workspace credential still authorizes anything (`legacy-cutover.ts`; check the runtime routes that remain: inputs, outputs, ownership).
+- [ ] After `close-gateway`, no Worker credential still authorizes anything (`legacy-cutover.ts`; check the runtime routes that remain: inputs, outputs, ownership).

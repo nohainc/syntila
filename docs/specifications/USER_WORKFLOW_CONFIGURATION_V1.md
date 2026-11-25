@@ -112,10 +112,10 @@ preferences. Phase 3 introduces no schema or API migration.
 Cloud resolves the Space owner’s global defaults plus a shared Space workflow override
 for both validation and submission, regardless of the requester.
 Defaults are overlaid by sparse step overrides. Every step must name an explicit
-Worker from the selected Space Workflow Workspace inventory; Cloud's internal
+Worker from the selected Space Workflow Worker inventory; Cloud's internal
 execution grant, Thread permissions, Profile execution options, readiness, and
-Workspace eligibility rules still apply. Resolution verifies every configured
-Worker in one Workspace before freezing the request. A missing, offline, or
+Worker eligibility rules still apply. Resolution verifies every configured
+Worker in one Worker before freezing the request. A missing, offline, or
 incompatible Worker fails admission; it is never silently replaced. `Auto`
 model and effort remain null, meaning the signed Profile/provider CLI default;
 Syntila does not guess a provider model or effort.
@@ -201,7 +201,7 @@ separately from execution fields, defaults to `chat`, and is never copied into a
 Workflow Definition. `GET/PUT /api/user/workflow-default` and
 `GET/PUT /api/spaces/:spaceId/workflow-default` read or update the selection.
 Only enabled Workflows can be selected. Chat is always enabled and is the
-automatic fallback when the selected Workflow is disabled or a Workspace change
+automatic fallback when the selected Workflow is disabled or a Worker change
 resets the scope.
 
 ## Focused validation
@@ -213,7 +213,7 @@ Profile pinning, rejection of obsolete writes, and cleanup migration invariants.
 AX tests cover Profile model/effort filtering, invalid combinations, editing/saving,
 reset/inherit, inventory changes, navigation, session isolation, query deduplication,
 cache reuse, and global preference projection into retained Thread controls.
-Component validation is AX + Cloud and direct shared contracts. No Workspace,
+Component validation is AX + Cloud and direct shared contracts. No Worker,
 Profile Lab, Public Site, native packaging, or full-repository run is required.
 
 ## Shared Space configuration
@@ -238,44 +238,44 @@ Migration `0020_space_workflow_configurations.sql` adds a Space-owned table with
 cascading deletion and a composite Space/workflow key. It performs no eager copying
 or historical backfill. Apply it before updated Cloud/AX. Execution resolves from active Space-granted inventory using existing
 Thread permissions and readiness checks; saved explicit Workers still require
-a valid Space grant in the selected Workspace; request authorization still uses the actual requester. All new
+a valid Space grant in the selected Worker; request authorization still uses the actual requester. All new
 runs snapshot their resolved choices as before. No Thread execution override exists.
 
 Migration `0028_workflow_default_selection.sql` adds separate user and Space
 default-selection rows and normalizes any legacy Chat rows to enabled. It does
 not copy workflow definitions or execution selections.
 
-## Workspace selection
+## Worker selection
 
-Global Workflows and the Space Workflows tab select one Workspace before editing
+Global Workflows and the Space Workflows tab select one Worker before editing
 or executing workflows. Only its Workers and signed Profile execution options are
 available to the editor, write validation, and runtime Worker resolution. An
-explicit Worker outside that Workspace is rejected. Offline Workers in the
-selected Workspace retain their saved choices; execution still requires readiness.
-With no selection, new execution is unavailable until a Workspace is chosen.
-No Workspace is guessed during migration.
+explicit Worker outside that Worker is rejected. Offline Workers in the
+selected Worker retain their saved choices; execution still requires readiness.
+With no selection, new execution is unavailable until a Worker is chosen.
+No Worker is guessed during migration.
 
 The authenticated APIs are `GET/PUT /api/user/workflow-workspace` and
 `GET/PUT /api/spaces/:spaceId/workflow-workspace`. GET returns
 `{ workspaceId, inherited, workspaces: [{ id, name }] }`. PUT accepts
 `{ workspaceId, confirmReset: true }`; a Space may instead send
 `{ inherit: true, confirmReset: true }`. Unknown fields and foreign/revoked
-Workspaces are rejected. Only a Space owner may change its selection; members
-may read it. Selection choices are the settings owner's Workspaces; members see only the
-selected Workspace metadata.
+Workers are rejected. Only a Space owner may change its selection; members
+may read it. Selection choices are the settings owner's Workers; members see only the
+selected Worker metadata.
 
-A Workspace change requires a visible confirmation and an explicit API reset
+A Worker change requires a visible confirmation and an explicit API reset
 confirmation. Settings and preference deletion commit in one D1 batch. All
 workflows become enabled with no configured Worker, `Auto` model/effort, and
 inherited steps; each must be assigned a Worker before execution.
-Global changes also reset overrides in owned Spaces that inherit the Workspace;
-Spaces with an explicit Workspace keep their configurations. A Space selection
+Global changes also reset overrides in owned Spaces that inherit the Worker;
+Spaces with an explicit Worker keep their configurations. A Space selection
 forks the entire scope, suppressing global workflow preferences so explicit
 Space defaults are independent. Resetting a workflow in this scope clears its
-Worker and uses `Auto` for model and effort; returning to the global Workspace deletes the scope setting and
+Worker and uses `Auto` for model and effort; returning to the global Worker deletes the scope setting and
 restores current global preferences for all workflows.
 
-Selecting an owned Workspace authorizes its execution in the owner's Space,
+Selecting an owned Worker authorizes its execution in the owner's Space,
 including inherited Spaces and newly created Spaces. Existing grant restrictions,
 suspension, expiration, member rights, and admission checks remain authoritative.
 Switching does not revoke historical grants or alter accepted runs. Grant creation
@@ -283,13 +283,13 @@ is audited. Space updates notify other clients through existing collaboration
 events. No new execution or provider protocol is introduced.
 
 Apply `0022_workflow_workspace_selection.sql` with AX and Cloud together. It
-adds separate user/Space Workspace settings with cascading scope deletion and
-nullable Workspace references. It replaces existing `allowWork: false` with
+adds separate user/Space Worker settings with cascading scope deletion and
+nullable Worker references. It replaces existing `allowWork: false` with
 disabled per-workflow Work configurations while preserving saved selections;
 Chat remains unchanged. It removes `allowWork` from Space settings, and obsolete
-writes receive 400. The Space Workspaces tab and its GET/POST connection API are
+writes receive 400. The Space Workers tab and its GET/POST connection API are
 removed. Read-only grant metadata now uses
-`GET /api/spaces/:spaceId/workflow-workspace/grants`; canonical Workspace grant
+`GET /api/spaces/:spaceId/workflow-workspace/grants`; canonical Worker grant
 management APIs remain for execution authorization. Historical snapshots are
 unchanged; no production migration is performed by implementing this feature.
 
@@ -325,77 +325,77 @@ a Thread come from the owner's default configuration when the Thread is
 created or its Workflow is changed, and the Thread's last choices (active tab,
 Workflow, Worker, model, effort) are restored from local per-user Thread view
 state. Cloud still resolves and honors any existing Space override rows and
-Space Workflow Workspace selections; their endpoints, tables and runtime
-precedence are scheduled for removal separately, because a Space's Workspace
+Space Workflow Worker selections; their endpoints, tables and runtime
+precedence are scheduled for removal separately, because a Space's Worker
 grant depends on that selection.
 
-## Workflows move into Workspace tabs (2026-10-17)
+## Workflows move into Worker tabs (2026-10-17)
 
 The standalone Workflows page and menu item are removed; `/workflows` opens
-Workspaces. The Workspaces page shows one tab per registered Workspace (Thread
+Workers. The Workers page shows one tab per registered Worker (Thread
 tab style) with its machine info, Workers and Workflows.
 
-### Per-Workspace storage (migration `0072`)
+### Per-Worker storage (migration `0072`)
 
 `user_workflow_configurations` is keyed `(user_id, workspace_id, workflow_id)`
 and `user_workflow_defaults` `(user_id, workspace_id)`. Existing rows move to the
-user's selected Workspace; rows of users without one are dropped (they had
+user's selected Worker; rows of users without one are dropped (they had
 nothing to attach to).
 
 - `GET|PUT|DELETE /api/user/workflow-configurations[/:id]` and
   `GET|PUT /api/user/workflow-default` accept `?workspaceId=`. Without it they
-  address the selected Workspace. The Workspace must be owned by the caller and
-  not revoked (404 otherwise); Workers must belong to the addressed Workspace.
+  address the selected Worker. The Worker must be owned by the caller and
+  not revoked (404 otherwise); Workers must belong to the addressed Worker.
   The configuration list response includes `workspaceId`.
-- The selected Workspace (`user_workflow_settings`) now only decides which
-  Workspace new Work runs on. Changing it no longer deletes configuration.
-  `confirmReset` is required only when Spaces inheriting the global Workspace
+- The selected Worker (`user_workflow_settings`) now only decides which
+  Worker new Work runs on. Changing it no longer deletes configuration.
+  `confirmReset` is required only when Spaces inheriting the global Worker
   have their own overrides, which are still reset because they reference the
-  previous Workspace's Workers.
-- Space resolution reads the owner's rows for the Space's effective Workspace
+  previous Worker's Workers.
+- Space resolution reads the owner's rows for the Space's effective Worker
   (its own selection, otherwise the global one), including Spaces with their own
-  Workspace.
-- AX: each Workspace tab edits its own workflows through
-  `AxWorkflowConfigurations.forWorkspace`; the tab shows "Active" or a
-  "Use this Workspace" action for the selected Workspace.
+  Worker.
+- AX: each Worker tab edits its own workflows through
+  `AxWorkflowConfigurations.forWorker`; the tab shows "Active" or a
+  "Use this Worker" action for the selected Worker.
 
-### Space Workspace selector
+### Space Worker selector
 
-The Space page header shows a Workspace control backed by the existing
+The Space page header shows a Worker control backed by the existing
 `/api/spaces/:id/workflow-workspace` endpoint. The owner chooses "Default
-Workspace" (follow the owner's selected Workspace) or one of their Workspaces;
-other members see the current Workspace read-only. Changing it asks for
+Worker" (follow the owner's selected Worker) or one of their Workers;
+other members see the current Worker read-only. Changing it asks for
 confirmation and resets that Space's own workflow overrides and default (they
-reference the previous Workspace's Workers); the chosen Workspace is authorized
-for the Space. Threads then use that Workspace's Workers and workflows.
+reference the previous Worker's Workers); the chosen Worker is authorized
+for the Space. Threads then use that Worker's Workers and workflows.
 
 ### Member access (migration `0073`)
 
 `workspace_member_access(workspace_id, policy_json)` optionally limits what
-invited Space members can run on a Workspace. No row means no limit. A row holds
+invited Space members can run on a Worker. No row means no limit. A row holds
 `{schemaVersion:1, workers:{<workerId>:{models:[…]|null, efforts:[…]|null}}}`:
 a listed Worker is shared, a null list shares every model or effort, and an
 unlisted Worker is not shared.
 
 - `GET|PUT /api/workspaces/:id/member-access` is owner-only (404 otherwise).
   `PUT {restricted:false}` removes the row; `PUT {restricted:true, workers}`
-  replaces it, and every Worker must belong to the Workspace.
+  replaces it, and every Worker must belong to the Worker.
 - Enforcement is in `resolveWorkflowExecutionBindings`, so it covers request
   validation and creation. For a requester who does not own the Space's
-  effective Workspace, each step's Worker, model and effort (configured or
+  effective Worker, each step's Worker, model and effort (configured or
   composer override) must be shared; otherwise the request fails with 403.
   When models or efforts are limited, Auto is not shared, because the Worker
   could pick an unshared value. The owner configures an explicit model/effort in
   the workflow, or members choose one.
-- AX: each Workspace tab has an owner-only "Member access" section (limit switch,
+- AX: each Worker tab has an owner-only "Member access" section (limit switch,
   per-Worker share, model and effort chips; Save access).
 
 ### Member choices
 
 `GET /api/workers?includeShared=true` (sent by AX) returns the caller's own
 Workers plus, for Spaces they belong to but do not own, the Workers of the
-Workspace those Spaces run on (the Space's own selection, otherwise the owner's
-global one; revoked Workspaces excluded). With a member-access policy only the
+Worker those Spaces run on (the Space's own selection, otherwise the owner's
+global one; revoked Workers excluded). With a member-access policy only the
 listed Workers appear, and their `executionOptions` are narrowed to the shared
 models and efforts (custom models are disabled when models are limited). Shared
 rows hide the owner's machine details (`providerToolName`, `providerToolVersion`,
@@ -409,18 +409,18 @@ accept; the check in `resolveWorkflowExecutionBindings` remains the authority.
 ## Space workflow editing removed from AX (2026-10-17)
 
 AX no longer has any screen that writes workflow settings for a Space: workflows
-are edited per Workspace in its tab, and a Space follows the Workspace it runs
+are edited per Worker in its tab, and a Space follows the Worker it runs
 on. The Dart client therefore dropped its Space write paths
 (`saveSpaceWorkflowConfiguration`, `resetSpaceWorkflowConfiguration`,
 `saveSpaceWorkflowDefault`), and a Space-scoped `AxWorkflowConfigurations` is
 read-only. `WorkflowsPage` now requires a `workspaceId` and only renders inside
-a Workspace tab (no standalone title, Workspace picker or per-Space reset).
+a Worker tab (no standalone title, Worker picker or per-Space reset).
 Cloud's Space override routes and tables are unchanged and still resolve for
 existing data; removing them is a separate, breaking Cloud change.
 
 ### Default policy, per-person overrides and Person Grants (ADR-020)
 
-Migrations `0074`-`0076`. The Member access policy above is the Workspace
+Migrations `0074`-`0076`. The Member access policy above is the Worker
 **default**. Optional fields and rules added on top of it:
 
 - `mode`: `chat` (read-only Workflows), `work` (also file changes) or
@@ -432,24 +432,24 @@ Migrations `0074`-`0076`. The Member access policy above is the Workspace
   one person, never merges. Owner-only
   `GET|PUT|DELETE /api/workspaces/:id/member-access/people/:userId`
   (`DELETE` resets to the default).
-- Workspace invitations (`workspace_invitations`) and Person Grants
-  (`workspace_person_grants`). A Workspace owner invites by email
+- Worker invitations (`workspace_invitations`) and Person Grants
+  (`workspace_person_grants`). A Worker owner invites by email
   (`GET|POST /api/workspaces/:id/invitations`,
   `POST .../invitations/:invitationId/revoke`); the invitee lists
   (`GET /api/workspace-invitations`) and accepts
   (`POST /api/workspace-invitations/:id/accept`). Invitations last 7 days, are
   single use, need the signed-in email to match, and are capped at 20 pending
-  per Workspace. Accepting creates only the grant and never a people
+  per Worker. Accepting creates only the grant and never a people
   relationship. With no default policy the person starts as chat-only with no
   Workers shared.
-- A Space owner may select a Workspace lent to them; the user-level default
-  still accepts only owned Workspaces. The Space grant is created by the lender,
+- A Space owner may select a Worker lent to them; the user-level default
+  still accepts only owned Workers. The Space grant is created by the lender,
   capped by the borrower's mode, with concurrency 1, and never changes the
-  lender's Worker scheduling. On a lent Workspace every requester except its
+  lender's Worker scheduling. On a lent Worker every requester except its
   owner needs their own active grant, so other members of the borrower's Space
   are refused with 403 (strict, non-transferable, no re-lending).
 - `POST /api/workspaces/:id/person-grants/:userId/revoke` ends a grant, revokes
-  the borrower's Space grants on that Workspace and is audited. Steps already
+  the borrower's Space grants on that Worker and is audited. Steps already
   running finish; new and queued dispatch stops.
 - `PUT /api/workspaces/:id/person-grants/:userId/quota` sets
   `{maxConcurrentRequests: 1-10}` (default 1), enforced at admission with 429.
@@ -458,27 +458,27 @@ Migrations `0074`-`0076`. The Member access policy above is the Workspace
   used); the borrower's content is never returned.
 
 Not implemented: a total run-time quota and a per-grant Work Root (the Work Root
-is local to the Workspace Service). AX screens for per-person overrides,
+is local to the Syntila Connect). AX screens for per-person overrides,
 invitations and the access list are pending; the API above is complete.
 
-### Space Workspace selection in AX
+### Space Worker selection in AX
 
-There is no account-wide default Workspace for Spaces. A Space uses only the
-Workspace explicitly chosen for it, or none (it cannot run Work until one is
-chosen). Attaching a Workspace is a permission decision, so it is never
+There is no account-wide default Worker for Spaces. A Space uses only the
+Worker explicitly chosen for it, or none (it cannot run Work until one is
+chosen). Attaching a Worker is a permission decision, so it is never
 inherited or selected silently.
 
-- The Create Space dialog has a Workspace field that starts at "No Workspace".
-  If the user owns exactly one Workspace, a one-click "Use <name>" button picks
-  it; nothing is preselected. Cloud refuses a Workspace the user does not own
+- The Create Space dialog has a Worker field that starts at "No Worker".
+  If the user owns exactly one Worker, a one-click "Use <name>" button picks
+  it; nothing is preselected. Cloud refuses a Worker the user does not own
   or that is not shared with them.
-- Changing a Space's Workspace is an owner-only action with confirmation.
-- A revoked or unavailable Workspace shows "unavailable"; there is no automatic
+- Changing a Space's Worker is an owner-only action with confirmation.
+- A revoked or unavailable Worker shows "unavailable"; there is no automatic
   fallback to another machine.
-- The account-level Workspace selection only decides whose account workflow
+- The account-level Worker selection only decides whose account workflow
   templates are displayed. It grants no Space access.
-- Migration `0103` gave every existing Space an explicit Workspace (the one it
+- Migration `0103` gave every existing Space an explicit Worker (the one it
   effectively used if still usable, otherwise none).
 
 Not yet built: a "Mac was set up again - reconnect these Spaces?" prompt after
-a Workspace reinstall. Until then the owner re-selects the Workspace per Space.
+a Worker reinstall. Until then the owner re-selects the Worker per Space.

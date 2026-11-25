@@ -8,7 +8,8 @@
 - **Closes:** the P5 gap "MCP Worker Types" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`
 
 ## Context
-ADR-027 plugins are External Workers: MCP Worker packages identified by `(pluginId, version, digest, origin)`, imported by the Service into its own storage, executed by the Engine, and available only to Syntila Plus owners (`plugin_entitlement_required`). Their Type ids are `plugin-<12 hex>`; the inventory ties each to the owner's own library. `worker-eligibility.ts` refuses `origin = "plugin"` Workers on the Worker path, and the Agent has no plugin import, storage or runner. Running a plugin means running a program the owner chose, so the rule is that the owner approves the exact digest on the machine that runs it, never the Cloud.
+
+ADR-027 MCP Workers are External Workers identified by `(pluginId, version, digest, origin)`, imported locally into Syntila Connect's store (`packages/syntila_mcp_worker_store`), executed by the generic CLI Worker Engine's plugin host, and available to Syntila Plus owners (`plugin_entitlement_required`). Running an MCP Worker executes local code chosen by the owner, so the owner approves the exact manifest digest on the machine running Connect — never via Cloud download.
 
 ## Options
 

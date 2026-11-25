@@ -6,7 +6,7 @@
 
 ## Context
 
-Durable events exist today (`realtime_events`, `realtime_event_cursors`), but streams are tied to Workspaces (`stream_kind` CHECK allows only `execution_workspace`, `space` and `user`). Delivery assumes a single-process Durable Object host, and cursors can advance when a frame is sent rather than when the client applies it. Every later ADR needs one durability model that is correct on one server and **safe to run on several servers** later, without a redesign.
+Syntila needs one durability model for realtime events (`realtime_events`, `realtime_event_cursors`), transactional outbox delivery (`outbox`), and Worker command delivery (`agent_commands`) that is correct on one server and safe to run on multiple servers later without a redesign. Client cursors must advance only when the client applies an event, never when a frame is merely enqueued.
 
 ## Decision
 

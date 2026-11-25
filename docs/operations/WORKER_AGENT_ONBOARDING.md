@@ -10,4 +10,4 @@ For people who used a Workspace before.
 - **Support checks.** `syntila-worker status --json` and `syntila-worker logs --lines 200` (ids and codes only). A Worker shows "ready" in the web app only after its Agent reports ready.
 - **A Workspace cannot register any more** once registration is closed; the app tells the user to install the Agent (HTTP 410 `workspace_registration_closed`).
 
-Related: [WORKER_AGENT_CLI_AND_SERVICES.md](../specifications/WORKER_AGENT_CLI_AND_SERVICES.md), [LEGACY_CUTOVER.md](LEGACY_CUTOVER.md).
+Related: [CONNECT_CLI_AND_SERVICES.md](../specifications/CONNECT_CLI_AND_SERVICES.md).

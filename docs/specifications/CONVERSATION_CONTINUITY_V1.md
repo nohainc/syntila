@@ -91,7 +91,7 @@ attribution still comes from immutable snapshots and execution evidence.
 
 ## Persistence and deployment
 
-[0010_conversation_workflows.sql](../../apps/cloud/migrations-v8/0010_conversation_workflows.sql)
+[PostgreSQL migrations](../../apps/backend/migrations/README.md)
 is an additive feature migration on the fresh-start v8 baseline. Already-applied
 migrations remain unchanged. It creates `conversations` and
 `conversation_work_requests`, constraints and immutable/monotonic guards. It
@@ -254,7 +254,7 @@ remain available in request details. Null model/effort explicitly denotes Defaul
 not a fabricated resolved provider model. History responses cap each recorded
 reply at the same 24,000-character presentation limit used by existing Step output.
 
-[0011_conversation_turns.sql](../../apps/cloud/migrations-v8/0011_conversation_turns.sql)
+[PostgreSQL migrations](../../apps/backend/migrations/README.md)
 adds the message and turn tables, indexes, and atomic lifecycle/immutability
 triggers. Apply 0010 and 0011 in order before deploying Cloud, then update AX.
 Production preflight verifies both new table contracts and turn indexes. Current
@@ -302,7 +302,7 @@ Invalid or out-of-range cursors return 400; a Conversation outside the Thread
 returns 404 after access checking. AX exposes typed history reads and retains its
 existing timeline presentation, using canonical message/reply text where present.
 
-[0012_canonical_conversation_history.sql](../../apps/cloud/migrations-v8/0012_canonical_conversation_history.sql)
+[PostgreSQL migrations](../../apps/backend/migrations/README.md)
 creates the ledger, indexes, immutability guards, and transactional event triggers.
 It imports authoritative existing associated user messages and completed replies,
 and labels other existing request/execution/artifact facts as snapshot imports.
@@ -357,7 +357,7 @@ The Engine refuses a nonzero target revision until canonical replay is implement
 Statuses reserve `active` and `requires_synchronization` for this distinction.
 Current Conversations retain context revision zero, so normal continuation works.
 
-[0013_worker_session_context.sql](../../apps/cloud/migrations-v8/0013_worker_session_context.sql)
+[PostgreSQL migrations](../../apps/backend/migrations/README.md)
 updates atomic turn creation to retain the frozen dispatch revision. Apply after
 0010–0012. Roll out the updated Workspace and Engine together before enabling the
 Cloud assignment extension: older strict Local Worker Protocol decoders reject

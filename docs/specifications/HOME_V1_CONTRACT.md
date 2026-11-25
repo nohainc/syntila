@@ -4,7 +4,7 @@
 
 The Syntila **Home** surface is the personal collaboration and attention hub for a user across all their Spaces.
 
-Home is **not** a metrics dashboard of infrastructure counts (e.g. number of Spaces, connected Workspaces, ready Workers, or idle execution queues). Infrastructure and entity management reside in their dedicated navigation areas (Spaces, Workspaces, Workers, Runs).
+Home is **not** a metrics dashboard of infrastructure counts (e.g. number of Spaces, connected Workers, ready Workers, or idle execution queues). Infrastructure and entity management reside in their dedicated navigation areas (Spaces, Workers, Workers, Runs).
 
 Instead, Home answers three fundamental questions for the user:
 1. **What needs my attention?**
@@ -37,7 +37,7 @@ HOME
   - Notification Center opens beside the desktop sidebar (following its resized width or collapsed icon rail) and as a full-width bottom sheet on mobile, with the Inbox header and content aligned to the top of the available window. Close, mark-read, invitation decisions, and record navigation retain their existing behavior.
   - Notification Center records show a status title once, with optional specific event details and Space/Thread location. Generic status restatements are omitted. Each record has one leading status icon; its color indicates attention and read state, with accessible priority/read labels. Records have no trailing icons or visible priority text.
   - **Home ("For You"):** Answers *"What should I care about?"* A strictly bounded (maximum four latest items) triage surface displaying only items that demand the user's active attention or decision.
-- **Actionable eligibility:** Include pending invitations from the authoritative invitation list, input/approval requests, execution failures, Worker/Workspace problems, and open findings. Exclude completion/informational events even when they have an Open action. Historical invitation notifications cannot keep accepted or declined invitations on Home. Only unread items appear on Home. Opening a card marks its notification read before navigation and removes it from Home; the read record remains in Inbox. Pending invitations and aggregate findings without a server notification use session-local read IDs, cleared on logout.
+- **Actionable eligibility:** Include pending invitations from the authoritative invitation list, input/approval requests, execution failures, Worker/Worker problems, and open findings. Exclude completion/informational events even when they have an Open action. Historical invitation notifications cannot keep accepted or declined invitations on Home. Only unread items appear on Home. Opening a card marks its notification read before navigation and removes it from Home; the read record remains in Inbox. Pending invitations and aggregate findings without a server notification use session-local read IDs, cleared on logout.
 - **Home Selection:** Deduplicate authorized attention items, filter out read items, order newest first by event timestamp, and show at most four. Preserve source order for equal or missing timestamps.
 - **Navigation & CTA:**
   - Explicit header CTA: `View all notifications →` opening the full Notification Center.
@@ -76,7 +76,7 @@ HOME
 
 The following legacy concepts are **prohibited** from established-user Home:
 - ❌ Spaces count metric card
-- ❌ Workspaces count metric card
+- ❌ Workers count metric card
 - ❌ Ready Workers count metric card
 - ❌ Recent Spaces plain list (replaced by *Continue Working* threads)
 - ❌ Permanent `"No active Runs"` card
@@ -135,8 +135,8 @@ HomePage (Dispatcher)
     - `Shared conversations`: Maintain shared space context across members.
   - **Advanced Local Execution Path** (visually secondary at bottom):
     - Title: *"Want to use AI or tools running on your computer?"*
-    - Description: *"Connect Syntila Workspace to make local Workers available to your Spaces."*
-    - Action: `Connect Workspace →`
+    - Description: *"Connect Syntila Worker to make local Workers available to your Spaces."*
+    - Action: `Connect Worker →`
   - Completely omits established dashboard sections (`For you`, `Continue working`, `What's new in Syntila`, `AI updates`).
 
 ### 2. EstablishedUserHome
@@ -288,7 +288,7 @@ Home filters AI updates to show **only** changes for Workers the user can actual
 ### 1. Accessibility Resolution Pipeline (`AxAiCapabilityUpdateService.resolveAccessibleWorkerProfileIds`)
 ```text
 Available Worker Profiles
-  ├── User Workspace Workers (e.g., local ChatGPT Worker)
+  ├── User Worker Workers (e.g., local ChatGPT Worker)
   ├── Shared Space Threads (e.g., space thread with Gemini Worker lead/config)
   └── Space Settings Worker Grants (e.g., sharedWorkers / workerGrants)
         ↓
@@ -394,7 +394,7 @@ Reserved Card Surfaces
 ```
 
 ### 1. Architectural Guidelines
-- **Clean Workspace Flow:** `For You`, `What's New`, and `AI Updates` render items as lightweight list rows directly within their section with subtle hairline dividers, eliminating visual clutter from nesting boxes inside boxes.
+- **Clean Worker Flow:** `For You`, `What's New`, and `AI Updates` render items as lightweight list rows directly within their section with subtle hairline dividers, eliminating visual clutter from nesting boxes inside boxes.
 - **Card Purpose Preservation:** Large cards are reserved strictly for rich content containers where multi-dimensional metadata benefits from a bounded spatial enclosure:
   - **`Continue Working`:** Thread title, space badge, snippet previews, collaborator identities, and jump actions.
   - **`Running Now`:** High-priority active execution telemetry, objective, elapsed time, and direct workspace navigation.
@@ -484,7 +484,7 @@ Home Items & Canonical Deep-Link Destinations
 ├── 1. Space Invitation   → Accept / Decline actions & direct Space entry
 ├── 2. Needs Input / Review → Exact Thread conversation context
 ├── 3. Execution Failure    → Exact Thread & Run failure inspector
-├── 4. Worker/Workspace Prob→ Exact Workspace configuration & reconnection surface
+├── 4. Worker/Worker Prob→ Exact Worker configuration & reconnection surface
 ├── 5. Running Now          → Exact active Thread & live execution view
 ├── 6. Continue Working     → Exact Thread conversation
 ├── 7. What's New           → Update detail dialog & changelog
@@ -495,7 +495,7 @@ Home Items & Canonical Deep-Link Destinations
 - **No Dead-End Content:** If an item exists on Home, it must provide a direct primary action button or interactive target routing to its operational resolution.
 - **Context-Preserving Routing:**
   - `onOpenThread(spaceId, threadId)` is prioritized over broad space landing pages for conversation turns, unresolved input requests, reviews, and recent work.
-  - `onOpenWorkspaces()` is directly bound to offline workspaces, worker credential faults, and AI model configurations.
+  - `onOpenWorkers()` is directly bound to offline workspaces, worker credential faults, and AI model configurations.
 ---
 
 ## Progressive Loading Strategy & Fault-Isolated Section Rendering (Phase 27)
@@ -541,7 +541,7 @@ Normalized Notification Domain
 ├── 1. Thread   (threadNeedsInput, threadCompleted, threadFailed)
 ├── 2. Workflow Run (workflowRunCompleted, workflowRunFailed, workflowRunNeedsApproval)
 ├── 3. Worker       (workerCredentialProblem, workerInstallFailed)
-├── 4. Workspace    (workspaceOffline)
+├── 4. Worker    (workspaceOffline)
 └── 5. Space      (spaceInvitationReceived)
 ```
 
@@ -577,7 +577,7 @@ Authorization Boundary on Home Aggregation
 ```
 
 ### 1. Privacy Guarantees
-When a user's access to a Space, Workspace, or Worker is revoked, the user must **never** see:
+When a user's access to a Space, Worker, or Worker is revoked, the user must **never** see:
 - Space name
 - Thread title
 - Worker activity & active run details
@@ -701,7 +701,7 @@ The Syntila Home surface is formally verified against a 20-point canonical test 
 |---|---|---|---|
 | 1 | **Brand-new account** | Renders `NewUserHome` onboarding hero, "Create your first Space", value cards; suppresses dashboard sections | Verified (`home_page_test.dart`) |
 | 2 | **New user with invitation** | "Join a Space" card takes top priority before "Create your first Space" | Verified (`home_page_test.dart`) |
-| 3 | **Space but no Workspace** | Normal Home dashboard renders; no setup warning banner or workspace blocker | Verified (`home_page_test.dart`) |
+| 3 | **Space but no Worker** | Normal Home dashboard renders; no setup warning banner or workspace blocker | Verified (`home_page_test.dart`) |
 | 4 | **Invitation received realtime** | Appears immediately in "For You" with Accept / Decline actions | Verified (`home_page_test.dart`) |
 | 5 | **Invitation accepted** | Invitation item is removed from "For You" and joined Space appears in Continue Working / Spaces | Verified (`home_page_test.dart`) |
 | 6 | **Thread needs input** | Appears in "For You" with direct "Review →" action link to thread conversation | Verified (`home_page_test.dart`) |
@@ -751,13 +751,13 @@ With the completion and verification of the V2 Home experience, all obsolete V1 
 
 - **Excised Legacy Widgets & Containers:**
   - `_HomeCard` & `_MetricCard` widget definitions.
-  - Legacy metric counter cards: `Spaces`, `Workspaces`, `Ready Workers`.
+  - Legacy metric counter cards: `Spaces`, `Workers`, `Ready Workers`.
   - Legacy plain `Recent Spaces` list.
   - Legacy `execution-capacity` subtitle.
   - Permanent `No active Runs` placeholder card.
   - Permanent `Nothing needs your attention` placeholder card.
   - Archived Spaces Home modal action (archived space management is now housed exclusively under Space settings/navigation).
-  - Legacy Workspace-first onboarding ("Connect a Workspace", "No Workspace connected").
+  - Legacy Worker-first onboarding ("Connect a Worker", "No Worker connected").
 - **No Feature Flags / Dead Paths:**
   - Zero legacy fallback flags or conditional dead-code paths remain.
   - Strict compile-time and runtime invariant tests assert the total absence of legacy cards across both established-user and new-user states.
