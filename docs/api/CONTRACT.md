@@ -19,7 +19,7 @@ Every JSON error response has this shape:
 - Extra fields (for example `retryAfterSeconds`) may be present.
 
 A handler that knows a specific reason sets its own code
-(`workspace_offline`, `paid_plan_required`, `personal_workspace_limit_reached`, …).
+(`worker_offline`, `paid_plan_required`, …).
 Otherwise the code follows the status:
 
 | Status | Code | Status | Code |

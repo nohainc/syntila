@@ -16,7 +16,7 @@ export type AccountPlanStatus = "active" | "trialing" | "past_due" | "canceled";
  * tier, so a feature can move between tiers without touching its call sites.
  */
 export const PAID_FEATURES = [
-  "workspace.sharing",
+  "worker.sharing",
   "workflow.research",
   "workflow.implement",
   "workers.custom_plugins",
@@ -24,31 +24,11 @@ export const PAID_FEATURES = [
 export type PaidFeature = (typeof PAID_FEATURES)[number];
 
 const FEATURE_LABELS: Record<PaidFeature, string> = {
-  "workspace.sharing": "Sharing a Workspace",
+  "worker.sharing": "Sharing a Worker",
   "workflow.research": "Research",
   "workflow.implement": "Implement",
   "workers.custom_plugins": "Custom Worker plugins",
 };
-
-/**
- * Registered Workspaces a Free account may own. Plus has no subscription-based
- * count limit. Existing registrations are never removed when this is exceeded
- * (for example after a downgrade); only new registrations are refused.
- */
-export const FREE_PERSONAL_WORKSPACE_LIMIT = 1;
-
-export function personalWorkspaceLimit(tier: AccountTier): number | null {
-  return tier === "paid" ? null : FREE_PERSONAL_WORKSPACE_LIMIT;
-}
-
-export async function countOwnedWorkspaces(
-  env: Env,
-  userId: string,
-): Promise<number> {
-  const row = await dataOf(env).read.row<{ count: number }>`
-    SELECT COUNT(*) AS count FROM worker_instances WHERE owner_user_id = ${userId} AND revoked_at IS NULL`;
-  return row?.count ?? 0;
-}
 
 /**
  * Concurrent AI executions a Free requester may have. Plus has no
@@ -252,11 +232,6 @@ export interface AccountPlan {
   readonly status: AccountPlanStatus | null;
   readonly currentPeriodEnd: string | null;
   readonly features: readonly PaidFeature[];
-  /** Owned registrations against the allowance; `limit` null means unlimited. */
-  readonly workspaces: {
-    readonly owned: number;
-    readonly limit: number | null;
-  };
   /** Authoritative upload limits for this account (decimal bytes). */
   readonly attachments: {
     readonly maxFiles: number;
@@ -387,10 +362,6 @@ export async function getAccountPlan(
     status: row?.status ?? null,
     currentPeriodEnd: row?.current_period_end ?? null,
     features: tier === "paid" ? PAID_FEATURES : [],
-    workspaces: {
-      owned: await countOwnedWorkspaces(env, userId),
-      limit: personalWorkspaceLimit(tier),
-    },
     attachments: {
       maxFiles: MAX_ATTACHMENTS_PER_SUBMISSION,
       maxFileBytes: ATTACHMENT_LIMITS[tier].fileBytes,

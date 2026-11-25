@@ -13,6 +13,7 @@ async function fixture() {
   await f.sqlite.exec(`${basicThread({ user: "alice", space: "sp", thread: "th" })} ${user("bob")} ${member("sp", "bob", "viewer")}
     INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES
       ('worker-alice','','alice','chatgpt','Writer'), ('worker-bob','','bob','chatgpt','Writer');
+    INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES ('alice','paid','active','manual',now(),now()) ON CONFLICT DO NOTHING;
     INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
       VALUES ('chatgpt',1,'{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}',1,'${"a".repeat(64)}',now());
     INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint)
@@ -346,6 +347,10 @@ describe("Person Shares (ADR-043)", () => {
       await f.sqlite.exec(`${user("carol")}`);
       await expect(put({ userId: "carol" })).rejects.toMatchObject({ status: 422 });
       await f.sqlite.exec(`INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES ('alice', 'bob', now()) ON CONFLICT DO NOTHING`);
+      // Sharing is a Plus feature: a Free owner cannot add a share.
+      await f.sqlite.exec(`UPDATE account_plans SET tier = 'free' WHERE user_id = 'alice'`);
+      await expect(put({ userId: "bob" })).rejects.toMatchObject({ status: 402, code: "paid_plan_required" });
+      await f.sqlite.exec(`UPDATE account_plans SET tier = 'paid' WHERE user_id = 'alice'`);
       const shared = (await (await put({ userId: "bob", maxRunSecondsPerMonth: 3600 })).json()) as { shares: unknown[] };
       expect(shared.shares).toEqual([expect.objectContaining({ userId: "bob", maxConcurrentRequests: 1, maxRunSecondsPerMonth: 3600 })]);
       // Another person cannot manage the owner's shares.
@@ -354,6 +359,13 @@ describe("Person Shares (ADR-043)", () => {
         workers: { id: string; sharedByName: string }[];
       };
       expect(mine.workers.map((w) => [w.id, w.sharedByName])).toEqual([["worker-alice", "alice"]]);
+      // A lapsed plan pauses the share without deleting it; renewing restores it.
+      await f.sqlite.exec(`UPDATE account_plans SET tier = 'free' WHERE user_id = 'alice'`);
+      const paused = (await (await handleListWorkersSharedWithMe(new Request("https://test/api"), envFor("bob"))).json()) as { workers: unknown[] };
+      expect(paused.workers).toEqual([]);
+      await f.sqlite.exec(`UPDATE account_plans SET tier = 'paid' WHERE user_id = 'alice'`);
+      const restored = (await (await handleListWorkersSharedWithMe(new Request("https://test/api"), envFor("bob"))).json()) as { workers: unknown[] };
+      expect(restored.workers).toHaveLength(1);
     } finally {
       if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;
       else process.env.SYNTILA_FEATURE_FLAGS = prior;

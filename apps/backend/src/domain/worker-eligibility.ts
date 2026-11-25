@@ -3,7 +3,7 @@ import { spaceMemberPermissions } from "@syntila/security";
 import type { Query } from "../platform/data.js";
 import { spaceModelOptions } from "./worker-execution-options.js";
 import { isFeatureEnabled } from "../feature-flags.js";
-import { pluginOwnerEntitledSql } from "./account-plan.js";
+import { paidOwner, pluginOwnerEntitledSql } from "./account-plan.js";
 
 /**
  * Who may run what, on which Worker (ADR-035 decisions 2 and 3).
@@ -198,6 +198,7 @@ export async function acceptWorkerTarget(
     spaceOwnerUserId: string | null;
     spaceKind: string | null;
     personShared: boolean;
+    ownerPaid: boolean;
   }>`SELECT w.id, w.actor_id AS "actorId", w.name, w.owner_user_id AS "ownerUserId", w.enabled,
             w.default_model AS "defaultModel", w.worker_type_id AS "workerTypeId",
             c.display_name AS "typeName", c.lifecycle_state AS lifecycle,
@@ -211,7 +212,8 @@ export async function acceptWorkerTarget(
             (SELECT s.owner_user_id FROM spaces s WHERE s.id = ${request.spaceId}) AS "spaceOwnerUserId",
             (SELECT COALESCE(s.kind, 'group') FROM spaces s WHERE s.id = ${request.spaceId}) AS "spaceKind",
             EXISTS (SELECT 1 FROM worker_person_shares wps
-                     WHERE wps.worker_id = w.id AND wps.user_id = ${request.requesterUserId}) AS "personShared"
+                     WHERE wps.worker_id = w.id AND wps.user_id = ${request.requesterUserId}) AS "personShared",
+            ${paidOwner(q, q.raw("w.owner_user_id"))} AS "ownerPaid"
        FROM worker_instances w
        JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
        LEFT JOIN worker_profiles p ON p.worker_type_id = w.worker_type_id
@@ -235,6 +237,12 @@ export async function acceptWorkerTarget(
     worker.memberEnabled === null &&
     worker.personShared === true &&
     (worker.spaceOwnerUserId === request.requesterUserId || worker.spaceKind === "direct");
+  // Sharing a Worker is a Plus feature: when the owner is no longer paid, an
+  // explicit grant (Space member access or Person Share) pauses. The grant is
+  // kept, so renewing restores it. The Space owner's own Workers are unaffected.
+  if (!isOwner && !spaceWorker && !worker.ownerPaid && (worker.memberEnabled === true || personShare)) {
+    return { ok: false, code: "execute_not_permitted" };
+  }
   if (!isOwner) {
     // An explicitly disabled Space member gets 403 execute_not_permitted.
     // Anyone else without a grant gets 404 so Worker IDs are never revealed.

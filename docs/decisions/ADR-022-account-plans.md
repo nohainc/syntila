@@ -47,53 +47,23 @@ without migrations.
   Handlers that perform a paid action call `requirePaidFeature`, which fails
   with HTTP 402 and `{ "code": "paid_plan_required" }`. Only `HttpError`
   codes are exposed in error bodies.
-- **First paid feature, `workspace.sharing`:** inviting a person to use your
-  Workspace (`POST /api/workspaces/:id/invitations`) requires the owner's
-  plan. Listing, cancelling invitations and revoking access stay free, so a
-  downgraded owner can still remove access.
-- **Downgrade pauses sharing.** Every read that honors a Person Grant also
-  requires the owner to be paid (`paidOwnerSql`, kept in step with
-  `effectiveTier` by a test): the borrower stops seeing the Workspace and its
-  Workers, cannot select it, and new Work on it fails with 403. Grants are not
-  deleted, so a plan that lapses only by `current_period_end` passing needs no
-  event, and renewing restores access. Work already admitted finishes.
-  Accepting a pending invitation also fails with a plain 403 (the invitee
-  cannot fix it by upgrading). The owner's own use and Space-member use of the
-  owner's Workspace are not affected.
-- **Personal Workspace allowance.** Free accounts may own
-  `FREE_PERSONAL_WORKSPACE_LIMIT` (1) registered Workspace; Plus has no
-  subscription-based count limit. The limit and its SQL
-  (`personalWorkspaceAdmissionSql`) live in `account-plan.ts` next to the plan
-  rules, so expiry and `past_due` grace behave exactly as for other paid checks.
-  - *Counted:* Workspaces the user owns whose status is not `revoked`
-    (removal/release sets `revoked`), offline ones included. Workspaces shared
-    with the user, Workers, models, Spaces and Threads are not counted.
-  - *Enforced* in `POST /api/workspace-runtime/register`, the only path that
-    inserts `execution_workspaces`. Admission is the `WHERE` of that `INSERT`
-    inside the registration batch, and every other new-registration statement
-    runs only if the row exists, so concurrent requests cannot exceed the
-    allowance and a refused request writes nothing. Failure is HTTP 402
-    `{ code: "personal_workspace_limit_reached", error: "Free includes one
-    personal Workspace. Upgrade to Syntila Plus to connect more machines." }`.
-  - *Not consumed:* recovering or reconnecting an existing installation
-    (same owner, same Workspace), reauthentication and upgrades. Retrying a
-    registration whose Workspace already exists is a recovery.
-  - *Removal* (release/revoke) frees the slot. Local files, provider
-    credentials and user work are untouched; only the Cloud registration ends.
-  - **Grandfathering:** nothing is deleted, disconnected or arbitrarily
-    chosen. A Free account that already owns several Workspaces (including
-    after a Plus downgrade) keeps all of them, can reconnect and manage them,
-    and is only blocked from registering more until it owns fewer than the
-    allowance (i.e. none) or returns to Plus. Removing one of three leaves it
-    still blocked.
-  - The Workspace service/CLI maps the code to a
-    `personalWorkspaceLimitReached` registration error and headless-login
-    failure with the same message; the web Workspaces page shows usage
-    ("1 of 1 personal Workspace used (Free)") and the upgrade explanation. There
-    is no checkout flow yet, so no upgrade button.
+- **Paid feature `worker.sharing`:** sharing a Worker with other people
+  requires the owner's plan: a Person Share (`PUT /api/workers/:id/person-shares`)
+  and enabling Space member access (`PUT /api/workers/:id/space-access` with any
+  `enabled: true` entry). Listing, deleting a share and turning access off stay
+  free, so a downgraded owner can still remove access.
+- **Downgrade pauses sharing.** Admission and every list that honors a share
+  also require the owner to be paid (`paidOwner`, kept in step with
+  `effectiveTier`): the other person stops seeing the Worker and new Work on it
+  fails with 403. Shares are not deleted, so a plan that lapses only by
+  `current_period_end` needs no event, and renewing restores access. Work
+  already admitted finishes. The Space owner's own Workers, which members use
+  through their Space rights, are not shares and are not affected.
+- **No Workspace allowance.** Workspaces no longer exist, so the former limit
+  of one personal Workspace on Free is removed; Free accounts may register any
+  number of their own Workers.
 - **Read API:** `GET /api/me/plan` returns
-  `{ tier, status, currentPeriodEnd, features, workspaces: { owned, limit } }`
-  where `limit` is `null` for Plus.
+  `{ tier, status, currentPeriodEnd, features, attachments }`.
 - **App:** `AxAccountPlanDataSource`, `AccountPlanController`, and
   `PaidFeatureGate` show, hide or label features; Profile shows the plan.
   Failed loads count as Free. The app never authorizes paid actions.
@@ -123,8 +93,8 @@ The Profile plan summary links to the Plans & subscription page
 `plusPrices`) and a Free and Plus comparison that names whose plan decides
 each limit. No billing provider is chosen, so the page has no purchase or
 manage action and says so; a period end reads "Active until", not "Renews".
-Places where a Free limit or a Plus-only feature stops the viewer (Workspace
-sharing, the personal Workspace allowance, a full Space, full storage) link to
+Places where a Free limit or a Plus-only feature stops the viewer (Worker
+sharing, a full Space, full storage) link to
 the page with `ViewPlansLink`. Cloud remains the only enforcement. The
 comparison does not expose custom Worker plugins.
 

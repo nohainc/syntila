@@ -1,4 +1,5 @@
 import { stepInstanceId, type BuiltinWorkflowDefinition, type WorkflowExecutionBinding } from "@syntila/core";
+import { paidOwnerSql } from "../account-plan.js";
 import { dataOf, type Query } from "../../platform/data.js";
 import {
   acceptWorkerTarget,
@@ -161,8 +162,8 @@ export async function resolveWorkerTargetBindings(
       const allowed = await read.row<{ ok: number }>`SELECT 1 AS ok FROM worker_instances w
          WHERE w.id = ${choice.workerId} AND w.revoked_at IS NULL
            AND (w.owner_user_id = ${input.userId}
-                OR EXISTS (SELECT 1 FROM worker_person_shares wps
-                            WHERE wps.worker_id = w.id AND wps.user_id = ${input.userId}))`;
+                OR (${read.raw(paidOwnerSql("w.owner_user_id"))} AND EXISTS (SELECT 1 FROM worker_person_shares wps
+                            WHERE wps.worker_id = w.id AND wps.user_id = ${input.userId})))`;
       if (!allowed) throw new HttpError(403, "Choose one of your own Workers in a personal Space");
     }
     const decision = await acceptWorkerTarget(read, {
@@ -288,6 +289,9 @@ async function requirePersonShareCapacity(read: Query, workerId: string, userId:
     SELECT max_concurrent_requests AS "maxConcurrent", max_run_seconds_per_month AS "maxRunSeconds"
       FROM worker_person_shares WHERE worker_id = ${workerId} AND user_id = ${userId}`;
   if (!share) throw new HttpError(403, "This Worker is no longer shared with you");
+  const owner = await read.row<{ ok: number }>`SELECT 1 AS ok FROM worker_instances w
+     WHERE w.id = ${workerId} AND ${read.raw(paidOwnerSql("w.owner_user_id"))}`;
+  if (!owner) throw new HttpError(403, "This Worker is no longer shared with you");
   const usage = await read.row<{ running: number; seconds: number }>`
     SELECT COUNT(*) FILTER (WHERE status IN ('created','dispatched','acknowledged','running','revocation_pending','reconciling'))::int AS running,
            COALESCE(SUM(EXTRACT(EPOCH FROM (

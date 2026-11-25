@@ -96,4 +96,12 @@ void main() {
     );
     expect(progress.currentAction, message);
   });
+
+  testWidgets('Free sees why Worker sharing is locked', (tester) async {
+    await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: WorkerSharingLockedNote())));
+    expect(find.text('Sharing a Worker is included in Syntila Plus.'),
+        findsOneWidget);
+    expect(find.text('View plans'), findsOneWidget);
+  });
 }

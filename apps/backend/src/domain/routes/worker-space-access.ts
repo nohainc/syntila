@@ -1,4 +1,5 @@
 import { dataOf } from "../../platform/data.js";
+import { requirePaidFeature } from "../account-plan.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
 import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
@@ -212,6 +213,11 @@ export async function handleWorkerSpaceAccess(
     normalized.push({ userId, enabled: entry.enabled, permissions });
   }
 
+  // Sharing a Worker is a Plus feature; turning access off stays free.
+  if (normalized.some((entry) => entry.enabled)) {
+    await requirePaidFeature(env as unknown as Env, context.userId, "worker.sharing");
+  }
+
   const q = dataOf(env).read;
   if (normalized.length > 0) {
     const memberRows = await q.rows<{ userId: string }>`
@@ -330,6 +336,8 @@ export async function handleWorkerPersonShares(
   const userId = typeof body.userId === "string" ? body.userId.trim() : "";
   if (!userId) throw new HttpError(400, "userId is required");
   if (userId === context.userId) throw new HttpError(400, "You already own this Worker");
+  // Sharing a Worker is a Plus feature; revoking a share stays free.
+  await requirePaidFeature(env as unknown as Env, context.userId, "worker.sharing");
   const maxConcurrent = body.maxConcurrentRequests ?? 1;
   if (!Number.isInteger(maxConcurrent) || (maxConcurrent as number) < 1 || (maxConcurrent as number) > 10) {
     throw new HttpError(400, "maxConcurrentRequests must be a whole number from 1 to 10");

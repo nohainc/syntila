@@ -1,4 +1,5 @@
 import { WorkRequestBodySchema } from "@syntila/protocol";
+import { paidOwnerSql } from "../account-plan.js";
 import { readBody } from "./validation.js";
 import { usersBlocked } from "../queries.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
@@ -79,15 +80,15 @@ export async function handleListEligibleWorkers(
       AND (
         w.owner_user_id = ${context.userId}
         OR w.owner_user_id = (SELECT s.owner_user_id FROM spaces s WHERE s.id = ${spaceId})
-        OR EXISTS (SELECT 1 FROM worker_person_shares wps
-                    WHERE wps.worker_id = w.id AND wps.user_id = ${context.userId})
-        OR EXISTS (
+        OR (${q.raw(paidOwnerSql("w.owner_user_id"))} AND EXISTS (SELECT 1 FROM worker_person_shares wps
+                    WHERE wps.worker_id = w.id AND wps.user_id = ${context.userId}))
+        OR (${q.raw(paidOwnerSql("w.owner_user_id"))} AND EXISTS (
           SELECT 1 FROM worker_space_members wsm
            WHERE wsm.worker_id = w.id
              AND wsm.space_id = ${spaceId}
              AND wsm.user_id = ${context.userId}
              AND wsm.enabled = true
-        )
+        ))
       )
     ORDER BY w.created_at, w.id`;
   const eligible: string[] = [];

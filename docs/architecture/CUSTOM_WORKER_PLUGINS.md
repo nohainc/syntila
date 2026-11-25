@@ -218,7 +218,7 @@ ADR-022 already provides everything needed except offline persistence:
 - named features in `PAID_FEATURES`, gated with `requirePaidFeature()` →
   HTTP 402 `{ code: "paid_plan_required" }`,
 - precedent for downgrade: *pause, never delete, renewing restores, admitted
-  work finishes* (`workspace.sharing`).
+  work finishes* (`worker.sharing`).
 
 Add one feature: `workers.custom_plugins`. No new tier, no new table for plans.
 The owner of the library and of the Workspace is the entitled principal; the

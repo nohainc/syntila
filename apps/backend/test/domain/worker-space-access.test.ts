@@ -39,6 +39,7 @@ async function fixture() {
       member("spc-1", "alice", "owner"),
       member("spc-1", "bob", "collaborator"),
       member("spc-1", "carol", "viewer"),
+      "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES ('alice','paid','active','manual',now(),now());",
     ].join("\n"),
   );
 
@@ -131,6 +132,17 @@ describe("GET / PUT /api/workers/:workerId/space-access", () => {
 
     const reloaded = (await (await f.getAccess("alice", f.workerId)).json()) as typeof initial;
     expect(reloaded.members).toEqual(updated.members);
+  });
+
+  it("makes sharing a Plus feature: Free cannot enable access but can turn it off", async () => {
+    const f = await fixture();
+    const enable = { spaceId: "spc-1", members: [{ userId: "bob", enabled: true, permissions: { mode: "chat" } }] };
+    const disable = { spaceId: "spc-1", members: [{ userId: "bob", enabled: false, permissions: { mode: "chat" } }] };
+    expect((await f.putAccess("alice", f.workerId, enable)).status).toBe(200);
+    // The plan lapses: new sharing is refused, revoking still works.
+    await f.sqlite.exec("UPDATE account_plans SET tier = 'free' WHERE user_id = 'alice'");
+    expect(await status(f.putAccess("alice", f.workerId, enable))).toBe(402);
+    expect((await f.putAccess("alice", f.workerId, disable)).status).toBe(200);
   });
 
   it("stores one allow-list of models per Worker, clears it, and rejects bad input", async () => {

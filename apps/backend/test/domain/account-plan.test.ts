@@ -73,7 +73,6 @@ it("reports the caller's plan and defaults people without a row to free", async 
     status: null,
     currentPeriodEnd: null,
     features: [],
-    workspaces: { owned: 0, limit: 1 },
     attachments: {
       maxFiles: 10,
       maxFileBytes: 10_000_000,
@@ -83,7 +82,6 @@ it("reports the caller's plan and defaults people without a row to free", async 
   expect(await plan("paid")).toMatchObject({
     tier: "paid",
     status: "active",
-    workspaces: { owned: 0, limit: null },
     attachments: {
       maxFiles: 10,
       maxFileBytes: 100_000_000,
@@ -104,14 +102,14 @@ it("reports the caller's plan and defaults people without a row to free", async 
 it("rejects paid features for free accounts with a stable code", async () => {
   expect((await getAccountPlan(env, "free")).tier).toBe("free");
   await expect(
-    requirePaidFeature(env, "paid", "workspace.sharing"),
+    requirePaidFeature(env, "paid", "worker.sharing"),
   ).resolves.toBeUndefined();
-  const failure = requirePaidFeature(env, "free", "workspace.sharing");
+  const failure = requirePaidFeature(env, "free", "worker.sharing");
   await expect(failure).rejects.toBeInstanceOf(PaidPlanRequiredError);
   await expect(failure).rejects.toMatchObject({
     status: 402,
     code: "paid_plan_required",
-    feature: "workspace.sharing",
+    feature: "worker.sharing",
   });
 });
 

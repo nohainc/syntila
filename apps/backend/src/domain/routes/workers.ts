@@ -3,6 +3,7 @@ import {
   UpdateWorkerRequestSchema,
   type WorkerInstance,
 } from "@syntila/protocol";
+import { paidOwnerSql } from "../account-plan.js";
 import { dataOf, type Row } from "../../platform/data.js";
 import { readBody, readJson } from "./validation.js";
 import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
@@ -116,7 +117,7 @@ export async function handleListWorkers(
   const rows = await q.rows`SELECT ${q.raw(columns())} FROM ${q.raw(FROM)}
      WHERE (
        w.owner_user_id = ${context.userId}
-       OR (${includeShared}::boolean AND EXISTS (
+       OR (${includeShared}::boolean AND ${q.raw(paidOwnerSql("w.owner_user_id"))} AND EXISTS (
          SELECT 1 FROM worker_space_members wsm
           WHERE wsm.worker_id = w.id
             AND wsm.user_id = ${context.userId}
@@ -503,7 +504,7 @@ export async function handleListWorkersSharedWithMe(
      JOIN worker_person_shares wps ON wps.worker_id = w.id AND wps.user_id = ${context.userId}
      JOIN users owner ON owner.id = w.owner_user_id
      LEFT JOIN worker_member_model_access wmma ON wmma.worker_id = w.id
-     WHERE w.revoked_at IS NULL AND w.enabled
+     WHERE w.revoked_at IS NULL AND w.enabled AND ${q.raw(paidOwnerSql("w.owner_user_id"))}
      ORDER BY w.created_at, w.id`;
   const views = rows.map(workerView);
   const reports = await agentExecutionOptions(env, views);

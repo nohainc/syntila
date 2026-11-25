@@ -9,6 +9,7 @@ import 'subscription_page.dart';
 const paidPlanName = 'Syntila Plus';
 
 /// Paid feature names; they match `PAID_FEATURES` in Cloud.
+const workerSharingFeature = 'worker.sharing';
 
 /// Loads the viewer's plan once and shares it with gated widgets. Unknown or
 /// failed loads count as Free; Cloud still decides every paid action.
@@ -148,5 +149,22 @@ class _AccountPlanSummaryState extends State<AccountPlanSummary> {
                         : null,
           );
         },
+      );
+}
+
+/// Shown instead of the sharing controls on the Free plan. Existing shares
+/// pause while the owner is on Free and return when the plan does.
+class WorkerSharingLockedNote extends StatelessWidget {
+  const WorkerSharingLockedNote({super.key});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        key: const ValueKey('worker-sharing-locked'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Sharing a Worker is included in $paidPlanName.',
+              style: Theme.of(context).textTheme.bodyMedium),
+          const ViewPlansLink(),
+        ],
       );
 }

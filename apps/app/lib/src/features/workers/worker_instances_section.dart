@@ -7,6 +7,7 @@ import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/ax_data.dart'
     show
+        AxAccountPlanCache,
         AxWorkerManagementSource,
         AxWorkerModelsSource,
         AxWorkerPersonShareSource;
@@ -16,6 +17,7 @@ import '../../ax/mcp_worker_pin.dart';
 import '../../ax/worker_presentation.dart';
 import '../../ax/worker_execution_options.dart';
 import '../../ax/worker_usage.dart' show AxWorkerUsageDataSource;
+import '../profile/account_plan.dart';
 import 'worker_member_models_section.dart';
 import 'worker_person_shares_section.dart';
 import 'worker_model_visibility_table.dart';
@@ -941,13 +943,16 @@ class WorkerInstancesList extends StatelessWidget {
         if (management != null) ...[
           if (management is AxWorkerPersonShareSource) ...[
             const SizedBox(height: 16),
-            WorkerPersonSharesSection(
-              worker: worker,
-              shares: management as AxWorkerPersonShareSource,
-              people: management is AxPeopleDataSource
-                  ? management as AxPeopleDataSource
-                  : null,
-            ),
+            if (AxAccountPlanCache.instance.has(workerSharingFeature))
+              WorkerPersonSharesSection(
+                worker: worker,
+                shares: management as AxWorkerPersonShareSource,
+                people: management is AxPeopleDataSource
+                    ? management as AxPeopleDataSource
+                    : null,
+              )
+            else
+              const WorkerSharingLockedNote(),
           ],
           const SizedBox(height: 16),
           WorkerMemberModelsSection(worker: worker, management: management),
