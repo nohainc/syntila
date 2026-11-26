@@ -15,8 +15,6 @@ vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
 }));
 
 vi.mock("../../src/domain/routes/profiles.js", () => ({
-  handleListWorkspaceWorkerInventory: async () =>
-    Response.json({ workers: [] }),
 }));
 
 it("persists scoped defaults, rejects disabled workflows, and falls back to Chat", async () => {

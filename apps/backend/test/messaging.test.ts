@@ -114,7 +114,7 @@ test("a cursor resumes from the events it missed, or falls back to a snapshot", 
 });
 
 test("parity: every bridged command round-trips between the legacy frame and the unified envelope", () => {
-  const legacy = { protocolName: "syntila.workspace-runtime", protocolVersion: "4.1" };
+  const legacy = { protocolName: "syntila.legacy-runtime", protocolVersion: "4.1" };
   const commands = [
     ["session.hello", "agent.hello"], ["session.heartbeat", "agent.heartbeat"], ["session.sync", "agent.sync.request"],
     ["assignment.ack", "assignment.ack"], ["assignment.start.ack", "assignment.start.ack"],

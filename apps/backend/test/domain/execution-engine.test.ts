@@ -151,7 +151,7 @@ it("keeps a complete Research v2 report instead of cutting it at 96,000 characte
   ).toHaveLength(150_000);
 });
 
-it("sends the authenticated requester, which the Workspace uses to grant MCP servers only to its owner", () => {
+it("sends the authenticated requester, which the Connect uses to grant MCP servers only to its owner", () => {
   const task = prepareWorkerStepExecution({
     taskId: "task",
     step: BUILTIN_WORKFLOWS.direct.steps[0]!,

@@ -51,7 +51,6 @@ async function fixture() {
           displayName: userId,
           status: "active",
         },
-        workspaceId: "",
         spaceRoles: userId === "eve" ? {} : { S: "collaborator" },
         sessionId: "test",
         clientType: "web",

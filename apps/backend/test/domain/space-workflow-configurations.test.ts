@@ -5,17 +5,6 @@ import { handleWorkflowConfigurations } from "../../src/domain/routes/workflow-c
 import { loadSpaceWorkflowConfigurations } from "../../src/domain/routes/space-workflow-configurations.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/profiles.js", () => ({
-  handleListWorkspaceWorkerInventory: async () =>
-    Response.json({
-      workers: [
-        {
-          id: "worker",
-          workspaceId: "ws",
-          displayName: "Worker",
-          executionOptions: null,
-        },
-      ],
-    }),
 }));
 it("shares owner defaults across members, isolates Spaces, restricts writes, and resets to inheritance", async () => {
   const { sqlite, db } = await pgD1();

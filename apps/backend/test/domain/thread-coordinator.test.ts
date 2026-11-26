@@ -17,7 +17,6 @@ describe("Thread execution coordinator", () => {
           threadId: "ws-1",
           mode: "stateful",
           status: "queued",
-          primaryWorkspaceId: "workspace-1",
           createdAt: "2026-09-24T00:00:02.000Z",
         },
         {
@@ -25,7 +24,6 @@ describe("Thread execution coordinator", () => {
           threadId: "ws-1",
           mode: "stateless",
           status: "queued",
-          primaryWorkspaceId: "",
           createdAt: "2026-09-24T00:00:00.000Z",
         },
         {
@@ -33,7 +31,6 @@ describe("Thread execution coordinator", () => {
           threadId: "ws-1",
           mode: "stateful",
           status: "queued",
-          primaryWorkspaceId: "workspace-1",
           createdAt: "2026-09-24T00:00:01.000Z",
         },
       ]),
@@ -51,7 +48,6 @@ describe("Thread execution coordinator", () => {
           threadId: "ws-1",
           mode: "stateful",
           status: "running",
-          primaryWorkspaceId: "workspace-1",
           createdAt: "2026-09-24T00:00:00.000Z",
         },
       ]),
@@ -163,7 +159,7 @@ describe("Thread execution coordinator", () => {
       });
     });
 
-    it("does not trust heartbeats from an offline Workspace", () => {
+    it("does not trust heartbeats from an offline Connect", () => {
       expect(
         classifyExpiredLease(
           {

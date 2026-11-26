@@ -88,7 +88,6 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
               displayName: "Anon",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
             clientType: "web",
@@ -97,7 +96,6 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
         return {
           userId: user.id,
           user,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `sess-${user.id}`,
           clientType: "web",
@@ -437,7 +435,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
       ),
     ).toBe(true);
 
-    // Bob asks his own Worker a follow-up using Bob's workspace
+    // Bob asks his own Worker a follow-up using Bob's Worker
     const bobWorkRes = await worker.fetch(
       new Request(
         `https://syntila.test/api/threads/${generalThread.general_thread_id}/work-requests`,
@@ -495,7 +493,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     );
     expect(researchWorkRes.status).toBe(202);
 
-    // Unauthorized execution: Alice cannot execute using Charlie's workspace / worker
+    // Unauthorized execution: Alice cannot execute using Charlie's Worker
     const unauthorizedRes = await worker.fetch(
       new Request(
         `https://syntila.test/api/threads/${generalThread.general_thread_id}/work-requests`,

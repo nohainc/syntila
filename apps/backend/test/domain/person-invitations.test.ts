@@ -65,7 +65,6 @@ describe("Personal Invitations API (Phase 2)", () => {
               displayName: "Anon",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
             clientType: "web",
@@ -74,7 +73,6 @@ describe("Personal Invitations API (Phase 2)", () => {
         return {
           userId: user.id,
           user,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `sess-${user.id}`,
           clientType: "web",
@@ -433,7 +431,6 @@ describe("Personal Invitations API (Phase 2)", () => {
           displayName: "Eva User",
           status: "active",
         },
-        workspaceId: "",
         spaceRoles: {},
         sessionId: "sess-eva",
         clientType: "web",

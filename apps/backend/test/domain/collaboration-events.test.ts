@@ -170,7 +170,7 @@ describe("collaboration durable signals", () => {
       await f.sqlite.close();
     }
   });
-  it("publishes all collaboration CRUD signals with real authorization and no execution Workspace", async () => {
+  it("publishes all collaboration CRUD signals with real authorization and no execution Connect", async () => {
     const f = await fixture();
     try {
       const created = await handleCreateSpace(

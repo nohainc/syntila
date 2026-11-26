@@ -16,7 +16,6 @@ const authenticate = (spaceRoles: Record<string, string> = {}) => async () => ({
     displayName: "Owner",
     status: "active",
   },
-  workspaceId: "",
   spaceRoles,
   sessionId: "session-1",
   clientType: "web",
@@ -47,7 +46,7 @@ describe("Space creation", () => {
       TEST_AUTHENTICATION: authenticate(spaceRoles),
     }) as never;
 
-  it("creates a Space without requiring an execution Workspace", async () => {
+  it("creates a Space without requiring an execution Connect", async () => {
     const response = await handleCreateSpace(
       json("https://syntila.test/api/spaces", "POST", { name: "Unattached Space" }),
       envWith(),

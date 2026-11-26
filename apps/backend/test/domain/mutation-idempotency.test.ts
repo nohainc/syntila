@@ -34,7 +34,6 @@ async function fixture() {
         displayName: "Owner",
         status: "active",
       },
-      workspaceId: "",
       spaceRoles: {},
       sessionId: "session",
       clientType: "web",

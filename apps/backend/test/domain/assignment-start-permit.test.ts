@@ -61,11 +61,11 @@ async function seed(status: string, permitRequired = true) {
   /** A Gateway whose Connect is unreachable. */
   const offline = {
     SYNTILA_DB: f.db as never,
-    SYNTILA_WORKSPACE_GATEWAY: {
+    SYNTILA_WORKER_GATEWAY: {
       idFromName: (name: string) => name,
       get: () => ({
         fetch: async () =>
-          Response.json({ error: "Workspace is offline" }, { status: 503 }),
+          Response.json({ error: "Connect is offline" }, { status: 503 }),
       }),
     },
   } as never;

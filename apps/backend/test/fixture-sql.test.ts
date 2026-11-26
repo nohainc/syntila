@@ -10,8 +10,8 @@ describe("placeholder translation", () => {
     expect(translatePlaceholders("SELECT 'it''s ?' , ?")).toBe("SELECT 'it''s ?' , $1");
   });
   test("camelCase aliases keep their case; snake_case and keywords are untouched", () => {
-    expect(translatePlaceholders("SELECT w.id AS runtimeId, w.workspace_id AS executionWorkspaceId FROM t w ORDER BY runtimeId"))
-      .toBe('SELECT w.id AS "runtimeId", w.workspace_id AS "executionWorkspaceId" FROM t w ORDER BY "runtimeId"');
+    expect(translatePlaceholders("SELECT w.id AS runtimeId, w.worker_id AS executionWorkerId FROM t w ORDER BY runtimeId"))
+      .toBe('SELECT w.id AS "runtimeId", w.worker_id AS "executionWorkerId" FROM t w ORDER BY "runtimeId"');
     expect(translatePlaceholders("SELECT COUNT(*) AS n, 'camelCase' AS label, jsonb_build_object('aB', 1)")).toBe("SELECT COUNT(*) AS n, 'camelCase' AS label, jsonb_build_object('aB', 1)");
   });
 });

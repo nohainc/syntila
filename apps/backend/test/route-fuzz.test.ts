@@ -65,12 +65,12 @@ const T0 = "2026-01-01T00:00:00Z";
 async function seedWorld(token: string): Promise<World> {
   const n = ++worldSeq;
   const w: World = {
-    spaceId: `fz-sp-${n}`, threadId: `fz-th-${n}`, workspaceId: `fz-ws-${n}`, workRequestId: `fz-wr-${n}`,
+    spaceId: `fz-sp-${n}`, threadId: `fz-th-${n}`, workRequestId: `fz-wr-${n}`,
     // File and input ids must have the shape of a Work Request file id: wrf-<uuid>.
     messageId: `fz-dm-${n}`, fileId: `wrf-${crypto.randomUUID()}`, itemId: `fz-q-${n}`, inputId: `wrf-${crypto.randomUUID()}`,
     openWorkRequest: `fz-wro-${n}`,
     personIn: `fz-pin-${n}`, personOut: `fz-pout-${n}`, spaceInvOut: `fz-sinv-out-${n}`, spaceInvIn: `fz-sinv-in-${n}`,
-    wsInvOut: `fz-winv-out-${n}`, wsInvIn: `fz-winv-in-${n}`, otherSpace: `fz-osp-${n}`, otherWorkspace: `fz-ows-${n}`,
+    wsInvOut: `fz-winv-out-${n}`, wsInvIn: `fz-winv-in-${n}`, otherSpace: `fz-osp-${n}`, otherWorker: `fz-ows-${n}`,
     release: `9.${n}.0`, pluginRef: `fz-plugin-${n}`, workerId: `fz-worker-${n}`,
     // Device and folder ids have the Agent's shape: dev-/fld- and 16 hex digits.
     deviceId: `dev-${n.toString(16).padStart(16, "0")}`, folderId: `fld-${n.toString(16).padStart(16, "0")}`,
@@ -115,7 +115,7 @@ async function seedWorld(token: string): Promise<World> {
 
 /** Why a parameter cannot reach its row with a user token (machine, admin, or non-row ids). */
 const LIMITS = {
-  runtime: "Workspace runtime token required (401/400 for a user token)",
+  runtime: "Connect runtime token required (401/400 for a user token)",
   admin: "Admin only (403 for a user token)",
   nonRow: "Not a database row",
 };
@@ -126,7 +126,6 @@ function fixture(route: string, p: string, w: World): Fixture | undefined {
   switch (p) {
     case "spaceId": return row(w.spaceId, "spaces");
     case "threadId": return row(w.threadId, "threads");
-    case "workspaceId": return row(w.workspaceId, "execution_workspaces");
     case "workRequestId": return row(route.includes("/inputs/") ? w.openWorkRequest : w.workRequestId, "work_requests");
     case "messageId": return row(w.messageId, "discussion_messages");
     case "noteId": return row(w.noteId, "user_notes");

@@ -27,8 +27,6 @@ const REVIEWED_WRITERS = new Set([
   "assignment-dispatcher.ts",
   // Revocation: pending -> reconciling escalation (the only other status writer).
   "assignment-revocation.ts",
-  // Grant revocation cancels only assignments that were never accepted.
-  "routes/workspaces-grants.ts",
   // Worker-path dispatch claim: a conditional created -> dispatched write.
   "worker-dispatch.ts",
 ]);

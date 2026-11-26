@@ -67,7 +67,6 @@ describe("Direct Space provisioning", () => {
               displayName: "Anon",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
             clientType: "web",
@@ -76,7 +75,6 @@ describe("Direct Space provisioning", () => {
         return {
           userId: user.id,
           user,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `sess-${user.id}`,
           clientType: "web",

@@ -35,7 +35,7 @@ async function fixture() {
   };
   const lease = (workerInstanceId: string, leaseId: string) =>
     atomically(f.db, "test.lease", (q) =>
-      startStatefulLease(q, { threadId: "th", workRequestId: "R1", workspaceId: null, workerInstanceId, leaseId, now: "2030-01-01T00:00:00.000Z", expiresAt: "2999-01-02T00:00:00.000Z" }),
+      startStatefulLease(q, { threadId: "th", workRequestId: "R1", workerInstanceId, leaseId, now: "2030-01-01T00:00:00.000Z", expiresAt: "2999-01-02T00:00:00.000Z" }),
     );
   const dispatch = async (workerId: string, leaseId: string, fencingToken: number) =>
     dispatchWorkerAssignment({ SYNTILA_DB: f.db } as never, {

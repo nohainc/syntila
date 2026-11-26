@@ -58,7 +58,6 @@ async function setup(support: string | null = "support@syntila.test") {
       return {
         userId: user.id,
         user,
-        workspaceId: "",
         spaceRoles: {},
         sessionId: `sess-${user.id}`,
         clientType: "web",

@@ -174,7 +174,7 @@ describe("safe assignment revocation", () => {
       [
         {
           status: "failed",
-          reason: "Workspace did not acknowledge",
+          reason: "Connect did not acknowledge",
           source: "startup_deadline",
           failure: {
             error: {
@@ -202,7 +202,7 @@ describe("safe assignment revocation", () => {
     }
   });
 
-  it("finalizes a never-delivered assignment immediately without contacting the Workspace", async () => {
+  it("finalizes a never-delivered assignment immediately without contacting the Connect", async () => {
     const f = await seed("created");
     const result = await revokeAssignment(f.gateway(true), {
       assignmentId: "A1",
@@ -327,7 +327,7 @@ describe("safe assignment revocation", () => {
     const failure = {
       error: {
         code: "provider_unavailable" as const,
-        message: "Workspace Gateway dispatch did not accept the assignment",
+        message: "Worker gateway dispatch did not accept the assignment",
         retryable: true,
       },
       failedAt: T0,

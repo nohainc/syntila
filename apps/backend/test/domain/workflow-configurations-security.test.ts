@@ -4,8 +4,6 @@ import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkflowConfigurations } from "../../src/domain/routes/workflow-configurations.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/profiles.js", () => ({
-  handleListWorkspaceWorkerInventory: async () =>
-    Response.json({ workers: [] }),
 }));
 it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", async () => {
   const { sqlite, db } = await pgD1();

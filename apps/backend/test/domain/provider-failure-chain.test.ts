@@ -87,7 +87,7 @@ it("persists an unavailable-details marker received through the Gateway", async 
 describe.skipIf(!input || !output)(
   "provider failure cross-component fixture",
   () => {
-    it("persists the actual Workspace terminal event and returns it only to an authorized reader", async () => {
+    it("persists the actual Connect terminal event and returns it only to an authorized reader", async () => {
       const message = (await Bun.file(input!).json()) as {
         type: string;
         payload: Record<string, unknown>;
@@ -140,7 +140,6 @@ describe.skipIf(!input || !output)(
               displayName: "User",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "test",
             clientType: "web",

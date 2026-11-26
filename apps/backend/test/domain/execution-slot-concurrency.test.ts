@@ -30,7 +30,7 @@ it("admits one assignment for parallel dispatches of a Free requester", async ()
   const tasks = ["T", "T2", "T3", "T4", "T5", "T6"];
   await Promise.allSettled(tasks.map((taskId) =>
     dispatchTaskAssignment(env, {
-      workspaceId: null, runId: "RUN", taskId,
+      runId: "RUN", taskId,
       task: { id: taskId, spaceId: "P", threadId: "W", requestedByUserId: "U", role: "collaborator", objective: "x", workRequestId: "R", workBindingId: "chat", sessionPolicy: "stateless", workerTarget },
     } as any)));
   const live = await f.sqlite.prepare(

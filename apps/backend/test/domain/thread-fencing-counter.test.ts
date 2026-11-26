@@ -40,7 +40,6 @@ async function fixture() {
       startStatefulLease(q, {
         threadId: "W",
         workRequestId,
-        workspaceId: null,
         workerInstanceId: "worker-a",
         leaseId,
         now: "2030-01-01T00:00:00.000Z",

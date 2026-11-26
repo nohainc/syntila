@@ -124,7 +124,7 @@ describe("Space member permissions contract v1", () => {
           {
             permissions: {
               ...none,
-              attachWorkspace: true,
+              retiredPermission: true,
             },
           },
           "PATCH",

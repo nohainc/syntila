@@ -23,8 +23,8 @@ describe("error envelope", () => {
     expect(await out.json()).toEqual({ error: "Space not found", code: "not_found", requestId: "req-1" });
   });
   test("keeps a handler's own code and extra fields", async () => {
-    const out = await withErrorEnvelope(Response.json({ error: "Offline", code: "workspace_offline", workspaceId: "w" }, { status: 409 }), "req-2");
-    expect(await out.json()).toEqual({ error: "Offline", code: "workspace_offline", workspaceId: "w", requestId: "req-2" });
+    const out = await withErrorEnvelope(Response.json({ error: "Offline", code: "worker_offline", workerId: "w" }, { status: 409 }), "req-2");
+    expect(await out.json()).toEqual({ error: "Offline", code: "worker_offline", workerId: "w", requestId: "req-2" });
   });
   test("leaves success, non-JSON and non-error-shaped bodies alone", async () => {
     const ok = Response.json({ error: "not an error, status 200" });
@@ -68,8 +68,8 @@ describe("rate limits", () => {
     expect(await rateLimitKey(withToken("a"))).toBe(await rateLimitKey(withToken("a")));
     expect(await rateLimitKey(new Request("https://x/api/spaces", { headers: { "x-forwarded-for": "2.2.2.2, 10.0.0.1" } }))).toBe("a:2.2.2.2");
   });
-  test("Workspace machine traffic, realtime and non-API paths are exempt", () => {
-    expect(isRateLimitExempt("/api/workspace-runtime/events")).toBe(false);
+  test("Connect machine traffic, realtime and non-API paths are exempt", () => {
+    expect(isRateLimitExempt("/api/legacy-runtime/events")).toBe(false);
     expect(isRateLimitExempt("/api/realtime")).toBe(true);
     expect(isRateLimitExempt("/health")).toBe(true);
     expect(isRateLimitExempt("/api/spaces")).toBe(false);

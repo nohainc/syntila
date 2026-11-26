@@ -210,7 +210,7 @@ describe("failureCategory", () => {
       "state_uncertain",
     );
   });
-  it("treats a workspace disconnect as a service problem even after start was granted", () => {
+  it("treats a Connect disconnect as a service problem even after start was granted", () => {
     const errorJson = JSON.stringify({
       error: {
         code: "provider_unavailable",

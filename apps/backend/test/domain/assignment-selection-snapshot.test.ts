@@ -53,7 +53,6 @@ it.each([null, "low"])(
           namespace as unknown as DurableObjectNamespace,
       },
       {
-        workspaceId: null,
         runId: "RUN",
         taskId: "T",
         task: {

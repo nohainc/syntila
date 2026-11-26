@@ -46,7 +46,6 @@ it("owners manage all Threads while collaborators manage only their assigned Thr
           displayName: userId,
           status: "active",
         },
-        workspaceId: "",
         spaceRoles: { P: roles[userId as keyof typeof roles] },
         sessionId: "test",
         clientType: "web",

@@ -20,7 +20,7 @@ const configuration = (worker?: string) => ({ schemaVersion: 1, workflowId: "cha
 const call = (env: never, method: string, body?: unknown) =>
   handleWorkflowConfigurations(new Request("https://test/api/user/workflow-configurations/chat", { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }), env, "chat");
 
-describe("Workspace-free Workflow configuration", () => {
+describe("Worker-free Workflow configuration", () => {
   it("saves a Worker by ID, reads it back, and refuses another person's Worker", async () => {
     const f = await fixture();
     const prior = process.env.SYNTILA_FEATURE_FLAGS;

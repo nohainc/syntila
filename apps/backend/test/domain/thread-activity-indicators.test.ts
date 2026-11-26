@@ -52,7 +52,6 @@ async function fixture() {
           displayName: userId,
           status: "active",
         },
-        workspaceId: "",
         spaceRoles: { S: userId === "alice" ? "owner" : "collaborator" },
         sessionId: "test",
         clientType: "web",

@@ -20,7 +20,6 @@ it("pages Work Requests newest first with an opaque cursor and an id tie-break",
     TEST_AUTHENTICATION: async () => ({
       userId: "u",
       user: { id: "u", email: "u@test", displayName: "u", status: "active" },
-      workspaceId: "",
       spaceRoles: { S: "owner" },
       sessionId: "test",
       clientType: "web",

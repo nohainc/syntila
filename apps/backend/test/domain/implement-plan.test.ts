@@ -128,7 +128,6 @@ async function fixture() {
         displayName: "OWNER",
         status: "active",
       },
-      workspaceId: "",
       spaceRoles: { S: "owner" },
       sessionId: "test",
     }),

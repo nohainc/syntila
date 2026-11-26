@@ -176,7 +176,7 @@ it("creates no worker turn before actual dispatch and rolls invalid attribution 
   const f = await conversationFixture();
   expect(await f.turns()).toEqual([]);
   await expect(f.sqlite.exec(
-      `INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,created_at,updated_at) VALUES('invalid','P','WS','RT','chatgpt','worker-a','T','created','now','now')`,
+      `INSERT INTO worker_assignments(id) VALUES('invalid')`,
     )).rejects.toThrow();
   expect(
     (await f.sqlite
@@ -190,7 +190,6 @@ it("creates no worker turn before actual dispatch and rolls invalid attribution 
 
 it("opaque session references are stable per scope and never expose logical keys", () => {
   const target = {
-    workspaceId: "WS",
     workerId: "worker-a",
     profileDefinitionId: "profile-a",
     profileReleaseVersion: 3,
@@ -236,7 +235,6 @@ it("stateless turns have no durable worker-session reference", async () => {
 
 it("session identity survives model choices and compatible Profile release changes", () => {
   const base = {
-    workspaceId: "WS",
     workerId: "worker-A",
     profileDefinitionId: "profile-A",
     conversationId: "conversation-A",

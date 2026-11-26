@@ -14,7 +14,7 @@ async function fixture() {
       VALUES('R1','W','U','stateful','direct',1,'{}','queued','{}','worker-a','now','now');`);
   const lease = (workerInstanceId: string | null, leaseId: string) =>
     atomically(db, "test.lease", (q) =>
-      startStatefulLease(q, { threadId: "W", workRequestId: "R1", workspaceId: null, workerInstanceId, leaseId, now: "2030-01-01T00:00:00.000Z", expiresAt: "2030-01-02T00:00:00.000Z" }),
+      startStatefulLease(q, { threadId: "W", workRequestId: "R1", workerInstanceId, leaseId, now: "2030-01-01T00:00:00.000Z", expiresAt: "2030-01-02T00:00:00.000Z" }),
     );
   return { sqlite, lease };
 }

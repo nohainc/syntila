@@ -69,7 +69,6 @@ async function fixture() {
           displayName: row.display_name,
           status: "active",
         },
-        workspaceId: "",
         spaceRoles: Object.fromEntries(roles.map((r) => [r.space_id, r.role])),
         sessionId: `sess-${id}`,
         clientType: "web",

@@ -27,7 +27,7 @@ it("classifies redispatch without reopening terminal state", () => {
   });
 });
 
-it("keeps Workspace capacity waiting (all workflows) separate from readiness and execution deadlines", () => {
+it("keeps Connect capacity waiting (all workflows) separate from readiness and execution deadlines", () => {
   const start = Date.parse("2026-11-01T00:00:00Z");
   const now = start + 24 * 60 * 60_000;
   const waiting = {

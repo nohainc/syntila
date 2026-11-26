@@ -56,9 +56,6 @@ async function fixture() {
       ));
   scheduler.selectSpaceExecutionTarget.mockImplementation(async () => ({
     spaceId: "P",
-    workspaceId: currentWorkspace,
-    workspaceRuntimeIdentityId: currentWorkspace === "WS" ? "RT" : "RT2",
-    workspaceSpaceGrantId: null,
     workerId: "worker-a",
     workerTypeId: "chatgpt",
     engineVersion: "1.3.0",
@@ -69,7 +66,7 @@ async function fixture() {
       profileDefinitionId: "chatgpt-codex",
       profileReleaseVersion: 3,
     },
-    selectionExplanation: { workspace: { readiness } },
+    selectionExplanation: { worker: { readiness } },
     executionClass: "stateless_read",
     readOnly: true,
   }));
@@ -82,10 +79,9 @@ async function fixture() {
       getByName: () => ({ fetch }),
     } as unknown as DurableObjectNamespace,
   };
-  const dispatch = (taskId: string, user = "U", workspace = "WS") => {
-    const workerId = workspace === "WS" ? "worker-a" : "worker-owner";
+  const dispatch = (taskId: string, user = "U", owner = "WS") => {
+    const workerId = owner === "WS" ? "worker-a" : "worker-owner";
     return dispatchTaskAssignment(env, {
-      workspaceId: null,
       runId: "RUN",
       taskId,
       task: {
@@ -136,7 +132,7 @@ async function fixture() {
   const held = (user = "U") => countHeldExecutionSlots(f.read, user);
   return { ...f, dispatch, setStatus, plan, waiters, held, fetch };
 }
-let currentWorkspace = "WS";
+let currentOwner = "WS";
 
 it("keeps the Free limit in the central plan policy", () => {
   expect(FREE_CONCURRENT_EXECUTION_LIMIT).toBe(1);
@@ -144,7 +140,7 @@ it("keeps the Free limit in the central plan policy", () => {
   expect(concurrentExecutionLimit("paid")).toBeNull();
 });
 
-it("admits one Free execution across Threads and Workspaces and defers the rest", async () => {
+it("admits one Free execution across Threads and Workers and defers the rest", async () => {
   const f = await fixture();
   const first = await f.dispatch("T");
   const second = await f.dispatch("T2", "U", "WS2");
@@ -173,7 +169,7 @@ it("lets only one of many simultaneous Free reservations win", async () => {
   expect(await f.held()).toBe(1);
 });
 
-it("has no plan-based cap on Plus, and the cap follows the requester not the Workspace owner", async () => {
+it("has no plan-based cap on Plus, and the cap follows the requester not the Connect owner", async () => {
   const f = await fixture();
   await f.plan("U");
   const results = await Promise.all(
@@ -189,7 +185,7 @@ it("has no plan-based cap on Plus, and the cap follows the requester not the Wor
   });
 });
 
-it("attributes shared Workspace executions to the requester", async () => {
+it("attributes shared Connect executions to the requester", async () => {
   const f = await fixture();
   expect(await f.dispatch("T", "V", "WS2")).toMatchObject({ accepted: true });
   expect(await f.dispatch("T2", "V", "WS2")).toMatchObject({
@@ -348,7 +344,7 @@ it("rechecks readiness after registration when the ready signal raced the waiter
   f.fetch.mockImplementation(async (url: string) => {
     if (url.endsWith('/status')) {
       readiness = 'ready';
-      return Response.json({ online: true, readyForAssignments: true, executionWorkspaceId: 'WS' });
+      return Response.json({ online: true, readyForAssignments: true });
     }
     return Response.json({});
   });

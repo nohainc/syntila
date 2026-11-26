@@ -584,7 +584,7 @@ it("accepts one-step composer overrides without changing saved preferences", asy
 it("Worker selection changes apply to new Thread requests while preserving earlier Run and Step snapshots", async () => {
   const f = await fixture();
   try {
-    const first = await f.submit("Before switch", "workspace-before-00001");
+    const first = await f.submit("Before switch", "switch-before-00001");
     const id = ((await first.json()) as { workRequest: { id: string } })
       .workRequest.id;
     const { loadConversationWorkflowRuns } =
@@ -597,7 +597,7 @@ it("Worker selection changes apply to new Thread requests while preserving earli
     `);
     const second = await f.submit(
       "After switch",
-      "workspace-after-000001",
+      "switch-after-000001",
       "direct",
       { workerId: "new-worker" },
     );

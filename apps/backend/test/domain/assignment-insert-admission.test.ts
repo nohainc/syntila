@@ -34,7 +34,6 @@ async function fixture() {
           } as unknown as DurableObjectNamespace,
         },
         {
-          workspaceId: null,
           runId: "RUN",
           taskId: "T",
           task: {

@@ -49,7 +49,7 @@ const baseEvent = {
 };
 
 describe("Cloud event publisher", () => {
-  it("persists Worker-first completion on the Space stream without a Workspace", async () => {
+  it("persists Worker-first completion on the Space stream without a Connect", async () => {
     const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       type: "work_request.completed",

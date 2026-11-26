@@ -185,7 +185,7 @@ describe("issue reports", () => {
     ).toBe(2);
   });
 
-  it("uses structured private Engine diagnostics for stage and Workspace evidence", async () => {
+  it("uses structured private Engine diagnostics for stage and Connect evidence", async () => {
     const fixture = await pgD1();
     await seedExecution(fixture.sqlite);
     await fixture.sqlite
@@ -251,7 +251,7 @@ describe("issue reports", () => {
           method: "POST",
           body: JSON.stringify({
             requestId: "request-1",
-            workspaceId: "workspace-1",
+            retiredAuthorityId: "legacy-1",
           }),
           headers: { "content-type": "application/json" },
         }),

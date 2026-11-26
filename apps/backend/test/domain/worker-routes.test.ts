@@ -119,12 +119,6 @@ describe("Worker API routes", () => {
       handleResolveToolProfileChannels: vi.fn(
         async () => new Response("resolved"),
       ),
-      handleListWorkspaceWorkerCatalog: vi.fn(
-        async () => new Response("catalog"),
-      ),
-      handleSetWorkspaceToolProfileChannel: vi.fn(
-        async () => new Response("channel"),
-      ),
       handleCreateToolProfileDefinition: vi.fn(
         async () => new Response("definition"),
       ),
@@ -185,10 +179,10 @@ describe("Worker API routes", () => {
     } as unknown as WorkerRouteHandlers;
     const routes = [
       [
-        "/api/tool-profiles?workerTypeId=chatgpt&workspaceRuntimeId=runtime-1",
+        "/api/tool-profiles?workerTypeId=chatgpt",
         "GET",
       ],
-      ["/api/workspaces/workspace-1/tool-profile-channel", "PATCH"],
+      ["/api/workers/worker-1/tool-profile-channel", "PATCH"],
       ["/api/admin/tool-profiles/definitions", "POST"],
       ["/api/admin/tool-profiles/definitions", "GET"],
       ["/api/admin/tool-profiles/definitions/chatgpt-codex", "GET"],

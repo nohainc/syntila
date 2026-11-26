@@ -89,7 +89,6 @@ describe("Direct Space AI Workers and Workflows (Phase 7)", () => {
               displayName: "Anon",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
             clientType: "web",
@@ -98,7 +97,6 @@ describe("Direct Space AI Workers and Workflows (Phase 7)", () => {
         return {
           userId: user.id,
           user,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `sess-${user.id}`,
           clientType: "web",

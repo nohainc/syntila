@@ -132,7 +132,7 @@ describe("account admin endpoints", () => {
     const stats = await call(await internalToken(), "/internal/admin/accounts/stats", { ids: ["ops-user", "missing"] });
     expect(stats.status).toBe(200);
     expect(stats.body.stats["ops-user"]).toMatchObject({ spaces: 1, workers: 1, plan: "free" });
-    expect(stats.body.stats["ops-user"]).not.toHaveProperty("workspaces");
+    expect(stats.body.stats["ops-user"]).not.toHaveProperty("legacyRuntimes");
     expect(stats.body.stats["ops-user"].plan_management).toBe("manual");
     expect(stats.body.stats.missing).toBeUndefined();
 

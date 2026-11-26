@@ -323,9 +323,9 @@ describe("races on shared actions", () => {
   });
 });
 
-describe("races on Workspaces, grants and the request queue", () => {
+describe("races on Workers, grants and the request queue", () => {
   const registration = (installationId: string, name: string) => ({
-    contractVersion: "1.0", installationId, proposedWorkspaceName: name,
+    contractVersion: "1.0", installationId, proposedName: name,
     hostname: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), platform: "macos", architecture: "arm64", appVersion: "1.0.0",
     runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
   });

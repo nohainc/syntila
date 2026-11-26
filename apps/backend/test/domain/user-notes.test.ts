@@ -53,7 +53,6 @@ async function fixture() {
           displayName: userId,
           status: "active",
         },
-        workspaceId: "",
         spaceRoles:
           userId === "eve"
             ? {}

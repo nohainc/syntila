@@ -15,7 +15,6 @@ const env = {
       displayName: "Developer",
       status: "active",
     },
-    workspaceId: "local-development",
     spaceRoles: {},
     sessionId: "session-local-development",
     clientType: "desktop",

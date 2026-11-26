@@ -23,7 +23,6 @@ async function fixture() {
     TEST_AUTHENTICATION: async () => ({
       userId: "u",
       user: { id: "u", email: "u@test", displayName: "User", status: "active" },
-      workspaceId: "",
       spaceRoles: {},
       sessionId: "s",
       clientType: "web",

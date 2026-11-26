@@ -10,7 +10,6 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   }),
   validateWorkflowWorkerEligibility: async () => ({
     issues: [],
-    primaryWorkspaceId: "workspace",
     workerProfiles: {
       direct: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
       chat: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
@@ -98,7 +97,6 @@ describe("Work Request mutation coordination", () => {
         mode: "stateless",
         workflowId: "chat",
       });
-      expect(body.workRequest).not.toHaveProperty("primaryWorkspaceId");
       expect(enqueue).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledOnce();
       expect((await requests()).map((r) => r.mode)).toEqual(["stateless"]);

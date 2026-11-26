@@ -381,7 +381,7 @@ describe("session fencing", () => {
     expect(await recordAssignmentResult(f.db, "a1", { output: "ok" } as never, "att-a1", session)).toBe(true);
   });
 
-  it("leaves traffic without an Agent session (Workspace runtimes) unchanged", async () => {
+  it("leaves traffic without an Agent session (Connect runtimes) unchanged", async () => {
     const f = await fixture();
     await f.seedAssignment("a1", W1, "running");
     expect(await recordAssignmentResult(f.db, "a1", { output: "ok" } as never, "att-a1")).toBe(true);
@@ -568,7 +568,7 @@ describe("HTTP routes", () => {
         if (!userId) throw new HttpError(401, "Sign in required");
         return {
           userId, user: { id: userId, email: `${userId}@test`, displayName: userId, status: "active" },
-          workspaceId: "", spaceRoles: {}, sessionId: "test", clientType: "web",
+          spaceRoles: {}, sessionId: "test", clientType: "web",
         };
       },
     } as unknown as SecurityEnv;

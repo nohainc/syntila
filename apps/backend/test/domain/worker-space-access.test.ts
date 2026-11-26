@@ -51,7 +51,6 @@ async function fixture() {
       return {
         userId,
         user: { id: userId, email: `${userId}@test`, displayName: userId, status: "active" },
-        workspaceId: "",
         spaceRoles: {},
         sessionId: "test",
         clientType: "web",

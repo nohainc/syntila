@@ -59,7 +59,6 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
               displayName: "Anon",
               status: "active",
             },
-            workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
             clientType: "web",
@@ -68,7 +67,6 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
         return {
           userId: user.id,
           user,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `sess-${user.id}`,
           clientType: "web",
@@ -589,7 +587,6 @@ describe("Support Space sidebar visibility", () => {
         return {
           userId: u.id,
           user: u,
-          workspaceId: "",
           spaceRoles: {},
           sessionId: `s-${u.id}`,
           clientType: "web",
