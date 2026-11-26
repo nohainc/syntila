@@ -1,12 +1,12 @@
-name: Connect / Windows / Release
+name: Release Connect for Windows
 
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish the installer and portable archive as a GitHub Release (main and passing CI required)
-        type: boolean
-        default: false
+      build_run_id:
+        description: Successful Build Connect for Windows run ID
+        type: string
+        required: true
       release_notes:
         description: Release notes for the GitHub Release
         type: string
@@ -20,176 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  require-ci:
-    name: Require passing CI on main
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read Connect version
-        id: version
-        run: |
-          set -euo pipefail
-          version="$(awk '/^version:/ {print $2; exit}' apps/connect/pubspec.yaml)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Require successful CI for this commit
-        if: inputs.publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/require-ci-success.sh
-
-  build:
-    name: Build and package Windows Connect (installer + portable zip)
-    needs: require-ci
-    runs-on: windows-2022
-    environment: connect-windows-release
-    timeout-minutes: 75
-    env:
-      SYNTILA_CONNECT_VERSION: ${{ needs.require-ci.outputs.version }}
-      # Releases never fall back to the compile-only CI trust root.
-      SYNTILA_PROFILE_TRUST_ROOTS: ${{ vars.SYNTILA_PROFILE_TRUST_ROOTS || vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
-      SYNTILA_UPDATE_KEYS: ${{ vars.SYNTILA_UPDATE_KEYS || '' }}
-      SYNTILA_WINDOWS_SIGNING: ${{ vars.SYNTILA_WINDOWS_SIGNING }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-      - uses: ./.github/actions/setup-flutter
-      - name: Require release configuration
-        shell: pwsh
-        run: |
-          if (-not $env:SYNTILA_PROFILE_TRUST_ROOTS) { throw 'vars.SYNTILA_PROFILE_TRUST_ROOTS (or vars.SYNTILA_RELEASE_TRUST_KEYS_JSON) is required.' }
-          if ('${{ inputs.publish }}' -eq 'true' -and $env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) {
-            throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx when publishing.'
-          }
-          if ($env:SYNTILA_WINDOWS_SIGNING -and $env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) {
-            throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx.'
-          }
-      - name: Install pinned Inno Setup compiler
-        shell: pwsh
-        run: |
-          $setup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setup
-          if ((Get-FileHash $setup -Algorithm SHA256).Hash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') { throw 'Inno Setup checksum mismatch.' }
-          $compilerDir = Join-Path $env:RUNNER_TEMP 'inno-setup'
-          $install = Start-Process $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$compilerDir`"") -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Compiler installation failed: $($install.ExitCode)" }
-      - name: Install .NET 8 for Azure signing
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'azure'
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Configure Azure Trusted Signing client
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'azure'
-        shell: pwsh
-        env:
-          CLIENT_VERSION: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_CLIENT_VERSION || '1.0.53' }}
-        run: |
-          $package = Join-Path $env:RUNNER_TEMP 'trusted-signing-client.zip'
-          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client/$env:CLIENT_VERSION" -OutFile $package
-          $client = Join-Path $env:RUNNER_TEMP 'trusted-signing-client'
-          Expand-Archive $package $client -Force
-          $dlib = Join-Path $client 'bin/x64/Azure.CodeSigning.Dlib.dll'
-          # The client must carry a valid Microsoft Authenticode signature.
-          $signature = Get-AuthenticodeSignature $dlib
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Trusted Signing client is not Microsoft-signed.' }
-          "SYNTILA_WINDOWS_TRUSTED_SIGNING_DLIB=$dlib" >> $env:GITHUB_ENV
-      - name: Configure certificate file signing
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_PFX: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PFX }}
-        run: |
-          if (-not $env:CERTIFICATE_PFX) { throw 'secrets.SYNTILA_WINDOWS_CERTIFICATE_PFX is required.' }
-          $path = Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx'
-          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:CERTIFICATE_PFX))
-          "SYNTILA_WINDOWS_CERTIFICATE_PATH=$path" >> $env:GITHUB_ENV
-      - name: Run Connect CLI tests
-        shell: pwsh
-        run: |
-          Push-Location apps/connect
-          dart pub get
-          dart test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Pop-Location
-      - name: Build Windows Connect bundle and portable archive
-        shell: pwsh
-        run: ./scripts/build-connect-windows.ps1 -Production
-      - name: Check Connect GUI icon
-        shell: pwsh
-        run: |
-          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/connect/windows/release/syntila_connect_gui.exe'
-          Add-Type -AssemblyName System.Drawing
-          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($gui)
-          if ($null -eq $icon) { throw 'Connect GUI executable has no icon.' }
-          $icon.Dispose()
-      - name: Sign bundled executables and refresh portable archive
-        if: vars.SYNTILA_WINDOWS_SIGNING != ''
-        shell: pwsh
-        env:
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE }}
-          AZURE_TENANT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
-          SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $bundle = Join-Path $PWD 'dist/connect/windows/release'
-          ./scripts/sign-connect-windows.ps1 -Bundle $bundle
-          ./scripts/sign-connect-windows.ps1 -Bundle $bundle -VerifyOnly
-          $archive = "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip"
-          Compress-Archive -Path "$bundle/*" -DestinationPath $archive -Force
-      - name: Build Inno Setup installer
-        shell: pwsh
-        env:
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE }}
-          AZURE_TENANT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
-          SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $compiler = "$env:RUNNER_TEMP/inno-setup/ISCC.exe"
-          if ($env:SYNTILA_WINDOWS_SIGNING) {
-            ./scripts/package-connect-windows.ps1 -Compiler $compiler -Sign
-          } else {
-            ./scripts/package-connect-windows.ps1 -Compiler $compiler
-          }
-      - name: Test install, upgrade and uninstall
-        shell: pwsh
-        run: ./scripts/test-connect-windows-installer.ps1
-      - name: Write checksums
-        shell: pwsh
-        run: |
-          $files = @(Get-Item "dist/connect/installer/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-Setup.exe",
-                             "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip")
-          New-Item -ItemType Directory -Force dist/windows-release | Out-Null
-          $files | Copy-Item -Destination dist/windows-release
-          $files | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
-            Set-Content dist/windows-release/SHA256SUMS -Encoding ascii
-      - name: Remove signing material
-        if: always()
-        shell: pwsh
-        run: Remove-Item (Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx') -ErrorAction SilentlyContinue
-      - name: Retain release candidate
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: syntila-connect-windows-x64-release
-          path: dist/windows-release/*
-          if-no-files-found: error
-
   publish:
-    name: Publish GitHub Release
-    if: inputs.publish
-    needs: build
+    name: Publish selected Windows build
     runs-on: ubuntu-24.04
     environment: connect-windows-release
     timeout-minutes: 10
@@ -197,24 +29,52 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Download release candidate
+      - name: Verify selected build
+        id: build
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name syntila-connect-windows-x64-release --dir release
-      - name: Verify checksums and create immutable release
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Release must run from main.' >&2; exit 1; }
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Build run ID must be numeric.' >&2; exit 1; }
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")"
+          workflow_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-connect-windows.yml" --jq '.id')"
+          jq -e --argjson workflow_id "$workflow_id" '
+            .workflow_id == $workflow_id and .event == "workflow_dispatch" and
+            .head_branch == "main" and .status == "completed" and .conclusion == "success"
+          ' <<< "$run" >/dev/null || { echo 'Selected run is not a successful manual Windows build on main.' >&2; exit 1; }
+          sha="$(jq -r '.head_sha' <<< "$run")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Download selected build
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.require-ci.outputs.version }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: gh run download "$BUILD_RUN_ID" --name syntila-connect-windows-x64-release --dir release
+      - name: Verify artifacts and create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
           NOTES: ${{ inputs.release_notes }}
         run: |
           set -euo pipefail
-          (cd release && sha256sum -c SHA256SUMS)
-          tag="connect-windows-v$VERSION"
+          version="$(jq -r --arg sha "$BUILD_SHA" --arg run "$BUILD_RUN_ID" \
+            'select(.commit == $sha and .run_id == $run and .signed == true) | .version' release/build.json)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Build metadata is invalid or the build is unsigned.' >&2; exit 1; }
+          installer="Syntila-Connect-$version-windows-x64-Setup.exe"
+          portable="Syntila-Connect-$version-windows-x64-portable.zip"
+          # Require exactly the expected entries, so checksum verification covers both assets.
+          expected="$(printf '%s\n' "$installer" "$portable" | sort)"
+          actual="$(awk '{print $2}' release/SHA256SUMS | sort)"
+          [[ "$actual" == "$expected" ]] || { echo 'Unexpected checksum entries.' >&2; exit 1; }
+          (cd release && sha256sum --strict -c SHA256SUMS)
+          tag="connect-windows-v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; Windows releases are immutable." >&2
             exit 1
           fi
-          gh release create "$tag" release/* --target "$GITHUB_SHA" \
-            --title "Syntila Connect $VERSION for Windows" \
-            --notes "${NOTES:-Signed Syntila Connect $VERSION for Windows x64 (installer and portable archive).}"
+          gh release create "$tag" "release/$installer" "release/$portable" release/SHA256SUMS --target "$BUILD_SHA" \
+            --title "Syntila Connect $version for Windows" \
+            --notes "${NOTES:-Signed Syntila Connect $version for Windows x64 (installer and portable archive).}"

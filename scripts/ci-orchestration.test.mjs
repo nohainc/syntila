@@ -44,7 +44,7 @@ describe("CI acceptance orchestration", () => {
     const signer = "sign-connect-windows.ps1";
     expect(source(`scripts/${signer}`)).toContain("VerifyOnly");
     for (const file of [
-      ".github/workflows/release-windows.yml",
+      ".github/workflows/build-connect-windows.yml",
       "scripts/package-connect-windows.ps1",
       "scripts/test-connect-windows-installer.ps1",
     ]) {
@@ -53,7 +53,7 @@ describe("CI acceptance orchestration", () => {
   });
   it("uses the public Connect platform builder in the release workflow", () => {
     for (const [workflow, command] of [
-      ["release-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],
+      ["build-connect-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],
     ]) {
       expect(source(`.github/workflows/${workflow}`)).toContain(command);
     }
@@ -61,7 +61,7 @@ describe("CI acceptance orchestration", () => {
 
   it("derives every release version from the checked-out pubspec", () => {
     for (const [workflow, pubspec] of [
-      ["release-windows.yml", "apps/connect/pubspec.yaml"],
+      ["build-connect-windows.yml", "apps/connect/pubspec.yaml"],
     ]) {
       const content = source(`.github/workflows/${workflow}`);
       expect(content).toContain(
