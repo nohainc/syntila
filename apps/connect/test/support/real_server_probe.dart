@@ -1,11 +1,66 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_connect/syntila_connect.dart';
 
+class _DeferredEngineRun implements EngineRun {
+  _DeferredEngineRun(this._completer);
+  final Completer<EngineOutcome> _completer;
+
+  @override
+  Future<EngineOutcome> get outcome => _completer.future;
+
+  @override
+  Future<void> cancel() async {
+    if (!_completer.isCompleted) {
+      _completer.complete(
+        const EngineOutcome(TerminalKind.cancelled, {'reason': 'cancelled'}),
+      );
+    }
+  }
+}
+
+class _DeferredFakeEngineLauncher implements EngineLauncher {
+  final List<Completer<EngineOutcome>> _pending = [];
+
+  @override
+  Future<EngineRun> launch(EngineRequest request) async {
+    final completer = Completer<EngineOutcome>();
+    _pending.add(completer);
+    stdout.writeln('ENGINE_STARTED ${request.assignmentId}');
+    return _DeferredEngineRun(completer);
+  }
+
+  void completeAll() {
+    for (final c in _pending) {
+      if (!c.isCompleted) {
+        c.complete(
+          const EngineOutcome(TerminalKind.completed, {
+            'summary': 'recovered-after-restart',
+            'output': 'recovered-after-restart',
+          }),
+        );
+      }
+    }
+    _pending.clear();
+  }
+
+  @override
+  Future<int> recoverOrphans() async => 0;
+
+  @override
+  Future<String?> probe() async => null;
+}
+
 /// Integration probe: pair and complete hello/sync against a real backend.
 Future<void> main() async {
-  final input = jsonDecode(stdin.readLineSync()!) as Map<String, dynamic>;
+  final lines = stdin
+      .transform(utf8.decoder)
+      .transform(const LineSplitter())
+      .asBroadcastStream();
+  final firstLine = await lines.first;
+  final input = jsonDecode(firstLine) as Map<String, dynamic>;
   final root = await Directory.systemTemp.createTemp('syntila-agent-live-');
   AgentRuntime? runtime;
   try {
@@ -68,11 +123,14 @@ Future<void> main() async {
         api.close();
       }
     }
+    final fakeEngine = input['runFakeEngine'] == true
+        ? _DeferredFakeEngineLauncher()
+        : null;
     runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
       keyStore: keys,
-      engine: UnconfiguredEngineLauncher(),
+      engine: fakeEngine ?? UnconfiguredEngineLauncher(),
       baseDelay: const Duration(milliseconds: 50),
       stepTimeout: const Duration(seconds: 4),
     );
@@ -85,7 +143,13 @@ Future<void> main() async {
     await runtime.start();
     await runtime.connection.whenReady(timeout: const Duration(seconds: 12));
     stdout.writeln('AGENT_READY');
-    if (input['keepAlive'] == true) await stdin.drain<void>();
+    if (input['keepAlive'] == true) {
+      await for (final line in lines) {
+        if (line.trim() == 'COMPLETE') {
+          fakeEngine?.completeAll();
+        }
+      }
+    }
     await subscription.cancel();
   } finally {
     await runtime?.stop();
