@@ -52,7 +52,7 @@ class DraftProfileMetadata {
 ///
 /// Restrictive filesystem permissions (0700 for directories, 0600 for files) are
 /// enforced on POSIX platforms. Drafts stored here are completely isolated from
-/// Workspace's verified published Profile storage and can never satisfy
+/// Connect's verified published Profile storage and can never satisfy
 /// [ToolProfileReleaseAdmission].
 class DraftProfileStore {
   DraftProfileStore({required Directory draftsRoot}) : _draftsRoot = draftsRoot;

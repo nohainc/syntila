@@ -1,7 +1,7 @@
 # Syntila protocol schema
 
 This directory contains the canonical, language-neutral JSON Schema for the
-product message envelope, execution error vocabulary, Workspace message
+product message envelope, execution error vocabulary, Connect message
 metadata, and realtime event metadata. It does not define Agent, IPC, Worker
 Plugin, or Local Worker Protocol messages.
 

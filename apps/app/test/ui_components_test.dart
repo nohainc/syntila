@@ -205,7 +205,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Navigate down from Home (index 0) to Workspaces (index 1)
+      // Navigate down from Home (index 0) to Workers (index 1)
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
 

@@ -1,5 +1,5 @@
 /// A Worker Instance (ADR-032): a named, owner-scoped Worker independent of
-/// any Workspace. `enabled` is configured; `online` and `ready` are observed.
+/// any Connect. `enabled` is configured; `online` and `ready` are observed.
 class WorkerInstance {
   const WorkerInstance({
     required this.id,
@@ -124,7 +124,10 @@ class WorkerInstance {
     if (visibility is! Map) return const [];
     final raw = visibility['hiddenModels'];
     if (raw is! List) return const [];
-    return [for (final item in raw) if (item is String) item];
+    return [
+      for (final item in raw)
+        if (item is String) item
+    ];
   }
 
   static Map<String, List<String>> _parseHiddenEfforts(Object? visibility) {

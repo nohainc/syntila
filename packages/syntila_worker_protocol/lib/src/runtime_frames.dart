@@ -713,7 +713,7 @@ final class WorkerSessionContext {
   }
 }
 
-/// One Workspace-verified, consented MCP server an official Worker may use
+/// One Connect-verified, consented MCP server an official Worker may use
 /// during this execution. The Engine writes it into a private, per-execution
 /// config file; the user's own CLI configuration is never modified.
 final class McpServerLaunch {
@@ -1043,7 +1043,7 @@ final class ExecuteRequest extends WorkerFrame {
   final ConversationBootstrap? statelessContext;
   final ExternalConversationInput? externalConversation;
 
-  /// Workspace-verified absolute folders the provider CLI may use besides the
+  /// Connect-verified absolute folders the provider CLI may use besides the
   /// working directory. The Profile decides how they become CLI arguments.
   final List<String> additionalDirectories;
 
@@ -1220,9 +1220,9 @@ final class ExecuteRequest extends WorkerFrame {
   }
 }
 
-/// A bounded Workspace-selected execution mode.
+/// A bounded Connect-selected execution mode.
 ///
-/// `full_access` is emitted only after the Workspace service has verified its
+/// `full_access` is emitted only after the Connect service has verified its
 /// persisted host-owner authorization. It remains explicit so the Engine and
 /// Worker Profile applies the same policy end to end.
 enum WorkerExecutionPolicy {

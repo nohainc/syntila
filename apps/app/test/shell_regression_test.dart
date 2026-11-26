@@ -291,7 +291,7 @@ void main() {
       expect(find.text('Website'), findsNothing);
 
       // Verify destructive / action callbacks:
-      // 1. Workspaces
+      // 1. Workers
       await tester.tap(find.text('Workers'));
       await tester.pumpAndSettle();
       expect(navigated, const AxNavigation.workers());

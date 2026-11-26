@@ -89,7 +89,7 @@ void main() {
     final realtime = TestRealtime();
     await mount(tester, source, realtime);
     expect(source.bootstraps, 1);
-    // The bootstrap snapshot carries Workspaces; no separate list read.
+    // The bootstrap snapshot carries Workers; no separate list read.
     expect(source.workspaces, 0);
     await tester.pumpWidget(const SizedBox());
   });

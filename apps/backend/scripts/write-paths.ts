@@ -28,7 +28,7 @@ const AREAS: [RegExp, string][] = [
   [/people|spaces|space-|invitation|account-|profile-admin|paddle|auth/, "2 people, Spaces, accounts"],
   [/threads|thread-history|thread-activity|reply-references|collaboration-events/, "3 Threads and messages"],
   [/work|conversation|workflow|assignment|thread-coordinator|thread-request-queue|execution|implement-plan|mcp|worker|scheduler/, "4 work core"],
-  [/realtime|event-publisher|workspace|gateway|retention|durable-objects|releases|release-trust|email/, "5 realtime, gateway, jobs"],
+  [/realtime|event-publisher|gateway|retention|durable-objects|releases|release-trust|email/, "5 realtime, gateway, jobs"],
 ];
 
 interface Statement { table: string; verb: string; guarded: boolean; numbering: boolean }

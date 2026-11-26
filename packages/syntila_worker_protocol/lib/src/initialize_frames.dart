@@ -72,7 +72,7 @@ final class InitializeRequest extends WorkerFrame {
   final String profileDefinitionId;
 
   /// Resolved Profile revision. The wire name is retained for Protocol 4.x
-  /// compatibility with older Workspace/Engine builds.
+  /// compatibility with older Connect/Engine builds.
   final String profileReleaseVersion;
   final String profileDigest;
 
@@ -184,7 +184,7 @@ final class InitializeResult extends WorkerFrame {
   final String profileDefinitionId;
 
   /// Resolved Profile revision. The wire name is retained for Protocol 4.x
-  /// compatibility with older Workspace/Engine builds.
+  /// compatibility with older Connect/Engine builds.
   final String profileReleaseVersion;
   final int profileSchemaVersion;
   final List<String> capabilities;

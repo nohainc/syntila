@@ -360,7 +360,7 @@ void main() {
               .pixels,
           greaterThan(0));
 
-      // The default used by the Workspace dialog retains its card and margin.
+      // The default used by the Connect dialog retains its card and margin.
       controller.showMessage('Standalone report');
       await show(false);
       await tester.pumpAndSettle();

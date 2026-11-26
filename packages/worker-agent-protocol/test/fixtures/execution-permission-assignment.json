@@ -13,7 +13,7 @@
   ],
   "permissionSnapshot": {
     "spaceId": "space-permission-contract",
-    "workspaceId": "workspace-permission-contract",
+    "workerId": "worker-permission-contract",
     "grantId": "grant-permission-contract",
     "requesterUserId": "user-permission-contract",
     "permissions": [

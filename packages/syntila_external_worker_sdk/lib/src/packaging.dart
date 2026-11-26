@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 
 /// Canonical JSON: keys sorted, no whitespace. This is the exact form the
-/// manifest digest is computed over (same as the Workspace and Cloud).
+/// manifest digest is computed over (same as the Connect and Cloud).
 String canonicalExternalWorkerJson(Object? value) {
   if (value is List)
     return '[${value.map(canonicalExternalWorkerJson).join(',')}]';

@@ -1,7 +1,7 @@
 # Syntila
 
 Syntila is the Flutter application for human authentication, Spaces,
-Threads, Chat, Work, Workspace access, Worker catalog visibility, and
+Threads, Chat, Work, Connect access, Worker catalog visibility, and
 account security. The Thread Chat tab is the human discussion surface;
 Work remains the execution surface.
 Logout sends an authenticated JSON request and clears the local session token
@@ -98,9 +98,9 @@ triggering immediate history refresh. It subscribes to the active Thread
 and resynchronizes after reconnecting. While Work is queued, running, or waiting,
 a five-second HTTP refresh also reconciles progress and completion if a live
 notification is missed. The fallback stops after completion or leaving the page.
-To enable Work, open **Space → Workspaces → Edit Workspace access** (shield
+To enable Work, open **Space → Workers → Edit Connect access** (shield
 icon), select **Read repository files** and **Change repository files**, then
-confirm. Test steps also require **Execute commands and tests**. Both Workspace
+confirm. Test steps also require **Execute commands and tests**. Both Connect
 connection flows present these choices explicitly; permissions are never
 automatically widened. Existing connections retain their permissions.
 
@@ -112,7 +112,7 @@ and acquires no mutation lease. Work is writable and uses mutation coordination.
 The team Chat discussion tab remains a separate collaboration surface.
 
 The package intentionally has no native desktop targets. Desktop execution is
-provided by Syntila Workspace; Syntila communicates with Cloud through
+provided by Syntila Connect; Syntila communicates with Cloud through
 the Human Product Protocol and realtime event stream.
 
 An iOS target lives in `ios/` and is built with `pnpm app:build:ios`

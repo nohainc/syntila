@@ -416,7 +416,7 @@ void main() {
         modelId: model,
         effort: effort,
       );
-      // A new store instance models Workspace/Engine restart: no in-memory
+      // A new store instance models Connect/Engine restart: no in-memory
       // continuity state may be required to restore this native handle.
       Future<String?> read({WorkerSessionContext? scope}) =>
           EngineSessionStore(root).read(

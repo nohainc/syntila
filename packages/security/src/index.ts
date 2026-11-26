@@ -102,7 +102,7 @@ export function authorize(
   }
   // Unscoped Space listing/creation starts from authenticated identity and
   // is filtered/owned by its handler. Every other permission needs an explicit
-  // Space, Workspace owner, or Profile administrator check.
+  // Space, Connect owner, or Profile administrator check.
   if (!spaceId) {
     if (permission === "spaces:read" || permission === "spaces:manage") return;
     throw new AuthorizationError(permission);

@@ -5,7 +5,7 @@ Generated from `apps/backend/src/domain/routes/table.ts` by `bun run routes`. Do
 `:name` is a path parameter. `ANY` means the handler decides by method itself.
 Every JSON error is `{ error, code, requestId }`; every response carries `x-syntila-api`.
 A path that exists but not for the request's method answers `405` with an `Allow` header.
-`Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
+`Connect/server`: called with Connect or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
 123 paths.
@@ -24,7 +24,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/billing/live/checkout-config` | ANY |  |
 | `/api/billing/sandbox/checkout-config` | ANY |  |
 | `/api/billing/sandbox/portal` | ANY |  |
-| `/api/billing/sandbox/webhook` | ANY | Workspace/server |
+| `/api/billing/sandbox/webhook` | ANY | Connect/server |
 | `/api/device-folders` | GET |  |
 | `/api/device-folders/:deviceId` | DELETE |  |
 | `/api/device-folders/:deviceId/:folderId` | DELETE |  |
@@ -107,20 +107,20 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/work-requests/:workRequestId/inputs/:inputId` | PUT |  |
 | `/api/work-requests/:workRequestId/inputs/:inputId/failed` | POST |  |
 | `/api/work-requests/:workRequestId/retry` | POST |  |
-| `/api/worker-agent/artifacts` | POST | Workspace/server |
-| `/api/worker-agent/artifacts/:artifactId/content` | GET | Workspace/server |
-| `/api/worker-agent/claim` | POST | Workspace/server |
-| `/api/worker-agent/folders` | PUT | Workspace/server |
-| `/api/worker-agent/gateway` | GET | Workspace/server |
+| `/api/worker-agent/artifacts` | POST | Connect/server |
+| `/api/worker-agent/artifacts/:artifactId/content` | GET | Connect/server |
+| `/api/worker-agent/claim` | POST | Connect/server |
+| `/api/worker-agent/folders` | PUT | Connect/server |
+| `/api/worker-agent/gateway` | GET | Connect/server |
 | `/api/worker-agent/inputs/:fileId/content` | GET |  |
-| `/api/worker-agent/models` | PUT | Workspace/server |
-| `/api/worker-agent/nonce` | POST | Workspace/server |
-| `/api/worker-agent/outputs` | POST | Workspace/server |
-| `/api/worker-agent/profile` | GET | Workspace/server |
-| `/api/worker-agent/rotate` | POST | Workspace/server |
-| `/api/worker-agent/sessions` | POST | Workspace/server |
-| `/api/worker-agent/unpair` | POST | Workspace/server |
-| `/api/worker-agent/usage` | PUT | Workspace/server |
+| `/api/worker-agent/models` | PUT | Connect/server |
+| `/api/worker-agent/nonce` | POST | Connect/server |
+| `/api/worker-agent/outputs` | POST | Connect/server |
+| `/api/worker-agent/profile` | GET | Connect/server |
+| `/api/worker-agent/rotate` | POST | Connect/server |
+| `/api/worker-agent/sessions` | POST | Connect/server |
+| `/api/worker-agent/unpair` | POST | Connect/server |
+| `/api/worker-agent/usage` | PUT | Connect/server |
 | `/api/workers` | GET, POST | Idempotency-Key |
 | `/api/workers/:workerId` | GET, PATCH, DELETE |  |
 | `/api/workers/:workerId/credential` | DELETE |  |

@@ -1,6 +1,6 @@
 // The crash and reconnect matrix and
 // the exit gate: independent Agents, separate journals, no Engine ever
-// started twice, and no Workspace anywhere.
+// started twice, and no Connect anywhere.
 import 'dart:io';
 
 import 'package:syntila_connect/syntila_connect.dart';

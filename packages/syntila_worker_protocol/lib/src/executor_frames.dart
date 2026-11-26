@@ -1,5 +1,5 @@
 /// The user-imported plugin an `execute.request` runs instead of a provider
-/// CLI Profile (Local Worker Protocol 4.2, ADR-027). Workspace resolves and
+/// CLI Profile (Local Worker Protocol 4.2, ADR-027). Connect resolves and
 /// verifies every field from its own plugin store; Cloud never supplies a path.
 final class WorkerExecutor {
   WorkerExecutor({

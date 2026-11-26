@@ -86,7 +86,7 @@ AxWorker _worker(String id, String workspaceId, {bool shared = false}) =>
         localConcurrencyLimit: 1,
         shared: shared);
 
-/// Space Workspace "space-ws"; the viewer owns "own-ws" and borrows "lent-ws".
+/// Space Connect "space-ws"; the viewer owns "own-ws" and borrows "lent-ws".
 class OwnWorkersSource extends PermissionSource
     implements AxSpaceWorkflowConfigurationDataSource {
   @override

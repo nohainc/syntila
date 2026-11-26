@@ -37,7 +37,7 @@ final class CliWorkerEngineSupervisor {
   final Map<String, String> _activeWorkerByAssignment = {};
   final Map<String, String> _reservedWorkerByAssignment = {};
 
-  /// Slot admission is one Workspace-wide pool: every Worker draws from the
+  /// Slot admission is one Worker-wide pool: every Worker draws from the
   /// same [_pool] entry, so the limit is total parallel executions regardless
   /// of which Worker runs them. Per-Worker views are derived for telemetry.
   static const _pool = 'workspace';
@@ -47,7 +47,7 @@ final class CliWorkerEngineSupervisor {
   final Set<String> _reservedAssignmentIds = {};
   final Set<String> _cancelledAssignments = {};
 
-  /// The Workspace-wide parallel slot limit most recently applied.
+  /// The Worker-wide parallel slot limit most recently applied.
   /// Every admission restates it and every state change re-evaluates the
   /// queue against it, so lowering or raising a limit takes effect at once.
   final Map<String, int> _limitByWorker = {};
@@ -101,7 +101,7 @@ final class CliWorkerEngineSupervisor {
   /// Slots of the shared pool currently reserved or running. Telemetry only.
   int get activeSlotCount => _activeByWorker[_pool] ?? 0;
 
-  /// Reaps Engine processes left behind if the owning Workspace Service died.
+  /// Reaps Engine processes left behind if the owning Connect service died.
   /// A PID is acted on only when its command line still identifies this exact
   /// bundled Engine and its private state directory.
   Future<int> recoverOrphanedProcesses() async {
@@ -850,7 +850,7 @@ final class CliWorkerEngineSupervisor {
                 ),
               );
             }
-            // The Workspace handler consumes this internal marker to persist
+            // The Connect handler consumes this internal marker to persist
             // and relay the explicit startup acknowledgement. It is never
             // forwarded as user-facing progress.
             onProgress?.call(progress);
@@ -966,7 +966,7 @@ final class CliWorkerEngineSupervisor {
     }
   }
 
-  /// Supervise an internal one-shot MCP tool call using the same Workspace
+  /// Supervise an internal one-shot MCP tool call using the same Connect
   /// slot pool and process ownership as normal assignments. The caller must
   /// durably fence duplicate dispatches and admit the tool in [prepareRequest].
   /// A missing or malformed response after sending is always outcome-unknown.
@@ -1167,7 +1167,7 @@ final class CliWorkerEngineSupervisor {
     }
   }
 
-  /// Point-in-time view of the shared slot pool for the Workspace UI, with a
+  /// Point-in-time view of the shared slot pool for the Connect UI, with a
   /// per-Worker breakdown of who holds the slots. Telemetry only.
   Map<String, Object?> slotSnapshot() {
     final workerIds = <String>{
@@ -1578,7 +1578,7 @@ final class WorkerQueueSnapshot {
   /// Pool slots in use when the assignment queued.
   final int active;
 
-  /// The Workspace-wide parallel slot limit.
+  /// The Worker-wide parallel slot limit.
   final int limit;
 
   /// Whether the assignment is also blocked by a busy provider session.

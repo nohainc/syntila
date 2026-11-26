@@ -111,7 +111,7 @@ class ExternalWorkerVersionRecord {
               ];
 }
 
-/// The version this Workspace runs and the user's intent for it. Intent is
+/// The version this Connect runs and the user's intent for it. Intent is
 /// preserved when entitlement lapses: effective state is intent AND entitled.
 class ExternalWorkerPin {
   ExternalWorkerPin({

@@ -18,8 +18,8 @@ export interface ProvisioningDatabase {
 
 /**
  * Initialize Syntila application state after Better Auth has authenticated
- * the human. Workspace registration is not created as a side effect of
- * sign-in; Workspace creation is an explicit user action.
+ * the human. Connect registration is not created as a side effect of
+ * sign-in; Connect creation is an explicit user action.
  */
 export async function provisionSyntilaUser(
   db: ProvisioningDatabase,

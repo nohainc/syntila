@@ -181,7 +181,7 @@ it("has no plan-based cap on Plus, and the cap follows the requester not the Wor
   );
   expect(results.every((r) => r.accepted)).toBe(true);
   expect(await f.held()).toBe(3);
-  // A Free visitor on the Plus owner's shared Workspace is still limited:
+  // A Free visitor on the Plus owner's shared Connect is still limited:
   // their first run starts, their second waits.
   expect(await f.dispatch("T4", "V", "WS2")).toMatchObject({ accepted: true });
   expect(await f.dispatch("T5", "V", "WS2")).toMatchObject({

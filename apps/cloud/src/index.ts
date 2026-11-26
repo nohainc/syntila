@@ -6,7 +6,7 @@
  *   - issues short-lived backend tokens (`POST /api/backend-token`)
  *   - relays email the backend starts (`POST /api/internal/email`)
  *   - serves the web app's static assets
- * Everything else (Spaces, Threads, Work, Workspaces, realtime) is served by
+ * Everything else (Spaces, Threads, Work, Workers, realtime) is served by
  * the backend at SYNTILA_BACKEND_URL (https://api.syntila.app).
  */
 import { handleBetterAuthRequest } from "./auth/index.js";

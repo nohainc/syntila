@@ -2,7 +2,7 @@ import { describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
 import worker, { routeHandlers } from "../../src/domain/index.js";
 
-// A real, empty database: no user, Space or Workspace rows exist.
+// A real, empty database: no user, Space or Connect rows exist.
 const database = await pgD1();
 
 const env = {

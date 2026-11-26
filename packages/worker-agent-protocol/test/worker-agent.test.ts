@@ -17,7 +17,7 @@ const base = {
   payload: { snapshot: { workerTypeId: "chatgpt" }, input: {} },
 };
 
-describe("Workspace Runtime protocol", () => {
+describe("Worker Agent protocol", () => {
   it("carries no file content in the input wake-up", () => {
     const wake = {
       ...base,
@@ -33,7 +33,7 @@ describe("Workspace Runtime protocol", () => {
     ).toThrow(/payload/);
   });
 
-  it("uses Workspace lifecycle message names", () => {
+  it("uses Worker lifecycle message names", () => {
     expect(
       parseWorkerAgentMessage({ ...base, type: "agent.hello" }).type,
     ).toBe("agent.hello");
@@ -292,8 +292,8 @@ describe("Workspace Runtime protocol", () => {
         payload: {
           snapshot: {
             workerTypeId: "chatgpt",
-            permissions: ["workspace:read"],
-            permissionSnapshot: { permissions: ["workspace:read"] },
+            permissions: ["legacy:read"],
+            permissionSnapshot: { permissions: ["legacy:read"] },
           },
           input: {},
         },
@@ -340,7 +340,7 @@ describe("Workspace Runtime protocol", () => {
     ).toBe("thread.status");
   });
 
-  it("accepts an optional bounded Workspace-wide parallelSlots total", () => {
+  it("accepts an optional bounded Worker-wide parallelSlots total", () => {
     const parse = (payload: unknown) =>
       parseWorkerAgentMessage({
         ...base,

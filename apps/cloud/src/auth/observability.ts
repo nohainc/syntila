@@ -50,7 +50,7 @@ export type AuthAuditEvent = {
 };
 
 /**
- * Authentication events may occur before a Workspace is selected. Keep them
+ * Authentication events may occur before a Connect is selected. Keep them
  * in a separate, globally queryable table and only persist an allow-listed
  * metadata shape. Tokens, cookies, OAuth responses and credential material
  * never enter this record.

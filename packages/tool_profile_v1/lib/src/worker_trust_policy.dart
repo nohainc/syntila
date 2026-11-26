@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'tool_profile_release.dart';
 
-/// Public verification roots shipped with Workspace and Profile Lab.
+/// Public verification roots shipped with Connect and Profile Lab.
 /// Values are base64 raw Ed25519 public keys, keyed by publisher and explicit key ID.
 /// This class never accepts signing secrets.
 class WorkerTrustPolicy {

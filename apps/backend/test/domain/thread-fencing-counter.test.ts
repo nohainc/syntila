@@ -104,7 +104,7 @@ it("keeps tokens increasing after Work history is cleared", async () => {
       "W",
     );
     expect(response.status).toBe(200);
-    // The Thread's counter survives, so the Workspace's recorded fence
+    // The Thread's counter survives, so the Connect's recorded fence
     // (token 2 for lease-2) is never undercut by the next lease.
     expect(await f.counter()).toBe(2);
     await f.queue("R3");

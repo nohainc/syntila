@@ -869,7 +869,7 @@ void main() {
         );
       }
 
-      // Workspaces route
+      // Workers route
       const workspaceCtx = AxShellContext(
         navigation: AxNavigation.workers(),
         spaces: [],
@@ -1768,7 +1768,7 @@ void main() {
       await tester.tap(find.byType(CircleAvatar));
       expect(navigatedTo?.kind, AxRouteKind.profileSecurity);
 
-      // Tapping Application menu opens menu with Workspaces
+      // Tapping Application menu opens menu with Workers
       await tester.tap(find.byTooltip('Application menu'));
       await tester.pumpAndSettle();
       expect(find.text('Workers'), findsOneWidget);
@@ -2409,9 +2409,9 @@ void main() {
       // 3. No generic "Back to chat" button
       expect(find.text('Back to chat'), findsNothing);
 
-      // 4. HUD heading is "Home" (from route breadcrumb), NOT generic "Workspace"
+      // 4. HUD heading is "Home" (from route breadcrumb), NOT generic "Connect"
       expect(find.text('Home'), findsWidgets);
-      // "Workspaces" only appears as the nav section item in sidebar, never as HUD title for Home
+      // "Workers" only appears as the nav section item in sidebar, never as HUD title for Home
       expect(find.text('Workspace'), findsNothing);
     });
 

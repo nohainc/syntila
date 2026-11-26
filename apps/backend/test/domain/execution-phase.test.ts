@@ -134,7 +134,7 @@ describe("failureCategory", () => {
         startPermitIssuedAt: T,
       }),
     ).toBe("startup_timeout");
-    // A wait the Workspace reported for the Thread is never called a slot
+    // A wait the Connect reported for the Thread is never called a slot
     // shortage, and a timeout without a reported wait is not either.
     expect(
       failed({

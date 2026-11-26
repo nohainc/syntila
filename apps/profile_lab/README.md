@@ -42,9 +42,9 @@ You can also change the origin in **Cloud connection** settings while the app is
 
 The build default is `https://app.syntila.app`. For a development build, set `SYNTILA_CLOUD_URL` with a Dart define; operators can save a local origin override or reset it to the build default in Cloud connection settings. The override is non-secret app configuration. Changing the Cloud origin clears the current sign-in because sessions are bound to their origin.
 
-Sign-in opens a browser approval flow for **Syntila Profile Lab**, using the dedicated `syntila.profile-lab.management` audience. It is separate from Syntila Workspace authentication. The resulting session is stored in the macOS login Keychain under the Profile Lab service and is scoped to the selected Cloud origin. Cloud must authorize the account for the operation: Worker/Profile administration uses `profiles:admin`; publication requires `profiles:release:manage`. Cloud is the authorization and publication authority; Profile Lab never holds provider credentials.
+Sign-in opens a browser approval flow for **Syntila Profile Lab**, using the dedicated `syntila.profile-lab.management` audience. It is separate from Syntila Connect authentication. The resulting session is stored in the macOS login Keychain under the Profile Lab service and is scoped to the selected Cloud origin. Cloud must authorize the account for the operation: Worker/Profile administration uses `profiles:admin`; publication requires `profiles:release:manage`. Cloud is the authorization and publication authority; Profile Lab never holds provider credentials.
 
-For local Cloud development, configure an authorized test account in the local Cloud environment. Do not copy a Workspace session or put a bearer token in app configuration or source control.
+For local Cloud development, configure an authorized test account in the local Cloud environment. Do not copy a Connect session or put a bearer token in app configuration or source control.
 
 ## Build and verification
 
@@ -79,7 +79,7 @@ The app archive is written under `dist/syntila-profile-lab/macos/`. An unsigned 
 
 1. Open a Worker. Profile Lab loads its one current published Profile, or creates the initial local candidate from the Worker catalog's configured Profile identity.
 2. Edit the JSON candidate locally. JSON schema validation, required fields, strict unknown-field handling, and size limits run immediately. Any edit invalidates prior test and Cloud-validation eligibility.
-3. Run the local test ladder (6 stages, none calls a model): schema validation; declarative Event Mapping Replay against sanitized Codex/agy fixtures; CLI discovery; CLI version command (it must answer; the value is recorded as test evidence); passive probe (authentication/readiness and model discovery); and provider usage check (the Profile's `usage` command, which every Profile must declare). Repeated tool identifiers must produce matching start/completion activities, and unknown provider events are ignored. Profiles omit `providerTool.supportedVersions` and support all CLI versions. Workspace still enforces Engine compatibility; cancellation and timeout are covered by Engine and supervisor tests.
+3. Run the local test ladder (6 stages, none calls a model): schema validation; declarative Event Mapping Replay against sanitized Codex/agy fixtures; CLI discovery; CLI version command (it must answer; the value is recorded as test evidence); passive probe (authentication/readiness and model discovery); and provider usage check (the Profile's `usage` command, which every Profile must declare). Repeated tool identifiers must produce matching start/completion activities, and unknown provider events are ignored. Profiles omit `providerTool.supportedVersions` and support all CLI versions. Connect still enforces Engine compatibility; cancellation and timeout are covered by Engine and supervisor tests.
 4. Save the ladder evidence against the exact canonical candidate digest. Evidence contains only bounded identity, version, timestamp, and scenario results; it is not remote attestation of the local Mac or provider process.
 5. Ask Cloud to validate the candidate, then publish it with the expected current revision. Cloud revalidates the JSON and evidence and atomically publishes the next current Profile revision. Tests never change the current production Profile.
 
@@ -92,7 +92,7 @@ fresh evidence, checks the expected revision and digest, then atomically
 publishes the next current Profile revision. Profile snapshots use canonical
 digests and schema validation; they do not carry cryptographic Profile
 signatures or require Profile trust-root configuration. Apple app signing and
-Workspace application-release signing remain separate security mechanisms.
+Connect application-release signing remain separate security mechanisms.
 
 ## Security rules
 
@@ -138,7 +138,7 @@ The normal workflow is **Edit → Save → Validate → Run tests → Publish**.
 
 V9 has no testing, beta, stable, draft-release, promotion, or channel-selection UI. Installed CLI compatibility, readiness, revision, and current Profile status are shown as operational Worker information. The editor preserves its buffer, cursor, scroll position, and unsaved state while the Worker sidebar, test panel, and inspector are resized or toggled.
 
-Run `flutter test test/worker_first_run_acceptance_test.dart` for the complete ChatGPT/Gemini first-run flows and the no-template fallback. These widget tests use the real local store, controller, and bundled generic Engine with isolated temporary provider executables and controlled browser/Cloud boundaries. No vendor credentials or live-provider calls are required; Workspace admission still validates the V9 schema, identity, and digest contract. Existing local candidate/evidence data remains digest-bound.
+Run `flutter test test/worker_first_run_acceptance_test.dart` for the complete ChatGPT/Gemini first-run flows and the no-template fallback. These widget tests use the real local store, controller, and bundled generic Engine with isolated temporary provider executables and controlled browser/Cloud boundaries. No vendor credentials or live-provider calls are required; Connect admission still validates the V9 schema, identity, and digest contract. Existing local candidate/evidence data remains digest-bound.
 
 ## Local vs production builds
 

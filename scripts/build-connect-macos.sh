@@ -6,7 +6,7 @@ set -euo pipefail
 #     supervises, compiled to native executables;
 #   - Syntila Connect (apps/connect_gui), a macOS app that bundles the Agent CLI.
 # Everything lands in dist/connect/macos-<env>/. It does not touch the
-# Workspace or Profile Lab engine copies.
+# Connect or Profile Lab engine copies.
 #
 #   scripts/build-connect-macos.sh           local build (default): trusts the local
 #                                            Profile signing key from

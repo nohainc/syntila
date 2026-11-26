@@ -58,7 +58,7 @@ async function seed(status: string, permitRequired = true) {
     runtimeIdentityId: "RT",
   };
   const permit = () => grantStartPermit(f.read, fence, NOW);
-  /** A Gateway whose Workspace is unreachable. */
+  /** A Gateway whose Connect is unreachable. */
   const offline = {
     SYNTILA_DB: f.db as never,
     SYNTILA_WORKSPACE_GATEWAY: {
@@ -183,7 +183,7 @@ describe("revocation with start fencing", () => {
       attemptId: "ATT1",
       intent: timeoutIntent,
     });
-    // The Workspace never answered, yet the outcome is certain: it must
+    // The Connect never answered, yet the outcome is certain: it must
     // obtain a permit to launch, and none can be granted any more.
     expect(result).toMatchObject({
       outcome: "finalized",

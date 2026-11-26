@@ -3,7 +3,7 @@
 Standalone Dart console process implementing the generic Protocol 4.1 runtime.
 The Engine loads one immutable Tool Profile payload and verifies its runtime
 structure, Engine compatibility, and payload SHA-256 digest during initialize.
-Workspace remains responsible for official release signature verification and
+Connect remains responsible for official release signature verification and
 canonical Tool Profile v1 schema admission before launch.
 
 For local development, launch with absolute paths:
@@ -49,8 +49,8 @@ The host process supervisor owns cancellation of the Engine process. Within an
 assignment, the Engine enforces an outer provider deadline and terminates the
 provider process if its output consumer fails or the deadline expires.
 
-The Workspace release supervisor still uses the migration-only v2 Worker
-identity path; wiring Workspace launch to the Engine is a later integration
+The Connect release supervisor still uses the migration-only v2 Worker
+identity path; wiring Connect launch to the Engine is a later integration
 step.
 
 Protocol 4.1 adds a catalog revision pin to execution requests. Legacy 4.0 frames
@@ -105,7 +105,7 @@ Starter support, checked against the installed CLIs on 2026-10-31:
 | agy 1.4.12 | generic Gemini markers | CLI default | `/compact` without `--disable-slash-commands` (accepted; not verified end to end) |
 
 Engines before this change reject a Profile with a `context` block. Publish
-such a Profile only after Workspaces run an Engine that understands it.
+such a Profile only after Workers run an Engine that understands it.
 
 Cloud no longer fails a turn because the canonical history exceeds its own
 bootstrap budget (1000 entries, 256 KB): older history is left out instead, and
@@ -115,9 +115,9 @@ only the CLI's own overflow report stops a run.
 
 An assignment sends the prompt straight to the provider CLI. The Engine runs no
 version, readiness or discovery command per prompt: it reads the model catalog
-that Workspace readiness saved for the Profile and runs version and discovery
-only when no catalog exists at all. Workspace checks the CLI before it is used;
-if the user changes or updates the CLI without restarting Workspace, keeping it
+that Connect readiness saved for the Profile and runs version and discovery
+only when no catalog exists at all. Connect checks the CLI before it is used;
+if the user changes or updates the CLI without restarting Connect, keeping it
 compatible is the user's responsibility. Retries after an empty answer or an
 unavailable session are the only additional CLI runs.
 

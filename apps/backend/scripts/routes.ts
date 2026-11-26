@@ -26,7 +26,7 @@ export function renderRoutes(): string {
   const notes = new Map<string, Set<string>>();
   for (const route of table) {
     const set = notes.get(route.path) ?? new Set<string>();
-    if (route.machine) set.add("Workspace/server");
+    if (route.machine) set.add("Connect/server");
     if (route.idempotent) set.add("Idempotency-Key");
     notes.set(route.path, set);
   }
@@ -44,7 +44,7 @@ export function renderRoutes(): string {
     "`:name` is a path parameter. `ANY` means the handler decides by method itself.",
     "Every JSON error is `{ error, code, requestId }`; every response carries `x-syntila-api`.",
     "A path that exists but not for the request's method answers `405` with an `Allow` header.",
-    "`Workspace/server`: called with Workspace or server credentials, no browser same-origin check.",
+    "`Connect/server`: called with Connect or server credentials, no browser same-origin check.",
     "`Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).",
     "",
     `${rows.length} paths.`,

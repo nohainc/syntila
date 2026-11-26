@@ -180,7 +180,7 @@ export function createDiagnosticEvent(
   });
 }
 
-/** Fails closed when a provider or Workspace sends an unexpected shape. */
+/** Fails closed when a provider or Connect sends an unexpected shape. */
 export function parseDiagnosticEvent(input: unknown): DiagnosticEvent {
   return DiagnosticEventSchema.parse(input);
 }

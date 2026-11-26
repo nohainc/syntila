@@ -31,4 +31,4 @@ Upstream files: `light/githubcopilot.png`, `dark/githubcopilot.png`,
 Source project and license: https://github.com/lobehub/lobe-icons (MIT;
 brand marks remain the property of their respective owners).
 The upstream MIT notice is bundled in `LOBE_ICONS_LICENSE.txt`.
-Workspace and Profile Lab use a theme surface behind these marks.
+Connect and Profile Lab use a theme surface behind these marks.

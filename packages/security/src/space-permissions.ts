@@ -1,11 +1,11 @@
 /**
- * Version 1 Space member rights, independent of provider and Workspace
+ * Version 1 Space member rights, independent of provider and Connect
  * permissions. Owners grant exactly three rights; a fourth key is derived.
  *
  * | key                | scope                          | default (owner/collab/viewer) | enforcement |
  * | ------------------ | ------------------------------ | ----------------------------- | ----------- |
  * | `chat`             | one Space, one member          | true / true / false           | May start Chat runs (`run.start`) and, through them, answer on their own Workers (see `useOwnWorkers`). |
- * | `work`             | one Space, one member          | true / true / false           | May start Workflow runs (`run.start`) on the Space's Workflow Workspace. Includes `chat`. |
+ * | `work`             | one Space, one member          | true / true / false           | May start Workflow runs (`run.start`) on the Space's Workflow Connect. Includes `chat`. |
  * | `manageOwnThreads` | one Space, member's own Threads| true / true / false           | May create/rename/archive Threads they own (`spaces:write`). Never grants control of others' Threads. |
  *
  * `spaces:write` needs any of the three; `run.start` needs `chat` or `work`;
@@ -25,7 +25,7 @@
  * - Members with no stored override receive the role defaults above.
  *
  * Personal Workers: a member with `chat` may run Chat on a Worker in a
- * Workspace they own, outside the Space's Workflow Workspace. Workers shared by
+ * Connect they own, outside the Space's Workflow Connect. Workers shared by
  * other people never qualify. Without `chat` they get no personal-Worker use.
  * Direct Spaces ignore overrides and use collaborator defaults.
  */

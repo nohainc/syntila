@@ -18,9 +18,9 @@ const inventory = (servers: unknown[] = [server()]) => ({
 });
 
 describe("sanitized MCP inventory v1", () => {
-  it("accepts the Workspace projection shape", () => {
+  it("accepts the Worker projection shape", () => {
     expect(McpInventorySchema.safeParse(inventory()).success).toBe(true);
-    // Current Workspaces no longer send Worker bindings.
+    // Current Workers no longer send Worker bindings.
     const { boundWorkerTypes: _legacy, ...unbound } = server();
     expect(McpInventorySchema.safeParse(inventory([unbound])).success).toBe(
       true,

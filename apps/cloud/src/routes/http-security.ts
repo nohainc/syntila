@@ -1,7 +1,7 @@
 /**
  * Request security for the auth Worker. The Worker resolves who is signed in
  * (Better Auth cookie/bearer session or a desktop human session) from its D1
- * users table; Space and Workspace authorization lives in the VPS backend.
+ * users table; Space and Connect authorization lives in the VPS backend.
  */
 import { isProfileLabOwner } from "./profile-lab-policy.js";
 import { isTrustedOrigin } from "../observability.js";

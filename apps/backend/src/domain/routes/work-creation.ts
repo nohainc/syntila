@@ -169,7 +169,7 @@ export async function handleValidateWorkRequest(
   if (!requestsWorkerTarget(workerRequest))
     throw new HttpError(400, "workerId is required");
   if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
-    throw new HttpError(400, "primaryWorkspaceId and executionSelection are not supported; name a workerId");
+    throw new HttpError(400, "Legacy execution fields are not supported; name a workerId");
   const result = await resolveWorkerTargetBindings(env, {
     userId: context.userId, spaceId, threadId, definition: workflow, request: workerRequest,
   });
@@ -552,7 +552,7 @@ export async function createWorkRequestForUser(
   if (!requestsWorkerTarget(body))
     throw new HttpError(400, "workerId is required");
   if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
-    throw new HttpError(400, "primaryWorkspaceId and executionSelection are not supported; name a workerId");
+    throw new HttpError(400, "Legacy execution fields are not supported; name a workerId");
   if (mode !== "stateless")
     await requireSpaceFolder(env, spaceId, typeof body.workerId === "string" ? body.workerId : undefined);
   const workerBound = await resolveWorkerTargetBindings(env, {

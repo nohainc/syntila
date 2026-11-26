@@ -22,7 +22,7 @@ final class ProfileVersionProbeResult {
 /// Executes and interprets a provider version probe using its Tool Profile.
 ///
 /// This is shared by the CLI Worker Engine and Profile Lab so local
-/// qualification and Workspace readiness apply the same command, timeout,
+/// qualification and Connect readiness apply the same command, timeout,
 /// output-source, and extraction rules. The detected version is informational
 /// and selects version-specific overrides; it never rejects a CLI.
 abstract final class ProfileVersionProbe {

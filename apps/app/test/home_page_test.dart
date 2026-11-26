@@ -2680,7 +2680,7 @@ void main() {
     expect(openedSpace, 'space-1');
     expect(openedThread, 'ws-landing');
 
-    // 2. Workspace problem -> exact Workspaces deep-link
+    // 2. Connect problem -> exact Workers deep-link
     await tester.ensureVisible(find.text('Mac Studio is offline'));
     await tester.tap(find.text('Mac Studio is offline'));
     expect(openedWorkspaces, isTrue);
@@ -2980,7 +2980,7 @@ void main() {
       ),
     ];
 
-    // Workspace worker only supports ChatGPT
+    // Connect worker only supports ChatGPT
     const localWorker = AxWorker(
       id: 'w-chatgpt',
       workerTypeId: 'chatgpt',
@@ -3288,7 +3288,7 @@ void main() {
       expect(find.text('Create your first Space'), findsOneWidget);
     });
 
-    // 3. Scenario: Space but no Workspace -> Expected: Normal Home, not setup warning
+    // 3. Scenario: Space but no Connect -> Expected: Normal Home, not setup warning
     testWidgets(
         'Scenario: Space but no Workspace -> Expected: Normal Home, not setup warning',
         (tester) async {

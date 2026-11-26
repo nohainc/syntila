@@ -37,7 +37,7 @@ class ToolProfileResolution<T extends ToolProfileCandidate> {
   bool get isAvailable => release != null;
 }
 
-/// Common resolution and compatibility matcher used by Workspace and Profile Lab.
+/// Common resolution and compatibility matcher used by Connect and Profile Lab.
 abstract final class ToolProfileCompatibility {
   /// Selects and materializes the single matching provider-version override.
   /// The structural validator rejects overlap before this method is called.

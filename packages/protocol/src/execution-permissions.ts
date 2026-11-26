@@ -1,4 +1,4 @@
-/** Canonical permissions carried by a Cloud assignment to Workspace. */
+/** Canonical permissions carried by a Cloud assignment to Connect. */
 export const EXECUTION_PERMISSIONS = [
   "repository:read",
   "repository:write",

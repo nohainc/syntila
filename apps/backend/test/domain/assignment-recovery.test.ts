@@ -6,7 +6,7 @@ import {
   recordAssignmentResult,
 } from "../../src/domain/assignment-dispatcher.js";
 
-/** The conversation fixture's Space "P", Workspace "WS" and Task "T", plus one assignment. */
+/** The conversation fixture's Space "P", Connect "WS" and Task "T", plus one assignment. */
 async function fixture(
   status: string,
   columns: Record<string, string | number | null> = {},

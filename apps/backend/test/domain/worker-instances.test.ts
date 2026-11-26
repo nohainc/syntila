@@ -8,7 +8,7 @@ import {
   type SecurityEnv,
 } from "../../src/domain/routes/handlers.js";
 
-// Worker Instances and Actors (ADR-032, P1): identity independent of Workspaces.
+// Worker Instances and Actors (ADR-032, P1): identity independent of Workers.
 
 const savedFlags = process.env.SYNTILA_FEATURE_FLAGS;
 beforeAll(() => { process.env.SYNTILA_FEATURE_FLAGS = "worker_identity"; });

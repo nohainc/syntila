@@ -252,7 +252,7 @@ const argument = z.union([
   z.object({ providerTimeoutArguments: z.literal(true) }).strict(),
   // Expands to `context.autoCompaction.arguments`, or nothing.
   z.object({ autoCompactionArguments: z.literal(true) }).strict(),
-  // Repeats these values once per Workspace-verified additional folder, for
+  // Repeats these values once per Connect-verified additional folder, for
   // example ["--add-dir", "{{additionalDirectory}}"].
   z
     .object({

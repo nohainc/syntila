@@ -3,7 +3,7 @@
 # Syntila - Local Stack Launcher
 # ==============================================================================
 # Launches dedicated terminal windows in parallel:
-#   1. Backend: Bun + local PostgreSQL on :8788 (product API, realtime, Workspaces)
+#   1. Backend: Bun + local PostgreSQL on :8788 (product API, realtime, Workers)
 #   2. Auth: Cloudflare Wrangler (Better Auth, desktop sign-in, backend tokens,
 #      email relay) with the local auth-only D1 database on :8787
 #   3. AX web app: Flutter run with Hot Reload ('r'/'R') + Google Chrome

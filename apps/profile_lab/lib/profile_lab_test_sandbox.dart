@@ -327,7 +327,7 @@ class ProfileLabTestSandbox {
   ///
   /// No stage calls a model.
   ///
-  /// Engine and CLI version ranges are enforced by Workspace readiness on the
+  /// Engine and CLI version ranges are enforced by Connect readiness on the
   /// user's machine, not here. Cancellation and timeout are Engine behavior
   /// covered by Engine and supervisor tests.
   Future<ProfileLabLadderResult> executeTestLadder({
@@ -541,7 +541,7 @@ class ProfileLabTestSandbox {
     // --- STAGE 4: CLI Version Command ---
     // Only checks that the CLI understands its version command and answers
     // with something. The value is recorded, never compared: Profiles support
-    // every CLI version, and Workspace runs this same check when it verifies a
+    // every CLI version, and Connect runs this same check when it verifies a
     // Worker.
     final s4Timer = Stopwatch()..start();
     if (haltExecution) {
@@ -907,11 +907,11 @@ class ProfileLabTestSandbox {
   }
 }
 
-/// The host PATH plus the directories the Workspace Service launch agent puts
+/// The host PATH plus the directories the Connect service launch agent puts
 /// on PATH (`com.syntila.workspace.service.plist`). A Finder-launched
 /// Profile Lab only gets `/usr/bin:/bin:/usr/sbin:/sbin`, so provider CLIs
 /// that call helpers such as `gh` for login (Copilot `--headless`) would
-/// otherwise behave differently in Profile Lab than in Workspace.
+/// otherwise behave differently in Profile Lab than in Connect.
 String providerSearchPath(Map<String, String> environment) {
   final separator = Platform.isWindows ? ';' : ':';
   final entries = (environment['PATH'] ?? '')

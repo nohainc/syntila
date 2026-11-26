@@ -37,7 +37,7 @@ export interface ProfileExecutionContext {
   sessionModel?: string | null;
   /** Detected provider CLI version used to select one compatibility override. */
   providerVersion?: string;
-  /** Workspace-verified folders the CLI may use besides workingDirectory. */
+  /** Connect-verified folders the CLI may use besides workingDirectory. */
   additionalDirectories?: readonly string[];
   /** Absolute path of the Engine-written MCP config; absent = no MCP servers. */
   mcpConfigPath?: string;

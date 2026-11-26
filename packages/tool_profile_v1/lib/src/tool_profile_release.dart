@@ -4,7 +4,7 @@ import '../tool_profile_v1.dart';
 
 /// Common contract for any resolved Profile candidate.
 ///
-/// [revision] is the immutable execution identity supplied by Workspace. The
+/// [revision] is the immutable execution identity supplied by Connect. The
 /// legacy [releaseVersion] getter remains part of the Profile format adapter,
 /// but the Engine must use [revision] for admission and session attribution.
 abstract interface class ToolProfileCandidate {

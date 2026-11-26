@@ -1,5 +1,5 @@
 /// Cloud-owned logical Worker metadata. Local readiness and installed Profile
-/// state belong to Workspace inventory and are intentionally absent.
+/// state belong to Connect inventory and are intentionally absent.
 class WorkerDescriptor {
   const WorkerDescriptor({
     required this.workerTypeId,
@@ -39,7 +39,7 @@ class WorkerDescriptor {
       'sortOrder',
       // The Cloud catalog shares this descriptor with Profile Lab and may
       // include current published-profile metadata. These fields are
-      // informational for Workspace and are intentionally not persisted in
+      // informational for Connect and are intentionally not persisted in
       // the descriptor model.
       'currentRevision',
       'currentDigest',

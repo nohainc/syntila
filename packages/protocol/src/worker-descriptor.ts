@@ -42,7 +42,7 @@ const fields = new Set([
 ]);
 const identifier = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
-/** Parse Cloud-owned Worker metadata without accepting Workspace-local state. */
+/** Parse Cloud-owned Worker metadata without accepting Connect-local state. */
 export function parseWorkerDescriptor(value: unknown): WorkerDescriptor {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new TypeError("Worker descriptor must be an object");
