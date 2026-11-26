@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 172 write paths, 77 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 146 in data-layer transactions.
+Totals: 167 write paths, 77 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 143 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -40,7 +40,6 @@ Totals: 172 write paths, 77 tables; 1 numbering, 38 unguarded read-write, 0 adap
 | `domain/queries.ts` | `cancelPendingTasks` | UPDATE workflow_tasks | guarded, data |
 | `domain/queries.ts` | `cancelQueuedWorkRequest` | UPDATE runs, UPDATE work_requests | guarded, data |
 | `domain/queries.ts` | `startQueuedWorkRequest` | UPDATE runs, UPDATE work_requests | guarded, data |
-| `domain/routes/http-security.ts` | `recordAudit` | INSERT space_audit_log | data |
 | `domain/routes/http-security.ts` | `resolveWorkflowInstanceId` | UPDATE runs | data |
 | `domain/routes/mutation-idempotency.ts` | `write` | INSERT mutation_receipts | data |
 | `domain/routes/route-idempotency.ts` | `claim` | INSERT mutation_receipts | read-write, guarded |
@@ -132,14 +131,11 @@ Totals: 172 write paths, 77 tables; 1 numbering, 38 unguarded read-write, 0 adap
 
 | File | Function | Writes | Flags |
 | --- | --- | --- | --- |
-| `domain/assignment-delivery.ts` | `recordCloudQueueNotReady` | UPDATE worker_assignments | guarded, data |
-| `domain/assignment-delivery.ts` | `recordCloudQueueReason` | UPDATE worker_assignments | guarded, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentCancelled` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentError` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentResult` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-revocation.ts` | `escalateUnconfirmedRevocations` | UPDATE worker_assignments | guarded, data |
 | `domain/assignment-start-permit.ts` | `grantStartPermit` | UPDATE worker_assignments | guarded |
-| `domain/assignment-startup.ts` | `recordAssignmentStartup` | UPDATE worker_assignments | read-write, guarded |
 | `domain/assignment-transitions.ts` | `transitionAssignment` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-workflow-signal.ts` | `stamp` | UPDATE worker_assignments | data |
 | `domain/routes/conversation-workflow-step-runs.ts` | `insertInitialConversationTasks` | INSERT workflow_task_dependencies, INSERT workflow_tasks | guarded, data |
@@ -168,7 +164,6 @@ Totals: 172 write paths, 77 tables; 1 numbering, 38 unguarded read-write, 0 adap
 | `domain/routes/workers.ts` | `handleWorker` | DELETE worker_space_members, UPDATE worker_instances | data |
 | `domain/routes/workers.ts` | `handleWorkerModelsRefresh` | UPDATE worker_agent_sessions | data |
 | `domain/routes/workflow-default.ts` | `configurationOf` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | guarded, data |
-| `domain/thread-coordinator.ts` | `extendLeaseForLiveAssignment` | UPDATE thread_runtime_leases | guarded |
 | `domain/thread-coordinator.ts` | `release` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests | guarded, data |
 | `domain/thread-coordinator.ts` | `settleExpiredLeases` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests, UPDATE workflow_tasks | read-write, guarded, data |
 | `domain/thread-coordinator.ts` | `startStatefulLease` | INSERT thread_runtime_leases, UPDATE threads | data |

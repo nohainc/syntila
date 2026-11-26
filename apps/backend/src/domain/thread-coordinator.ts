@@ -1,5 +1,5 @@
 import { recordAiAnswer, recordAiOutcome } from "./ai-timeline.js";
-import { dataOf, queryOf, type Query, atomically, type Db } from "../platform/data.js";
+import { dataOf, type Query, atomically, type Db } from "../platform/data.js";
 import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
  * Durable Object coordinator for one Thread.
@@ -153,27 +153,6 @@ export function classifyExpiredLease(
     return { action: "extend" };
   }
   return { action: "fail", reason: "worker_lost", revokeAssignmentIds };
-}
-
-/**
- * Extends the Thread lease of a running assignment's Work Request when its
- * Worker proves it is alive. Writes only when less than half the lease is
- * left, so frequent heartbeats cost one indexed no-op update.
- */
-export async function extendLeaseForLiveAssignment(
-  db: Db,
-  assignmentId: string,
-  nowMs = Date.now(),
-): Promise<number> {
-  const expiresAt = new Date(nowMs + THREAD_LEASE_MS).toISOString();
-  const renewBefore = new Date(nowMs + THREAD_LEASE_MS / 2).toISOString();
-  return queryOf(db).run`UPDATE thread_runtime_leases SET expires_at = ${expiresAt}::timestamptz
-        WHERE status = 'active' AND expires_at < ${renewBefore}::timestamptz
-          AND work_request_id = (
-            SELECT COALESCE(wa.work_request_id, wt.work_request_id)
-              FROM worker_assignments wa
-              LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
-             WHERE wa.id = ${assignmentId})`;
 }
 
 export function selectNextStatefulRequest(

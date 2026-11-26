@@ -1,4 +1,3 @@
-import type { Query } from "../platform/data.js";
 export const ASSIGNMENT_ACCEPTANCE_DEADLINE_MS = 30_000;
 export const ASSIGNMENT_STARTUP_DEADLINE_MS = 30_000;
 /** Default time an accepted assignment may remain queued before startup. */
@@ -109,38 +108,6 @@ export function isWorkerCapacityQueue(
     input.status === "created" &&
     input.cloudQueueReason === "worker_capacity"
   );
-}
-
-/** Gateway-only compare-and-set. Repeated polls do not reset the wait clock. */
-export async function recordCloudQueueReason(
-  q: Query,
-  assignmentId: string,
-  attemptId: string,
-  reason: "worker_capacity" | "service_not_ready",
-  now = new Date().toISOString(),
-): Promise<void> {
-  await q.run`
-    UPDATE worker_assignments
-       SET cloud_queue_since = CASE WHEN cloud_queue_reason = ${reason}
-             THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
-           cloud_queue_reason = ${reason}
-     WHERE id = ${assignmentId} AND attempt_id = ${attemptId} AND status = 'created'`;
-}
-
-/** Readiness loss applies to the entire persisted queue, including after a restart. */
-export async function recordCloudQueueNotReady(
-  q: Query,
-  workerInstanceId: string,
-  runtimeId: string,
-  now = new Date().toISOString(),
-): Promise<void> {
-  await q.run`
-    UPDATE worker_assignments
-       SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
-             THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
-           cloud_queue_reason = 'service_not_ready'
-     WHERE worker_instance_id = ${workerInstanceId}
-       AND status = 'created'`;
 }
 
 export interface AssignmentDeadlineViolation {

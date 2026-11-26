@@ -42,3 +42,7 @@ _debug/
 
 # Performance history (scripts/test-perf.sh)
 _perf/
+
+# Local tool settings and Connect runtime outputs
+.claude/settings.local.json
+.syntila/outputs/

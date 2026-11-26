@@ -59,20 +59,6 @@ export function spaceMemberLimit(tier: AccountTier): number | null {
   return tier === "paid" ? null : FREE_SPACE_MEMBER_LIMIT;
 }
 
-/** Accepted human members plus valid pending invitations, which reserve a slot. */
-export function spaceMemberUsageSql(
-  spaceParam: string,
-  excludeInvitationParam: string | null = null,
-): string {
-  const exclude = excludeInvitationParam
-    ? ` AND pi.id != ${excludeInvitationParam}`
-    : "";
-  return `((SELECT COUNT(*) FROM space_memberships sm WHERE sm.space_id = ${spaceParam})
-    + (SELECT COUNT(*) FROM space_invitations pi
-        WHERE pi.space_id = ${spaceParam} AND pi.status = 'pending'
-          AND pi.expires_at > now()${exclude}))`;
-}
-
 /** Rejected because a Free-owned Space has no free person slot. */
 export class SpaceMemberLimitError extends HttpError {
   readonly code = "space_member_limit_reached";
