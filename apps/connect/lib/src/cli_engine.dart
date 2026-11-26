@@ -220,8 +220,9 @@ class CliEngineLauncher
         final type = snapshot['workerTypeId'];
         if (runner == null ||
             type is! String ||
-            !RegExp(r'^plugin-[0-9a-f]{12}$').hasMatch(type))
+            !RegExp(r'^plugin-[0-9a-f]{12}$').hasMatch(type)) {
           throw StateError('invalid MCP Worker target');
+        }
         executor = await runner.prepare(plugin);
       } on Object {
         run._finish(

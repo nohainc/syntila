@@ -40,25 +40,33 @@ esac
       expect(await pending.load(), isNull);
       await store.delete();
     },
-    skip: Platform.isWindows ? 'POSIX shell required for fake secret-tool' : false,
+    skip: Platform.isWindows
+        ? 'POSIX shell required for fake secret-tool'
+        : false,
   );
 
-  test('preserves the file when Secret Service fails', () async {
-    final dir = await Directory.systemTemp.createTemp('worker-secret-fail-');
-    addTearDown(() => dir.delete(recursive: true));
-    final tool = File('${dir.path}/secret-tool');
-    await tool.writeAsString('#!/bin/sh\necho unavailable >&2\nexit 1\n');
-    await Process.run('chmod', ['700', tool.path]);
-    final file = File('${dir.path}/identity/key.json');
-    await FileKeyStore(file).save(await generateAgentKey());
-    await expectLater(
-      LinuxSecretKeyStore(
-        file,
-        File('${dir.path}/identity/credential-store'),
-        executable: tool.path,
-      ).load(),
-      throwsStateError,
-    );
-    expect(await file.exists(), isTrue);
-  }, skip: Platform.isWindows ? 'POSIX shell required for fake secret-tool' : false);
+  test(
+    'preserves the file when Secret Service fails',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('worker-secret-fail-');
+      addTearDown(() => dir.delete(recursive: true));
+      final tool = File('${dir.path}/secret-tool');
+      await tool.writeAsString('#!/bin/sh\necho unavailable >&2\nexit 1\n');
+      await Process.run('chmod', ['700', tool.path]);
+      final file = File('${dir.path}/identity/key.json');
+      await FileKeyStore(file).save(await generateAgentKey());
+      await expectLater(
+        LinuxSecretKeyStore(
+          file,
+          File('${dir.path}/identity/credential-store'),
+          executable: tool.path,
+        ).load(),
+        throwsStateError,
+      );
+      expect(await file.exists(), isTrue);
+    },
+    skip: Platform.isWindows
+        ? 'POSIX shell required for fake secret-tool'
+        : false,
+  );
 }

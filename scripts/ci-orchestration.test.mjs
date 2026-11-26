@@ -56,7 +56,8 @@ describe("CI acceptance orchestration", () => {
       writeFileSync(join(release, "build.json"), JSON.stringify({version, commit: sha, run_id: "123"}));
       const hashes = spawnSync("shasum", ["-a", "256", installer, portable], {cwd: release, encoding: "utf8"});
       expect(hashes.status, hashes.stderr).toBe(0);
-      writeFileSync(join(release, "SHA256SUMS"), hashes.stdout);
+      // PowerShell writes CRLF; the release must still verify it.
+      writeFileSync(join(release, "SHA256SUMS"), hashes.stdout.replace(/\n/g, "\r\n"));
       const gh = join(bin, "gh");
       writeFileSync(gh, '#!/bin/sh\nif [ "$1" = release ] && [ "$2" = view ]; then exit 1; fi\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
       chmodSync(gh, 0o755);

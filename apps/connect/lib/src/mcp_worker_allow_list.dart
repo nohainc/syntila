@@ -94,8 +94,9 @@ class McpWorkerAllowList {
     final items = await list();
     if (items.any(
       (p) => p.id == id && p.version == version && p.digest == digest,
-    ))
+    )) {
       return;
+    }
     await _write([
       ...items,
       ApprovedMcpWorker(id, version, digest, deviceId: deviceId),

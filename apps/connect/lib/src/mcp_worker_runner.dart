@@ -69,11 +69,12 @@ class McpWorkerRunner {
     if (pin is! Map ||
         pin['id'] is! String ||
         pin['version'] is! String ||
-        pin['manifestDigest'] is! String)
+        pin['manifestDigest'] is! String) {
       throw const ExternalWorkerException(
         'mcp_worker_not_approved',
         'Invalid MCP Worker pin.',
       );
+    }
     final id = pin['id'] as String,
         version = pin['version'] as String,
         digest = pin['manifestDigest'] as String;
@@ -88,19 +89,21 @@ class McpWorkerRunner {
         value.isEmpty ||
         value.values.any(
           (v) => v is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(v),
-        ))
+        )) {
       throw const ExternalWorkerException(
         'plugin_conformance_required',
         'MCP Worker tools must be inspected and pinned.',
       );
+    }
     final installed = await store.load(id, version, digest);
     if (installed.pluginId != id ||
         installed.version != version ||
-        installed.manifestDigest != digest)
+        installed.manifestDigest != digest) {
       throw const ExternalWorkerException(
         'plugin_digest_mismatch',
         'The installed Worker does not match its pin.',
       );
+    }
     return workerExecutorFor(
       installed,
       store.dataDirectory(id),

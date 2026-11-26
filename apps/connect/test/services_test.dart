@@ -61,7 +61,12 @@ void main() {
         final s = spec();
         await manager.install(s);
         final plist = File(
-          p.join(home.path, 'Library', 'LaunchAgents', '${s.launchdLabel}.plist'),
+          p.join(
+            home.path,
+            'Library',
+            'LaunchAgents',
+            '${s.launchdLabel}.plist',
+          ),
         );
         expect(plist.existsSync(), isTrue);
         expect(
