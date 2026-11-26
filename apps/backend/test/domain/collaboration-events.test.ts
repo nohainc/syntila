@@ -52,7 +52,6 @@ async function fixture() {
         displayName: "Owner",
         status: "active",
       },
-      workspaceId: "",
       spaceRoles: {},
       sessionId: "session",
       clientType: "web",
@@ -251,7 +250,6 @@ describe("collaboration durable signals", () => {
       for (const row of events) {
         expect(row.stream_kind).toBe("space");
         expect(row.stream_id).toBe(p);
-        expect(row.workspace_id).toBeNull();
         expect(Object.keys(JSON.parse(String(row.payload_json)))).toEqual(
           expect.arrayContaining(["entityId"]),
         );
@@ -293,9 +291,11 @@ describe("collaboration durable signals", () => {
         stream: { kind: "user", id: "same" },
       });
       const e = await publisher.publish({
-        type: "work_request.created",
-        workspaceId: "same",
-        payload: { entityId: "r" },
+        type: "thread.updated",
+        stream: { kind: "thread", id: "same" },
+        spaceId: "same",
+        threadId: "same",
+        payload: { entityId: "same", threadId: "same" },
         idempotencyKey: "same-key",
       });
       const duplicate = await publisher.publish({
@@ -310,7 +310,7 @@ describe("collaboration durable signals", () => {
       ]).toEqual([1, 1, 1, 1]);
       expect(duplicate.persisted).toBe(false);
       expect(e.event.version).toBe("1.1");
-      expect(e.event.stream).toEqual({ kind: "execution_workspace", id: "same" });
+      expect(e.event.stream).toEqual({ kind: "thread", id: "same" });
       const next = await publisher.publish({
         ...input,
         idempotencyKey: "next",

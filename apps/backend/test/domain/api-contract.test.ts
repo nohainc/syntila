@@ -69,7 +69,7 @@ describe("rate limits", () => {
     expect(await rateLimitKey(new Request("https://x/api/spaces", { headers: { "x-forwarded-for": "2.2.2.2, 10.0.0.1" } }))).toBe("a:2.2.2.2");
   });
   test("Workspace machine traffic, realtime and non-API paths are exempt", () => {
-    expect(isRateLimitExempt("/api/workspace-runtime/events")).toBe(true);
+    expect(isRateLimitExempt("/api/workspace-runtime/events")).toBe(false);
     expect(isRateLimitExempt("/api/realtime")).toBe(true);
     expect(isRateLimitExempt("/health")).toBe(true);
     expect(isRateLimitExempt("/api/spaces")).toBe(false);

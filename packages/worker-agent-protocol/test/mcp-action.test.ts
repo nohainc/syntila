@@ -2,15 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   McpActionRequestSchema,
   McpActionResultSchema,
-  SERVICE_MCP_ACTION_CAPABILITY,
-  workspaceRuntimeEnvelopeSchema,
+  workerAgentEnvelopeSchema,
 } from "../src/index.js";
 
 describe("mcp-action protocol", () => {
-  it("advertises a stable capability", () => {
-    expect(SERVICE_MCP_ACTION_CAPABILITY).toBe("workspace.mcp_action.v1");
-  });
-
   it("accepts valid action requests", () => {
     const valid = [
       {
@@ -123,7 +118,7 @@ describe("mcp-action protocol", () => {
       },
     };
     expect(
-      workspaceRuntimeEnvelopeSchema.safeParse(validEnvelope).success,
+      workerAgentEnvelopeSchema.safeParse(validEnvelope).success,
     ).toBe(true);
   });
 });

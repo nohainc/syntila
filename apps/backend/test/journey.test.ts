@@ -88,10 +88,10 @@ describe("journey", () => {
     const send = (type: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
       const at = new Date().toISOString();
       ws.send(JSON.stringify({ protocol: "syntila.worker-agent-protocol", protocolVersion: "5.1", messageId: `m-${++n}`, timestamp: at,
-        type, executionWorkspaceId: workerId, workspaceRuntimeId: session.sessionId, workerId, payload, ...extra }));
+        type, workerId, payload, ...extra }));
     };
-    send("workspace.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });
-    await waitFor("hello ack", () => frames.find((f) => f.type === "workspace.hello.ack"));
+    send("agent.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });
+    await waitFor("hello ack", () => frames.find((f) => f.type === "agent.hello.ack"));
 
     const space = await api(web, "POST", "/api/spaces", { name: "Journey" });
     expect(space.status).toBe(201);

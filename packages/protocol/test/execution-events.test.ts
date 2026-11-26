@@ -9,8 +9,6 @@ const baseEvent = {
   eventType: "tool.started",
   category: "activity",
   delivery: "replayable",
-  workspaceId: "workspace-1",
-  workspaceRuntimeId: "runtime-1",
   threadId: "thread-1",
   workRequestId: "request-1",
   runId: "run-1",

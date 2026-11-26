@@ -122,7 +122,7 @@ describe("one transaction: domain change, sequence, event and outbox", () => {
     expect(again.persisted).toBe(false);
     expect(await f.outbox()).toHaveLength(1);
     const multi = await f.sqlite
-      .prepare("SELECT event_id FROM realtime_events GROUP BY event_id HAVING count(DISTINCT (stream_kind, COALESCE(stream_id, workspace_id))) > 1")
+      .prepare("SELECT event_id FROM realtime_events GROUP BY event_id HAVING count(DISTINCT (stream_kind, stream_id)) > 1")
       .all();
     expect(multi).toHaveLength(0);
   });

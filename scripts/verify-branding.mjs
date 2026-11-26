@@ -148,7 +148,7 @@ export function verifyRequiredGeneratedIcons(rootDir) {
   }
 
   // Application asset sync targets
-  const appTargets = ["apps/app", "apps/workspace", "apps/profile_lab"];
+  const appTargets = ["apps/app", "apps/profile_lab"];
   for (const app of appTargets) {
     const destBrandingDir = join(rootDir, app, "assets/branding");
     for (const svgName of CANONICAL_SVG_MASTERS) {
@@ -243,7 +243,7 @@ export function verifyBrandingHashSync(rootDir) {
   // Map of canonical file -> list of synchronized target copies
   const syncPairs = [];
 
-  for (const app of ["apps/app", "apps/workspace", "apps/profile_lab"]) {
+  for (const app of ["apps/app", "apps/profile_lab"]) {
     for (const svgName of CANONICAL_SVG_MASTERS) {
       syncPairs.push({
         source: join(canonicalDir, svgName),
@@ -339,7 +339,7 @@ export function verify3DArtworkIsolation(rootDir) {
   const prohibitedDirs = [
     join(rootDir, "assets/branding"),
     join(rootDir, "apps/app/assets"),
-    join(rootDir, "apps/workspace/assets"),
+    join(rootDir, "apps/connect_gui/assets"),
     join(rootDir, "apps/profile_lab/assets"),
     join(rootDir, "apps/app/web"),
     join(rootDir, "apps/site/public"),
@@ -369,7 +369,7 @@ export function verifyNoHardcodedBrandColors(rootDir) {
   const violations = [];
   const appLibDirs = [
     join(rootDir, "apps/app/lib"),
-    join(rootDir, "apps/workspace/lib"),
+    join(rootDir, "apps/connect_gui/lib"),
     join(rootDir, "apps/profile_lab/lib"),
   ];
 

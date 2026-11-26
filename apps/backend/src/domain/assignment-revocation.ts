@@ -20,7 +20,7 @@ import { publishAssignmentPhase } from "./assignment-phase-events.js";
 /**
  * Safe revocation of an assignment that must not run (or must stop running).
  *
- * A deadline, a cancellation or a lost Workspace entitles Cloud to *want* the
+ * A deadline, a cancellation or a lost Worker entitles Cloud to *want* the
  * work stopped. It does not entitle Cloud to *claim* it stopped: the command
  * may already sit in the Service queue or the provider may be running. So the
  * lifecycle is
@@ -322,7 +322,7 @@ export async function finalizeAssignmentRevocation(
   if (!isRevocationAssignmentStatus(status)) return "not_revoking";
   const intent: RevocationIntent = parseStored(row.error_json) ?? {
     status: "cancelled",
-    reason: "Cancelled by Workspace runtime",
+    reason: "Cancelled by Syntila Connect",
     source: "manual_cancel",
   };
   const applied = await applyIntent(
@@ -379,7 +379,6 @@ function cancelTarget(env: RevocationEnv, row: RevokingAssignment) {
   if (!gateways || !workerId) return null;
   return {
     stub: gateways.get(gateways.idFromName(`worker:${workerId}`)),
-    workspaceId: `worker:${workerId}`,
     runtimeId: `worker:${workerId}`,
     workerId,
   };
@@ -416,8 +415,6 @@ export async function deliverRevocation(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          executionWorkspaceId: target.workspaceId,
-          workspaceRuntimeId: target.runtimeId,
           workerId: target.workerId,
           runId: row.run_id,
           taskId: row.task_id,
@@ -463,8 +460,6 @@ async function notifyServiceOfFence(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          executionWorkspaceId: target.workspaceId,
-          workspaceRuntimeId: target.runtimeId,
           workerId: target.workerId,
           runId: row.run_id,
           taskId: row.task_id,

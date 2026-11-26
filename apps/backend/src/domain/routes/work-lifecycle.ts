@@ -390,7 +390,7 @@ export async function handleRetryWorkRequest(
     String(row.inputJson),
     {},
   );
-  // A Step frozen on a Worker is checked against that Worker, not a Workspace.
+  // A Step frozen on a Worker is checked against that Worker.
   const frozenTarget = frozenWorkerTarget(bindings, workflow, step);
   if (!frozenTarget) {
     return json(
@@ -967,7 +967,7 @@ function stepExecutionFields(
 ) {
   const text = (value: unknown) => (typeof value === "string" ? value : null);
   // A task refused an execution slot has no assignment yet; say why it waits
-  // (the account's allowance versus the Workspace) instead of a generic state.
+  // the account's allowance instead of a generic state.
   const waitReason = task?.assignmentStatus
     ? null
     : (text(task?.waitReason) as ExecutionWaitReason | null);

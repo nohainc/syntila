@@ -67,9 +67,33 @@ for (const path of [
       assert.equal(selected.engine, "true");
       assert.equal(selected.cloud, "false");
       if (path.startsWith("packages/"))
-        assert.equal(selected.workspace, "true");
+        assert.equal(selected.connect, "true");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 }
+
+test("Worker Agent protocol changes select Cloud checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "syntila-ci-worker-protocol-"));
+  try {
+    const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q");
+    writeFileSync(join(root, "base"), "base");
+    const commit = () => {
+      git("add", ".");
+      git("-c", "user.name=CI Test", "-c", "user.email=ci@example.invalid", "commit", "-qm", "fixture");
+    };
+    commit();
+    const base = git("rev-parse", "HEAD");
+    mkdirSync(join(root, "packages/worker-agent-protocol/src"), { recursive: true });
+    writeFileSync(join(root, "packages/worker-agent-protocol/src/worker-agent.ts"), "fixture");
+    commit();
+    const output = join(root, "output");
+    execFileSync("bash", [detector], { cwd: root, env: { ...process.env, EVENT_NAME: "pull_request", BASE_SHA: base, HEAD_SHA: git("rev-parse", "HEAD"), GITHUB_OUTPUT: output } });
+    const selected = Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => line.split("=")));
+    assert.equal(selected.cloud, "true");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

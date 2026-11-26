@@ -71,7 +71,6 @@ export const RealtimeEventEnvelopeSchema = z
     type: z.string().regex(/^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)+$/),
     version: z.string().regex(realtimeVersionPattern),
     timestamp,
-    workspaceId: id.optional(),
     stream: RealtimeStreamSchema.optional(),
     spaceId: id.optional(),
     threadId: id.optional(),
@@ -79,7 +78,6 @@ export const RealtimeEventEnvelopeSchema = z
     taskId: id.optional(),
     attemptId: id.optional(),
     assignmentId: id.optional(),
-    workspaceRuntimeId: id.optional(),
     sequence: z.number().int().min(0),
     payload: RealtimeEventPayloadSchema,
   })
@@ -87,15 +85,13 @@ export const RealtimeEventEnvelopeSchema = z
   .superRefine((event, context) => {
     const stream = event.stream;
     const people = event.type === "people.updated";
-    const workspaceInvitation = event.type === "workspace_invitation.updated";
     const collaboration = (
       COLLABORATION_REALTIME_EVENT_TYPES as readonly string[]
     ).includes(event.type);
     if (
       collaboration &&
       (!stream ||
-        stream.kind === "execution_workspace" ||
-        (!people && !workspaceInvitation && !event.spaceId) ||
+        (!people && !event.spaceId) ||
         !event.payload.entityId)
     ) {
       context.addIssue({
@@ -109,26 +105,12 @@ export const RealtimeEventEnvelopeSchema = z
       (stream?.kind !== "user" ||
         event.spaceId ||
         event.threadId ||
-        event.workspaceId ||
         Object.keys(event.payload).some((key) => key !== "entityId"))
     ) {
       context.addIssue({
         code: "custom",
         message:
           "People signals require a user stream and an entity identifier only",
-      });
-    }
-    if (
-      workspaceInvitation &&
-      (stream?.kind !== "user" ||
-        event.spaceId ||
-        event.threadId ||
-        Object.keys(event.payload).some((key) => key !== "entityId"))
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Workspace invitation signals require a user stream and an entity identifier only",
       });
     }
     if (
@@ -165,13 +147,12 @@ export const RealtimeEventEnvelopeSchema = z
     if (
       !collaboration &&
       isKnownRealtimeEventType(event.type) &&
-      !event.workspaceId &&
       !spaceWorkEvent && !spaceActivity
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "Execution events require a workspaceId or a scoped Space Work stream",
+          "Execution events require a scoped Space Work stream",
       });
     }
     if (event.type === "assignment.activity") {
@@ -198,12 +179,12 @@ export const RealtimeEventEnvelopeSchema = z
       if (
         !event.assignmentId ||
         !event.attemptId ||
-        (!event.workspaceRuntimeId && !spaceActivity)
+        !spaceActivity
       ) {
         context.addIssue({
           code: "custom",
           message:
-            "assignment.activity requires assignment, attempt and runtime correlation",
+            "assignment.activity requires assignment, attempt and a Space stream",
         });
       }
       if (payload.entityId !== event.assignmentId) {
@@ -223,22 +204,10 @@ export const RealtimeEventEnvelopeSchema = z
         });
       }
     }
-    if (
-      (!stream || stream.kind === "execution_workspace") &&
-      !event.workspaceId
-    ) {
+    if (!stream) {
       context.addIssue({
         code: "custom",
-        message: "Execution events require workspaceId",
-      });
-    }
-    if (
-      stream?.kind === "execution_workspace" &&
-      stream.id !== event.workspaceId
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Execution stream must match workspaceId",
+        message: "Realtime events require a stream",
       });
     }
     if (stream?.kind === "space" && stream.id !== event.spaceId) {
@@ -247,17 +216,7 @@ export const RealtimeEventEnvelopeSchema = z
         message: "Space stream must match spaceId",
       });
     }
-    if (stream && stream.kind !== "execution_workspace" && event.workspaceId) {
-      context.addIssue({
-        code: "custom",
-        message: "Synchronization streams must not invent workspaceId",
-      });
-    }
-    if (
-      stream &&
-      stream.kind !== "execution_workspace" &&
-      event.version === "1.0"
-    ) {
+    if (stream && event.version === "1.0") {
       context.addIssue({
         code: "custom",
         message: "Synchronization streams require version 1.1",
@@ -324,13 +283,12 @@ export function parseRealtimeEvent(input: unknown): RealtimeEventEnvelope {
   return event;
 }
 
-/** Legacy execution envelopes infer their stream from the real Workspace ID. */
+/** The stream an event belongs to; every event carries one. */
 export function realtimeEventStream(
   event: RealtimeEventEnvelope,
 ): RealtimeStream {
-  return (
-    event.stream ?? { kind: "execution_workspace", id: event.workspaceId! }
-  );
+  if (!event.stream) throw new Error("Realtime event has no stream");
+  return event.stream;
 }
 
 /** Structured JSON keys cannot collide across stream kinds or arbitrary IDs. */

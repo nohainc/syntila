@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENGINE_DIR="$ROOT/engines/cli_worker"
-OUTPUT_DIR="$ROOT/apps/workspace/assets/engines"
+OUTPUT_DIR="$ROOT/dist/cli-worker-engine/host"
 DART_BIN="${SYNTILA_DART_EXECUTABLE:-$(command -v dart || true)}"
 
 if [[ -z "$DART_BIN" ]]; then
@@ -47,15 +47,12 @@ fi
   "-DENGINE_VERSION=$VERSION" \
   bin/syntila_cli_worker.dart \
   -o "$OUTPUT")
-cp "$OUTPUT" "$PROFILE_LAB_OUTPUT" 2>/dev/null || true
 if [[ "$CROSS_BUILD" == 1 ]]; then
   chmod 755 "$OUTPUT"
   echo "Built generic CLI Worker Engine $VERSION: $OUTPUT"
   exit 0
 fi
-# The Engine is built once from engines/cli_worker. Workspace and Profile Lab
-# only receive materialized copies of that same artifact; they must never drift
-# into independently maintained binaries.
+# Profile Lab receives a copy of the Engine built from engines/cli_worker.
 cp "$OUTPUT" "$PROFILE_LAB_OUTPUT"
 if command -v shasum >/dev/null 2>&1; then
   OUTPUT_DIGEST="$(shasum -a 256 "$OUTPUT")"

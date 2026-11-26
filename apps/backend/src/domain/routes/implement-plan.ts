@@ -192,9 +192,7 @@ interface ApprovePlanBody {
  * Thread Request Queue as special locked items.
  */
 /**
- * Execution fields of a queued phase request. With Worker-targeted dispatch the
- * choice is a Worker ID and travels as `workerId`; a Workspace
- * `executionSelection` would be checked against Workspaces and refuse it.
+ * Execution fields of a queued phase request target a Worker ID.
  */
 function executionFields(
   selection: { workerId?: string; model?: string; reasoningEffort?: string } | undefined,

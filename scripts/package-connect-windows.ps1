@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    # Authenticode-sign the installer and uninstaller (see sign-workspace-windows.ps1).
+    # Authenticode-sign the installer and uninstaller (see sign-connect-windows.ps1).
     [switch]$Sign
 )
 $ErrorActionPreference = 'Stop'
@@ -19,7 +19,7 @@ if ($env:SYNTILA_CONNECT_VERSION) { $Version = $env:SYNTILA_CONNECT_VERSION }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Unsupported installer version: $Version" }
 New-Item -ItemType Directory -Force $Output | Out-Null
 $CompilerArguments = @("/DBundleDir=$Bundle", "/DAppVersion=$Version", "/DOutputDir=$Output")
-$SignScript = Join-Path $PSScriptRoot 'sign-workspace-windows.ps1'
+$SignScript = Join-Path $PSScriptRoot 'sign-connect-windows.ps1'
 if ($Sign) {
     # A signed installer must only ship signed binaries.
     & $SignScript -Bundle $Bundle -VerifyOnly

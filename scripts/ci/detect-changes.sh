@@ -42,7 +42,7 @@ if matches "$shared"; then
   exit 0
 fi
 
-set_output cloud "$(matches '^(apps/cloud/|packages/(core|protocol|security|workspace-runtime-protocol|tool-profile)/)' && echo true || echo false)"
+set_output cloud "$(matches '^(apps/cloud/|packages/(core|protocol|security|worker-agent-protocol|tool-profile)/)' && echo true || echo false)"
 set_output dart "$(matches '^(packages/(syntila_cli_worker_runtime|syntila_design|syntila_worker_protocol|dart/protocol|tool_profile_v1|syntila_external_worker_(protocol|conformance|sdk))/|examples/mcp/)' && echo true || echo false)"
 set_output app "$(matches "^apps/app/|${flutter_shared}" && echo true || echo false)"
 set_output connect "$(matches "^(apps/connect/|engines/cli_worker/|packages/syntila_mcp_worker_store/)|${flutter_shared}|${plugin_shared}" && echo true || echo false)"

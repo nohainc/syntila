@@ -55,7 +55,6 @@ async function seed(status: string, permitRequired = true) {
   const fence = {
     assignmentId: "A1",
     attemptId: "ATT1",
-    executionWorkspaceId: "WS",
     runtimeIdentityId: "RT",
   };
   const permit = () => grantStartPermit(f.read, fence, NOW);

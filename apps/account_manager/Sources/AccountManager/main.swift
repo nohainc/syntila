@@ -9,7 +9,7 @@ struct Account: Decodable, Identifiable, Hashable {
     let email_verified: Int
     let created_at: String
     let spaces: Int
-    let workspaces: Int
+    let workers: Int
     let requests: Int
     let failed_requests: Int
     let last_request_at: String?
@@ -154,7 +154,7 @@ struct ContentView: View {
                         row("Membership", planText(account))
                     }.textSelection(.enabled)
                     HStack(spacing: 28) {
-                        metric("Workspaces", account.workspaces)
+                        metric("Workers", account.workers)
                         metric("Spaces", account.spaces)
                         metric("Messages", account.messages)
                         metric("Work requests", account.requests)
@@ -229,7 +229,7 @@ struct ContentView: View {
         switch action {
         case "reset": return "Request an email containing a time-limited password reset link. Email delivery is not guaranteed by the request response."
         case "grant_paid": return "Grants Syntila Plus with no end date until the manual grant is removed. Provider-linked subscriptions cannot be changed here."
-        case "revoke_paid": return "Removes the manual Plus grant. Paid features stop and shared Workspace access is paused; running work is not cancelled. Provider-linked subscriptions cannot be changed here."
+        case "revoke_paid": return "Removes the manual Plus grant. Paid features stop and shared Worker access is paused; running work is not cancelled. Provider-linked subscriptions cannot be changed here."
         default: return "This changes access to Syntila. Locking revokes human sessions; work already running is not cancelled."
         }
     }

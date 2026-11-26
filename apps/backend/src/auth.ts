@@ -3,15 +3,13 @@
  * The backend holds only public keys, so a VPS compromise cannot mint tokens.
  *
  * Token: compact JWS, alg EdDSA (Ed25519) or ES256, header.kid required.
- * Claims: iss, aud, sub, exp, iat, typ ("user" | "workspace" | "internal").
+ * Claims: iss, aud, sub, exp, iat, typ ("user" | "internal").
  *   user:      email, name, email_verified?, picture?
- *   workspace: owner (user id), name?
  */
 export type Principal =
   | { kind: "user"; userId: string; email: string; name: string; emailVerified: boolean; avatarUrl?: string;
       /** Cloudflare session id (jti of the session, for audit), client kind and desktop audience. */
       sessionId?: string; clientType?: "web" | "desktop"; clientAudience?: string }
-  | { kind: "workspace"; workspaceId: string; ownerUserId: string; name: string }
   /** Server-to-server call from the auth Worker (account lifecycle). */
   | { kind: "internal"; caller: string };
 
@@ -82,10 +80,6 @@ export class TokenVerifier {
         clientType: claims.client === "desktop" ? "desktop" : "web",
         clientAudience: typeof claims.client_aud === "string" ? claims.client_aud : undefined,
       };
-    }
-    if (claims.typ === "workspace") {
-      if (typeof claims.owner !== "string" || !claims.owner) throw new AuthError("missing owner");
-      return { kind: "workspace", workspaceId: sub, ownerUserId: claims.owner, name: typeof claims.name === "string" ? claims.name : sub };
     }
     if (claims.typ === "internal") {
       // Internal calls are single requests: keep their tokens very short-lived.

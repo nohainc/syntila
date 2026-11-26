@@ -3,12 +3,12 @@ import { inTransaction } from "../platform/tx-env.js";
 import { normalizeActivityPayload, RealtimeEventPayloadSchema } from "@syntila/protocol";
 import { assignmentStatus } from "./queries.js";
 import {
-  parseWorkspaceRuntimeMessage,
-  serializeWorkspaceRuntimeMessage,
-  WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  parseWorkerAgentMessage,
+  serializeWorkerAgentMessage,
+  WORKER_AGENT_PROTOCOL_NAME,
+  WORKER_AGENT_PROTOCOL_VERSION,
   type AssignmentCancelPayload,
-  type WorkspaceRuntimeMessage,
+  type WorkerAgentMessage,
 } from "@syntila/worker-agent-protocol";
 import { assignmentStatusForEvidence, ASSIGNMENT_ACTIVE_STATUSES } from "@syntila/core";
 import { extractBearerToken } from "@syntila/security";
@@ -31,25 +31,22 @@ import { commandToLegacy, isBridgedCommand, legacyToEnvelope } from "./messaging
 
 /**
  * The gateway of one Worker's Agent (ADR-035, ADR-034). One object per Worker,
- * named `worker:<workerId>`; no Workspace is involved.
+ * named `worker:<workerId>`.
  *
  * It speaks the Agent's side of the existing wire protocol (hello, sync,
- * heartbeat, assignment lifecycle) and nothing else: no Workspace readiness,
+ * heartbeat, assignment lifecycle) and nothing else: no readiness,
  * inventory, usage or MCP. Authority is the Agent session fence, checked inside
  * every write. A message that names an assignment must name one of THIS
  * Worker's Worker-path assignments with matching identifiers; anything else is
  * ignored.
  *
- * The protocol's assignment envelope requires `executionWorkspaceId` and
- * `workspaceRuntimeId`. Here both carry the Worker scope (`worker:<id>`): a
- * correlation token the Agent echoes back, never an identity and never stored.
  */
 
 /** Messages an Agent may send. Everything else is ignored. */
 const AGENT_TYPES = new Set<string>([
-  "workspace.hello",
-  "workspace.heartbeat",
-  "workspace.sync.request",
+  "agent.hello",
+  "agent.heartbeat",
+  "agent.sync.request",
   "assignment.ack",
   "assignment.start.ack",
   "assignment.activity",
@@ -151,9 +148,7 @@ export class WorkerGateway implements DurableObject {
       if (body?.refreshModels === true) payload.refreshModels = true;
       try {
         await this.send({
-          ...this.envelope("workspace.heartbeat.ack"),
-          executionWorkspaceId: workerScope(this.workerId),
-          workspaceRuntimeId: workerScope(this.workerId),
+          ...this.envelope("agent.heartbeat.ack"),
           payload,
         });
       } catch {
@@ -270,7 +265,7 @@ export class WorkerGateway implements DurableObject {
   }
 
   /** The Worker-path assignment this message names, or null when it is not ours. */
-  private async owned(message: WorkspaceRuntimeMessage): Promise<AssignmentRow | null> {
+  private async owned(message: WorkerAgentMessage): Promise<AssignmentRow | null> {
     if (!message.assignmentId || message.workerId !== this.workerId) return null;
     const row = await this.row(message.assignmentId);
     if (
@@ -286,7 +281,7 @@ export class WorkerGateway implements DurableObject {
   }
 
   private async handle(data: string | ArrayBuffer): Promise<void> {
-    let message: WorkspaceRuntimeMessage;
+    let message: WorkerAgentMessage;
     try {
       let raw: unknown = typeof data === "string" ? JSON.parse(data) : data;
       if (isMessagingFrame(raw)) {
@@ -302,11 +297,11 @@ export class WorkerGateway implements DurableObject {
           this.socket.serializeAttachment(this.attachment);
         }
         raw = commandToLegacy(frame, workerScope(this.workerId), {
-          protocolName: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-          protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+          protocolName: WORKER_AGENT_PROTOCOL_NAME,
+          protocolVersion: WORKER_AGENT_PROTOCOL_VERSION,
         });
       }
-      message = parseWorkspaceRuntimeMessage(raw);
+      message = parseWorkerAgentMessage(raw);
     } catch (error) {
       const text = error instanceof Error ? error.message : "Invalid protocol message";
       this.socket?.send(
@@ -322,23 +317,23 @@ export class WorkerGateway implements DurableObject {
     const now = new Date().toISOString();
     const payload = (message.payload ?? {}) as Record<string, unknown>;
     switch (message.type) {
-      case "workspace.hello":
+      case "agent.hello":
         await this.recordReadiness(fence, payload.readiness);
-        await this.reply(message, "workspace.hello.ack", {
+        await this.reply(message, "agent.hello.ack", {
           sessionId: fence.sessionId,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           serverTime: now,
           cloudCapabilities: [],
         });
         return;
-      case "workspace.heartbeat": {
+      case "agent.heartbeat": {
         // The Worker's current name, and whether it was removed or unpaired in the app.
         const info = await dataOf(this.env).read.row<{ name: string; gone: boolean }>`SELECT w.name,
                (w.revoked_at IS NOT NULL OR NOT EXISTS (
                   SELECT 1 FROM worker_credentials c WHERE c.worker_instance_id = w.id AND c.revoked_at IS NULL)) AS gone
              FROM worker_instances w WHERE w.id = ${fence.workerInstanceId}`;
         if (info?.gone) {
-          await this.reply(message, "workspace.heartbeat.ack", { acknowledged: true, serverTime: now, removed: true });
+          await this.reply(message, "agent.heartbeat.ack", { acknowledged: true, serverTime: now, removed: true });
           this.socket?.close(1008, "Worker removed");
           return;
         }
@@ -350,10 +345,10 @@ export class WorkerGateway implements DurableObject {
         const refresh = await dataOf(this.env).read.row<{ pending: boolean }>`SELECT (models_refresh_requested_at IS NOT NULL
                AND (models_reported_at IS NULL OR models_reported_at < models_refresh_requested_at)) AS pending
              FROM worker_agent_sessions WHERE worker_instance_id = ${fence.workerInstanceId} AND session_id = ${fence.sessionId}`;
-        await this.reply(message, "workspace.heartbeat.ack", { acknowledged: true, serverTime: now, ...(info?.name ? { workerName: info.name } : {}), ...(refresh?.pending ? { refreshModels: true } : {}), ...this.usageNotice() });
+        await this.reply(message, "agent.heartbeat.ack", { acknowledged: true, serverTime: now, ...(info?.name ? { workerName: info.name } : {}), ...(refresh?.pending ? { refreshModels: true } : {}), ...this.usageNotice() });
         return;
       }
-      case "workspace.sync.request":
+      case "agent.sync.request":
         await this.sync(message);
         return;
       case "assignment.ack": {
@@ -576,8 +571,6 @@ export class WorkerGateway implements DurableObject {
 
   private correlation(row: Pick<AssignmentRow, "id" | "run_id" | "task_id" | "attempt_id" | "idempotency_key">) {
     return {
-      executionWorkspaceId: workerScope(this.workerId),
-      workspaceRuntimeId: workerScope(this.workerId),
       workerId: this.workerId,
       runId: row.run_id,
       taskId: row.task_id,
@@ -587,7 +580,7 @@ export class WorkerGateway implements DurableObject {
     };
   }
 
-  private async terminalAck(message: WorkspaceRuntimeMessage, row: AssignmentRow, status: "completed" | "failed" | "cancelled"): Promise<void> {
+  private async terminalAck(message: WorkerAgentMessage, row: AssignmentRow, status: "completed" | "failed" | "cancelled"): Promise<void> {
     const current = await assignmentStatus(dataOf(this.env).read, row.id);
     const authoritative =
       current?.status === "completed" || current?.status === "failed" || current?.status === "cancelled"
@@ -607,8 +600,8 @@ export class WorkerGateway implements DurableObject {
 
   private envelope(type: string, correlationId?: string) {
     return {
-      protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-      protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+      protocol: WORKER_AGENT_PROTOCOL_NAME,
+      protocolVersion: WORKER_AGENT_PROTOCOL_VERSION,
       messageId: `message-${crypto.randomUUID()}`,
       ...(correlationId ? { correlationId } : {}),
       timestamp: new Date().toISOString(),
@@ -616,11 +609,9 @@ export class WorkerGateway implements DurableObject {
     };
   }
 
-  private reply(message: WorkspaceRuntimeMessage, type: string, payload: Record<string, unknown>): Promise<void> {
+  private reply(message: WorkerAgentMessage, type: string, payload: Record<string, unknown>): Promise<void> {
     const assignment = message.assignmentId
       ? {
-          executionWorkspaceId: workerScope(this.workerId),
-          workspaceRuntimeId: workerScope(this.workerId),
           workerId: message.workerId,
           runId: message.runId,
           taskId: message.taskId,
@@ -628,7 +619,7 @@ export class WorkerGateway implements DurableObject {
           assignmentId: message.assignmentId,
           idempotencyKey: message.idempotencyKey,
         }
-      : { executionWorkspaceId: workerScope(this.workerId), workspaceRuntimeId: workerScope(this.workerId) };
+      : {};
     return this.send({ ...this.envelope(type, message.messageId), ...assignment, payload });
   }
 
@@ -656,9 +647,7 @@ export class WorkerGateway implements DurableObject {
     result.catch(() => undefined);
     try {
       await this.send({
-        ...this.envelope("workspace.heartbeat.ack"),
-        executionWorkspaceId: workerScope(this.workerId),
-        workspaceRuntimeId: workerScope(this.workerId),
+        ...this.envelope("agent.heartbeat.ack"),
         payload: { acknowledged: true, serverTime: new Date().toISOString(), usageRequestId: requestId },
       });
     } catch {
@@ -703,8 +692,8 @@ export class WorkerGateway implements DurableObject {
     if (!this.socket) throw new Error("Worker is offline");
     this.socket.send(
       this.unified
-        ? JSON.stringify(legacyToEnvelope(parseWorkspaceRuntimeMessage(message) as unknown as Record<string, unknown>, this.workerId))
-        : serializeWorkspaceRuntimeMessage(message as never),
+        ? JSON.stringify(legacyToEnvelope(parseWorkerAgentMessage(message) as unknown as Record<string, unknown>, this.workerId))
+        : serializeWorkerAgentMessage(message as never),
     );
   }
 
@@ -712,7 +701,7 @@ export class WorkerGateway implements DurableObject {
    * The Agent's authoritative state: this Worker's live assignments and the
    * ones that ended in the last day, then the commands it may have missed.
    */
-  private async sync(message: WorkspaceRuntimeMessage): Promise<void> {
+  private async sync(message: WorkerAgentMessage): Promise<void> {
     const read = dataOf(this.env).read;
     const since = new Date(Date.now() - TERMINAL_RECENT_MS).toISOString();
     const rows = await read.rows<{ id: string; status: string }>`SELECT id, status FROM worker_assignments
@@ -721,7 +710,7 @@ export class WorkerGateway implements DurableObject {
               OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ${since}::timestamptz))
        ORDER BY updated_at DESC LIMIT 500`;
     const active = new Set<string>(ASSIGNMENT_ACTIVE_STATUSES);
-    await this.reply(message, "workspace.sync.result", {
+    await this.reply(message, "agent.sync.result", {
       activeAssignmentIds: rows.filter((row) => active.has(row.status)).map((row) => row.id),
       assignmentStates: rows.map((row) => ({ assignmentId: row.id, status: row.status })),
     });
@@ -778,7 +767,7 @@ export class WorkerGateway implements DurableObject {
     try {
       const disposition = assignmentCommandDisposition(row.status);
       if (!disposition.shouldSend) return { delivered: false, status: row.status };
-      const message = parseWorkspaceRuntimeMessage({
+      const message = parseWorkerAgentMessage({
         ...this.envelope("assignment.start"),
         ...this.correlation(row),
         payload: withStartPermit(payload),

@@ -1,30 +1,13 @@
 import '../ax_data.dart';
 import 'ax_sync_engine.dart';
 
-/// Session-owned global, Workspace or Space preferences. Navigation reuses the
-/// scoped query. User-level preferences are stored per Workspace: [workspaceId]
-/// addresses one, otherwise Cloud uses the selected Workspace.
+/// Session-owned personal or Space preferences.
 class AxWorkflowConfigurations {
-  AxWorkflowConfigurations(this.source,
-      {required this.engine, this.spaceId, this.workspaceId});
+  AxWorkflowConfigurations(this.source, {required this.engine, this.spaceId});
   final String? spaceId;
-  final String? workspaceId;
-  final Map<String, AxWorkflowConfigurations> _scoped = {};
-
-  /// Preferences of one Workspace, shared per session.
-  AxWorkflowConfigurations forWorkspace(String id) {
-    assert(spaceId == null);
-    return _scoped.putIfAbsent(
-        id,
-        () =>
-            AxWorkflowConfigurations(source, engine: engine, workspaceId: id));
-  }
-
   AxQueryKey get queryKey => spaceId != null
       ? AxQueryKey(['space-workflow-configurations', spaceId!])
-      : workspaceId != null
-          ? AxQueryKey(['user-workflow-configurations', workspaceId!])
-          : key;
+      : key;
   AxSpaceWorkflowConfigurationDataSource get _spaceApi =>
       source as AxSpaceWorkflowConfigurationDataSource;
   final AxDataSource source;
@@ -41,11 +24,11 @@ class AxWorkflowConfigurations {
       key: queryKey,
       staleTime: const Duration(minutes: 45),
       load: () async => List.unmodifiable(spaceId == null
-          ? await _api.loadWorkflowConfigurations(workspaceId: workspaceId)
+          ? await _api.loadWorkflowConfigurations()
           : await _spaceApi.loadSpaceWorkflowConfigurations(spaceId!)));
 
   late final defaultQuery = AxQuery<String>(
-      key: AxQueryKey(['workflow-default', spaceId ?? workspaceId ?? 'user']),
+      key: AxQueryKey(['workflow-default', spaceId ?? 'user']),
       staleTime: const Duration(minutes: 45),
       load: () async {
         final api = source is AxWorkflowDefaultDataSource
@@ -53,7 +36,7 @@ class AxWorkflowConfigurations {
             : null;
         if (api == null) return 'chat';
         return spaceId == null
-            ? api.loadWorkflowDefault(workspaceId: workspaceId)
+            ? api.loadWorkflowDefault()
             : api.loadSpaceWorkflowDefault(spaceId!);
       });
 
@@ -64,7 +47,7 @@ class AxWorkflowConfigurations {
       engine.ensure(defaultQuery, policy: AxCachePolicy.cacheFirst);
   Future<String> refreshDefault() => engine.refresh(defaultQuery);
 
-  /// Space preferences are read-only: a Space follows its Workspace's workflows.
+  /// Space preferences are read-only in this view.
   void _requireWritable() {
     if (spaceId != null) {
       throw StateError('Space workflows are read-only');
@@ -86,8 +69,7 @@ class AxWorkflowConfigurations {
     try {
       await engine.mutate(AxMutation<String>(
           query: defaultQuery,
-          execute: () =>
-              api.saveWorkflowDefault(workflowId, workspaceId: workspaceId)));
+          execute: () => api.saveWorkflowDefault(workflowId)));
       if (epoch != _sessionEpoch) throw const AxMutationSuperseded();
       if (spaceId == null) {
         engine.invalidate(AxQueryKey(['workflow-default']), prefix: true);
@@ -108,18 +90,12 @@ class AxWorkflowConfigurations {
     _writeLease = null;
     engine.remove(queryKey);
     engine.remove(defaultQuery.key);
-    for (final child in _scoped.values) {
-      child.clear();
-    }
   }
 
-  Future<void> save(AxUserWorkflowConfiguration value) => _write(
-      value.workflowId,
-      () => _api.saveWorkflowConfiguration(value, workspaceId: workspaceId));
-  Future<void> reset(String workflowId) => _write(
-      workflowId,
-      () => _api.resetWorkflowConfiguration(workflowId,
-          workspaceId: workspaceId));
+  Future<void> save(AxUserWorkflowConfiguration value) =>
+      _write(value.workflowId, () => _api.saveWorkflowConfiguration(value));
+  Future<void> reset(String workflowId) =>
+      _write(workflowId, () => _api.resetWorkflowConfiguration(workflowId));
 
   Future<void> _write(String workflowId,
       Future<AxUserWorkflowConfiguration> Function() execute) async {

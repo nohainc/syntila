@@ -263,7 +263,7 @@ class NewUserHome extends StatelessWidget {
           const SizedBox(height: 28),
 
           // Advanced local execution path (visually secondary)
-          _AdvancedWorkspaceCard(
+          _AdvancedWorkersCard(
             onOpenWorkers: onOpenWorkers,
           ),
         ],
@@ -272,8 +272,8 @@ class NewUserHome extends StatelessWidget {
   }
 }
 
-class _AdvancedWorkspaceCard extends StatelessWidget {
-  const _AdvancedWorkspaceCard({required this.onOpenWorkers});
+class _AdvancedWorkersCard extends StatelessWidget {
+  const _AdvancedWorkersCard({required this.onOpenWorkers});
 
   final VoidCallback onOpenWorkers;
 

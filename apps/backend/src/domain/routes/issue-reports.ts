@@ -27,7 +27,6 @@ interface ExecutionEvidence {
   taskId: string | null;
   attemptId: string | null;
   assignmentId: string | null;
-  workspaceId: string | null;
   workerId: string | null;
   workerTypeId: string | null;
   assignmentStatus: string | null;
@@ -55,7 +54,6 @@ interface ReportRow {
   id: string;
   publicReference: string;
   reporterUserId: string | null;
-  workspaceId: string | null;
   requestId: string;
   assignmentId: string | null;
   component: string;
@@ -93,7 +91,7 @@ interface ReportRow {
 
 const REPORT_COLUMNS = `
   ir.id, ir.public_reference AS "publicReference",
-  ir.reporter_user_id AS "reporterUserId", ir.workspace_id AS "workspaceId",
+  ir.reporter_user_id AS "reporterUserId",
   ir.request_id AS "requestId", ir.assignment_id AS "assignmentId",
   ir.component, ir.error_code AS "errorCode", ir.failure_stage AS "failureStage",
   ir.fingerprint, ir.status, ir.diagnostic_state AS "diagnosticState",
@@ -216,7 +214,7 @@ function failureClassification(
   )
     return { component: "provider_cli", stage: "provider_execution" };
   if (errorCode === "worker_not_ready" || errorCode === "provider_unavailable")
-    return { component: "workspace_service", stage: "transport" };
+    return { component: "connect_service", stage: "transport" };
   if (assignmentStatus === "failed")
     return { component: "cli_worker_engine", stage: "provider_execution" };
   return { component: "cloud", stage: "admission" };
@@ -228,7 +226,6 @@ function reportRow(row: Record<string, unknown>): ReportRow {
     publicReference: String(row.publicReference),
     reporterUserId:
       row.reporterUserId == null ? null : String(row.reporterUserId),
-    workspaceId: row.workspaceId == null ? null : String(row.workspaceId),
     requestId: String(row.requestId),
     assignmentId: row.assignmentId == null ? null : String(row.assignmentId),
     component: String(row.component),
@@ -332,7 +329,7 @@ async function loadExecutionEvidence(
             wr.updated_at AS "requestUpdatedAt",
             r.id AS "runId",
             wa.id AS "assignmentId", wa.task_id AS "taskId", wa.attempt_id AS "attemptId",
-            NULL::text AS "workspaceId", wa.worker_instance_id AS "workerId",
+            wa.worker_instance_id AS "workerId",
             wa.worker_type_id AS "workerTypeId", wa.status AS "assignmentStatus",
             wa.engine_version AS "engineVersion", wa.model AS "modelId",
             wa.error_json::text AS "assignmentErrorJson",
@@ -378,7 +375,6 @@ async function loadExecutionEvidence(
     taskId: row.taskId == null ? null : String(row.taskId),
     attemptId: row.attemptId == null ? null : String(row.attemptId),
     assignmentId: row.assignmentId == null ? null : String(row.assignmentId),
-    workspaceId: row.workspaceId == null ? null : String(row.workspaceId),
     workerId: row.workerId == null ? null : String(row.workerId),
     workerTypeId: row.workerTypeId == null ? null : String(row.workerTypeId),
     assignmentStatus:
@@ -444,7 +440,6 @@ function diagnosticFor(
         timestamp: createdAt,
         requestId: evidence.requestId,
         assignmentId: evidence.assignmentId,
-        workspaceId: evidence.workspaceId,
         workerId: evidence.workerId,
         workerTypeId: evidence.workerTypeId,
         runId: evidence.runId,
@@ -475,7 +470,6 @@ function diagnosticFor(
       taskId: evidence.taskId,
       attemptId: evidence.attemptId,
       assignmentId: evidence.assignmentId,
-      workspaceId: evidence.workspaceId,
       workerId: evidence.workerId,
       workerTypeId: evidence.workerTypeId,
       assignmentStatus: evidence.assignmentStatus,
@@ -484,11 +478,11 @@ function diagnosticFor(
         ? { failureDetail: evidence.failureDetail }
         : {}),
     },
-    workspace: workspaceEvidenceFor(evidence),
+    connect: connectEvidenceFor(evidence),
   };
 }
 
-function workspaceEvidenceFor(
+function connectEvidenceFor(
   evidence: ExecutionEvidence,
 ): Record<string, string> {
   const diagnosticComponent = failureDiagnosticMetadata(
@@ -503,7 +497,7 @@ function workspaceEvidenceFor(
       state: "disconnected",
       reason:
         diagnosticComponent === "cloud"
-          ? "workspace_not_reached"
+          ? "connect_not_reached"
           : "assignment_not_observed",
     };
   }
@@ -564,7 +558,7 @@ async function existingReport(
   attemptKey: string,
 ): Promise<ReportRow | null> {
   const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, public_reference AS "publicReference",
-            reporter_user_id AS "reporterUserId", workspace_id AS "workspaceId",
+            reporter_user_id AS "reporterUserId",
             request_id AS "requestId", assignment_id AS "assignmentId",
             component, error_code AS "errorCode", failure_stage AS "failureStage",
             fingerprint, status, diagnostic_state AS "diagnosticState",
@@ -610,13 +604,13 @@ export async function handleCreateIssueReport(
   try {
     await dataOf(env).tx("issue_report.create", async (tx) => {
       await tx.run`INSERT INTO issue_reports
-         (id, public_reference, reporter_user_id, workspace_id, request_id,
+         (id, public_reference, reporter_user_id, request_id,
           assignment_id, attempt_key, component, error_code, failure_stage, fingerprint,
           status, diagnostic_state, created_at, updated_at,
           worker_type_id, model_id, effort, engine_version,
           profile_definition_id, profile_release_version, provider_tool_version,
           application_version)
-       VALUES (${reportId}, ${reference}, ${actor.userId}, ${evidence.workspaceId}, ${evidence.requestId}, ${evidence.assignmentId}, ${attemptKey}, ${evidence.component}, ${evidence.errorCode}, ${evidence.failureStage}, ${fingerprint}, 'open', ${diagnosticState}, ${now}::timestamptz, ${now}::timestamptz,
+       VALUES (${reportId}, ${reference}, ${actor.userId}, ${evidence.requestId}, ${evidence.assignmentId}, ${attemptKey}, ${evidence.component}, ${evidence.errorCode}, ${evidence.failureStage}, ${fingerprint}, 'open', ${diagnosticState}, ${now}::timestamptz, ${now}::timestamptz,
           ${evidence.workerTypeId}, ${evidence.modelId}, ${evidence.effort}, ${evidence.engineVersion}, ${evidence.profileDefinitionId}, ${evidence.profileReleaseVersion}, ${evidence.providerToolVersion}, ${evidence.applicationVersion})`;
       await tx.run`INSERT INTO issue_report_diagnostics
          (report_id, schema_version, diagnostic_json, created_at)
@@ -654,7 +648,6 @@ export async function handleCreateIssueReport(
     id: reportId,
     publicReference: reference,
     reporterUserId: actor.userId,
-    workspaceId: evidence.workspaceId,
     requestId: evidence.requestId,
     assignmentId: evidence.assignmentId,
     component: evidence.component,
@@ -697,7 +690,7 @@ export async function handleGetIssueReportForRequest(
   const assignmentId = boundedToken(url.searchParams.get("assignmentId"));
   if (!requestId) throw new HttpError(400, "requestId is required");
   const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, public_reference AS "publicReference",
-            reporter_user_id AS "reporterUserId", workspace_id AS "workspaceId",
+            reporter_user_id AS "reporterUserId",
             request_id AS "requestId", assignment_id AS "assignmentId",
             component, error_code AS "errorCode", failure_stage AS "failureStage",
             fingerprint, status, diagnostic_state AS "diagnosticState",
@@ -786,7 +779,6 @@ function adminReportResponse(report: ReportRow): Record<string, unknown> {
     publicReference: report.publicReference,
     requestId: report.requestId,
     assignmentId: report.assignmentId,
-    workspaceId: report.workspaceId,
     component: report.component,
     errorCode: report.errorCode,
     failureStage: report.failureStage,
@@ -881,16 +873,16 @@ export async function handleGetAdminIssueReport(
   ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const firstError =
     diagnosticEvents.find((event) => event.severity === "error") ?? null;
-  const workspaceEvidence = diagnosticData?.workspace;
+  const connectEvidence = diagnosticData?.connect;
   const missingEvidence: string[] = [];
   if (!diagnostic) missingEvidence.push("diagnostic_record");
   if (!diagnosticEvents.length) missingEvidence.push("execution_timeline");
   if (
-    !workspaceEvidence ||
-    (typeof workspaceEvidence === "object" &&
-      (workspaceEvidence as Record<string, unknown>).state !== "connected")
+    !connectEvidence ||
+    (typeof connectEvidence === "object" &&
+      (connectEvidence as Record<string, unknown>).state !== "connected")
   ) {
-    missingEvidence.push("workspace_diagnostics");
+    missingEvidence.push("connect_diagnostics");
   }
   if (!report.providerToolVersion) missingEvidence.push("provider_version");
   if (!report.applicationVersion) missingEvidence.push("application_version");
@@ -924,7 +916,7 @@ export async function handleGetAdminIssueReport(
         profileRelease: report.profileReleaseVersion,
         providerTool: report.providerToolVersion,
       },
-      workspace: workspaceEvidence ?? { state: "unavailable" },
+      connect: connectEvidence ?? { state: "unavailable" },
       failure: {
         component: report.component,
         stage: report.failureStage,

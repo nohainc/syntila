@@ -28,15 +28,15 @@ void main() {
   test('negotiates the highest common protocol version', () {
     expect(
       negotiateProtocolVersion(
-        workspaceVersions: const ['2.0', '4.0'],
-        workerVersions: const ['2.0', '4.0'],
+        connectVersions: const ['2.0', '4.0'],
+        engineVersions: const ['2.0', '4.0'],
       ),
       '4.0',
     );
     expect(
       negotiateProtocolVersion(
-        workspaceVersions: const ['2.6'],
-        workerVersions: const ['2.6'],
+        connectVersions: const ['2.6'],
+        engineVersions: const ['2.6'],
       ),
       isNull,
     );

@@ -169,7 +169,7 @@ export interface ConversationTurn {
   readonly workerId: string;
   readonly workerTypeId: string;
   readonly workerDisplayName: string;
-  /** Display name of the person whose Workspace ran the turn, when known. */
+  /** Display name of the person whose Worker ran the turn, when known. */
   readonly workerOwnerName?: string | null;
   readonly profileId: string;
   readonly profileVersion: number;
@@ -237,14 +237,14 @@ export interface ConversationHistoryPage {
   readonly nextCursor: string | null;
 }
 
-/** Workspace-owned execution state; never a Cloud/Human Product response DTO. */
+/** Worker-local execution state; never a Cloud/Human Product response DTO. */
 export interface WorkerSession {
   readonly id: string;
   readonly conversationId: string;
   readonly workerId: string;
   readonly profileId: string;
   readonly profileVersion: number;
-  /** Opaque provider handle persisted only inside Workspace/Engine local state. */
+  /** Opaque provider handle persisted only in Worker-local Engine state. */
   readonly nativeSessionId: string | null;
   readonly synchronizedContextRevision: number;
   /** Local exact-history watermark, separate from accepted-request revision. */

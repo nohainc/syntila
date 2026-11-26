@@ -1,5 +1,5 @@
 import { executionErrorMessage } from "@syntila/protocol";
-import { parseWorkspaceRuntimeMessage } from "@syntila/worker-agent-protocol";
+import { parseWorkerAgentMessage } from "@syntila/worker-agent-protocol";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { conversationFixture } from "./helpers/conversation.js";
 import { recordAssignmentError } from "../../src/domain/assignment-dispatcher.js";
@@ -392,8 +392,6 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
       messageId: "msg-1",
       timestamp: "2026-11-18T00:00:00.000Z",
       type: "assignment.error",
-      executionWorkspaceId: "ws-1",
-      workspaceRuntimeId: "rt-1",
       workerId: "worker-1",
       runId: "run-1",
       taskId: "task-1",
@@ -403,7 +401,7 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
     };
 
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         payload: {
           error: {
@@ -423,7 +421,7 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
     ).not.toThrow();
 
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         payload: {
           error: {

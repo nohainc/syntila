@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import {
-  parseWorkspaceRuntimeMessage,
-  WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  parseWorkerAgentMessage,
+  WORKER_AGENT_PROTOCOL_NAME,
+  WORKER_AGENT_PROTOCOL_VERSION,
 } from "../src/index.js";
 const selection = {
   schemaVersion: 1,
@@ -19,13 +19,11 @@ const selection = {
 };
 function frame(value: Record<string, unknown> = selection) {
   return {
-    protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-    protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+    protocol: WORKER_AGENT_PROTOCOL_NAME,
+    protocolVersion: WORKER_AGENT_PROTOCOL_VERSION,
     messageId: "message",
     timestamp: "2026-10-11T00:00:00Z",
     type: "assignment.start",
-    executionWorkspaceId: "workspace",
-    workspaceRuntimeId: "runtime",
     workerId: "worker",
     runId: "run",
     taskId: "task",
@@ -44,7 +42,7 @@ function frame(value: Record<string, unknown> = selection) {
   };
 }
 it("accepts only public frozen selection evidence matching the invocation", () => {
-  expect(parseWorkspaceRuntimeMessage(frame()).type).toBe("assignment.start");
+  expect(parseWorkerAgentMessage(frame()).type).toBe("assignment.start");
   for (const invalid of [
     { ...selection, resolvedNativeModelId: "secret-native" },
     { ...selection, modelId: "different" },
@@ -52,6 +50,6 @@ it("accepts only public frozen selection evidence matching the invocation", () =
     { ...selection, workerTypeId: "chatgpt" },
     { ...selection, catalogRevision: "invalid" },
   ]) {
-    expect(() => parseWorkspaceRuntimeMessage(frame(invalid))).toThrow();
+    expect(() => parseWorkerAgentMessage(frame(invalid))).toThrow();
   }
 });

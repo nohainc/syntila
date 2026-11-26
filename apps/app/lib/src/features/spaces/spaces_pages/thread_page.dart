@@ -836,7 +836,6 @@ class _ThreadPageState extends State<ThreadPage>
   final _composerInputHeight = ComposerInputHeight();
   final _discussionController = TextEditingController();
   late AxSessionCatalogs _catalogs;
-  void Function()? _cancelWorkflowWorkspace;
   final _visibilitySubscriptions = <String, void Function()>{};
   void Function()? _cancelWorkflows;
   void Function()? _cancelWorkers;
@@ -1020,7 +1019,7 @@ class _ThreadPageState extends State<ThreadPage>
   List<AxWorker> _spaceWorkers = const [];
   List<AxWorker> _eligibleWorkers = const [];
 
-  /// Workers from Workspaces the viewer owns outside the Space Workspace.
+  /// Workers the viewer owns that can be used in this Space.
   /// They answer only the Chat workflow, when the Space allows own Workers.
   List<AxWorker> _ownChatWorkers = const [];
 
@@ -1057,8 +1056,8 @@ class _ThreadPageState extends State<ThreadPage>
                 _personSharedWorkersLoaded);
   }
 
-  /// The Space Workspace query answered, even if the Space has none yet.
-  bool _workflowWorkspaceLoaded = false;
+  /// The initial Worker catalog has been applied.
+  bool _initialWorkersApplied = false;
   bool get _chatWorkflowSelected =>
       _effectiveWorkflow.split(':').first == 'chat';
   List<AxWorker> get _composerWorkers => widget.space.isDirect
@@ -1334,12 +1333,12 @@ class _ThreadPageState extends State<ThreadPage>
         !_workerListSettled) {
       return;
     }
-    // Wait until Workspace membership is known before resolving a saved
+    // Wait until the initial Worker catalog is applied before resolving a saved
     // selection; otherwise the empty intermediate list loses its type hint.
     if (saved.workerId != null &&
         !widget.space.isDirect &&
         _workflowConfigurations != null &&
-        !_workflowWorkspaceLoaded) {
+        !_initialWorkersApplied) {
       return;
     }
     // Match the exact reference first, then the same workflow code at its
@@ -1716,7 +1715,7 @@ class _ThreadPageState extends State<ThreadPage>
     _subscribeToWorkEvents();
     _subscribeWorkflowConfigurations();
     _subscribeCatalogs();
-    _subscribeWorkflowWorkspace();
+    _applyInitialWorkers();
     _loadWorkChoices();
     _loadWorkflowCatalog();
     _restoreThreadViewState();
@@ -1967,9 +1966,8 @@ class _ThreadPageState extends State<ThreadPage>
     return current.firstOrNull?.reference ?? '';
   }
 
-  void _subscribeWorkflowWorkspace() {
-    _cancelWorkflowWorkspace?.call();
-    _workflowWorkspaceLoaded = true;
+  void _applyInitialWorkers() {
+    _initialWorkersApplied = true;
     _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
   }
 
@@ -2078,7 +2076,7 @@ class _ThreadPageState extends State<ThreadPage>
     if (oldWidget.catalogs != widget.catalogs ||
         oldWidget.dataSource != widget.dataSource ||
         oldWidget.space.id != widget.space.id) {
-      _subscribeWorkflowWorkspace();
+      _applyInitialWorkers();
       unawaited(_loadWorkChoices());
     }
     var presentationSourcesChanged = false;
@@ -2282,7 +2280,6 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkers?.call();
     _cancelWorkersUx?.call();
     _cancelWorkerInstances?.call();
-    _cancelWorkflowWorkspace?.call();
     for (final cancel in _visibilitySubscriptions.values) {
       cancel();
     }

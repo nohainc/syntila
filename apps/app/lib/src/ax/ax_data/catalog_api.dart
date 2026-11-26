@@ -1,15 +1,11 @@
 part of '../ax_data.dart';
 
 mixin _CatalogApi on _AxApiClientCore {
-  /// User-level workflow endpoints address one Workspace; without it Cloud
-  /// uses the user's selected Workspace.
-  String _userWorkflowUrl(String path, String? workspaceId) =>
-      '$baseUrl/user/$path${workspaceId == null ? '' : '?workspaceId=${Uri.encodeQueryComponent(workspaceId)}'}';
+  String _userWorkflowUrl(String path) => '$baseUrl/user/$path';
 
-  Future<List<AxUserWorkflowConfiguration>> loadWorkflowConfigurations(
-      {String? workspaceId}) async {
-    final body = await _getJson(
-        Uri.parse(_userWorkflowUrl('workflow-configurations', workspaceId)));
+  Future<List<AxUserWorkflowConfiguration>> loadWorkflowConfigurations() async {
+    final body =
+        await _getJson(Uri.parse(_userWorkflowUrl('workflow-configurations')));
     return (body['configurations'] as List)
         .map((value) => AxUserWorkflowConfiguration.fromJson(
             Map<String, dynamic>.from(value as Map)))
@@ -17,24 +13,20 @@ mixin _CatalogApi on _AxApiClientCore {
   }
 
   Future<AxUserWorkflowConfiguration> saveWorkflowConfiguration(
-      AxUserWorkflowConfiguration configuration,
-      {String? workspaceId}) async {
+      AxUserWorkflowConfiguration configuration) async {
     final response = await client.put(
         Uri.parse(_userWorkflowUrl(
-            'workflow-configurations/${Uri.encodeComponent(configuration.workflowId)}',
-            workspaceId)),
+            'workflow-configurations/${Uri.encodeComponent(configuration.workflowId)}')),
         headers: _headers(contentType: 'application/json'),
         body: jsonEncode(configuration.toJson()));
     return _configurationResponse(response);
   }
 
   Future<AxUserWorkflowConfiguration> resetWorkflowConfiguration(
-      String workflowId,
-      {String? workspaceId}) async {
+      String workflowId) async {
     final response = await client.delete(
         Uri.parse(_userWorkflowUrl(
-            'workflow-configurations/${Uri.encodeComponent(workflowId)}',
-            workspaceId)),
+            'workflow-configurations/${Uri.encodeComponent(workflowId)}')),
         headers: _headers());
     return _configurationResponse(response);
   }
@@ -76,15 +68,13 @@ mixin _CatalogApi on _AxApiClientCore {
         .toList();
   }
 
-  Future<String> loadWorkflowDefault({String? workspaceId}) async =>
-      (await _getJson(
-              Uri.parse(_userWorkflowUrl('workflow-default', workspaceId))))[
-          'defaultWorkflowId'] as String;
+  Future<String> loadWorkflowDefault() async => (await _getJson(
+          Uri.parse(_userWorkflowUrl('workflow-default'))))['defaultWorkflowId']
+      as String;
 
-  Future<String> saveWorkflowDefault(String workflowId,
-      {String? workspaceId}) async {
+  Future<String> saveWorkflowDefault(String workflowId) async {
     final response = await client.put(
-        Uri.parse(_userWorkflowUrl('workflow-default', workspaceId)),
+        Uri.parse(_userWorkflowUrl('workflow-default')),
         headers: _headers(contentType: 'application/json'),
         body: jsonEncode({'defaultWorkflowId': workflowId}));
     return _workflowDefaultResponse(response);

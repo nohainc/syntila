@@ -98,6 +98,7 @@ describe("Work Request mutation coordination", () => {
         mode: "stateless",
         workflowId: "chat",
       });
+      expect(body.workRequest).not.toHaveProperty("primaryWorkspaceId");
       expect(enqueue).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledOnce();
       expect((await requests()).map((r) => r.mode)).toEqual(["stateless"]);

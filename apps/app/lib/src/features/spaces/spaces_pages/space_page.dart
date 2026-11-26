@@ -46,7 +46,7 @@ class SpacePage extends StatelessWidget {
   final VoidCallback? onOpenPeople;
 
   @override
-  Widget build(BuildContext context) => _SpaceWorkspace(
+  Widget build(BuildContext context) => _SpaceView(
         key: ValueKey(space.id),
         space: space,
         dataSource: dataSource,
@@ -66,8 +66,8 @@ class SpacePage extends StatelessWidget {
       );
 }
 
-class _SpaceWorkspace extends StatefulWidget {
-  const _SpaceWorkspace({
+class _SpaceView extends StatefulWidget {
+  const _SpaceView({
     super.key,
     required this.space,
     required this.dataSource,
@@ -108,10 +108,10 @@ class _SpaceWorkspace extends StatefulWidget {
   final VoidCallback? onOpenPeople;
 
   @override
-  State<_SpaceWorkspace> createState() => _SpaceWorkspaceState();
+  State<_SpaceView> createState() => _SpaceViewState();
 }
 
-class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
+class _SpaceViewState extends State<_SpaceView> {
   late List<AxThread> threads;
   List<AxSpaceMember> members = const [];
   List<AxSpaceInvitation> invitations = const [];
@@ -216,7 +216,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   }
 
   @override
-  void didUpdateWidget(_SpaceWorkspace oldWidget) {
+  void didUpdateWidget(_SpaceView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.space.id != widget.space.id) _editing = false;
     if (oldWidget.space.id != widget.space.id ||

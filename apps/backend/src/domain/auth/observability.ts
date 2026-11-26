@@ -26,7 +26,6 @@ const REASONS = new Set([
   "not_authorized",
   "suspended_user",
   "removed_member",
-  "invalid_workspace",
   "invalid_space",
   "unknown",
 ]);
@@ -44,14 +43,13 @@ export type AuthAuditEvent = {
   outcome: AuthAuditOutcome;
   userId?: string | null;
   sessionId?: string | null;
-  workspaceId?: string | null;
   provider?: string;
   reason?: string;
   operation?: string;
 };
 
 /**
- * Authentication events may occur before a Workspace is selected. Keep them
+ * Authentication events are independent of Worker selection. Keep them
  * in a separate, globally queryable table and only persist an allow-listed
  * metadata shape. Tokens, cookies, OAuth responses and credential material
  * never enter this record.
@@ -66,9 +64,6 @@ export async function recordAuthAuditEvent(
   if (event.reason) details.reason = safeAuthReason(event.reason);
   if (event.operation && /^[a-z0-9._-]{1,80}$/.test(event.operation)) {
     details.operation = event.operation;
-  }
-  if (event.workspaceId && /^[a-zA-Z0-9._:-]{1,120}$/.test(event.workspaceId)) {
-    details.workspaceId = event.workspaceId;
   }
   await q.run`
     INSERT INTO auth_audit_events

@@ -571,13 +571,11 @@ export async function rotateCredential(
 export interface AgentPrincipal extends AgentSessionFence {
   actorId: string;
   ownerUserId: string;
-  /** The Workspace the Worker was adopted from (legacy mapping), until P5. */
-  executionWorkspaceId: string | null;
 }
 
 /**
  * Authenticates a connected Agent by its session (the compatibility adapter on
- * the Workspace gateway uses this). The token is compared by digest.
+ * the Worker gateway uses this). The token is compared by digest.
  */
 export async function authenticateAgentSession(
   env: Env,
@@ -595,7 +593,6 @@ export async function authenticateAgentSession(
   return {
     workerInstanceId: input.workerId, sessionId: input.sessionId, epoch: Number(row.epoch),
     actorId: String(row.actor_id), ownerUserId: String(row.owner_user_id),
-    executionWorkspaceId: null,
   };
 }
 

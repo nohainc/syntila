@@ -7,10 +7,10 @@ const schema = JSON.parse(
 );
 const [
   protocolTs,
-  workspaceRuntimeTs,
+  workerAgentTs,
   dart,
   protocolIndex,
-  workspaceRuntimeIndex,
+  workerAgentIndex,
   dartIndex,
   workerPackage,
   workspaceDart,
@@ -22,7 +22,7 @@ const [
   read("packages/worker-agent-protocol/src/index.ts"),
   read("packages/dart/protocol/lib/syntila_protocol.dart"),
   read("packages/syntila_worker_protocol/lib/src/protocol_version.dart"),
-  read("packages/dart/protocol/lib/workspace_runtime_protocol.dart"),
+  read("packages/dart/protocol/lib/worker_agent_protocol.dart"),
 ]);
 
 const retiredSchemaKeys = [
@@ -43,15 +43,15 @@ for (const message of [
   "worker.status",
   "credential.status",
 ]) {
-  if (schema["x-workspace-runtime-protocol"].messageTypes.includes(message)) {
+  if (schema["x-worker-agent-protocol"].messageTypes.includes(message)) {
     throw new Error(
       `canonical schema still defines retired message ${message}`,
     );
   }
 }
-const generatedFiles = [protocolTs, workspaceRuntimeTs, dart];
+const generatedFiles = [protocolTs, workerAgentTs, dart];
 const forbiddenGeneratedTokens = [
-  "AGENT_PROTOCOL_",
+  "const AGENT_PROTOCOL_",
   "agentProtocolName",
   "AGENT_APP_IPC_",
   "WORKER_PLUGIN_",
@@ -77,8 +77,8 @@ for (const code of schema["x-execution-error-codes"]) {
     throw new Error(`generated execution error bindings are missing ${code}`);
   }
 }
-for (const type of schema["x-workspace-runtime-protocol"].messageTypes) {
-  if (!workspaceRuntimeTs.includes(JSON.stringify(type))) {
+for (const type of schema["x-worker-agent-protocol"].messageTypes) {
+  if (!workerAgentTs.includes(JSON.stringify(type))) {
     throw new Error(
       `generated Workspace protocol bindings are missing ${type}`,
     );
@@ -94,7 +94,7 @@ for (const type of schema["x-realtime-events"].durableTypes.concat(
 if (
   protocolIndex.includes("generated-local-protocols") ||
   protocolIndex.includes("AGENT_PROTOCOL_") ||
-  workspaceRuntimeIndex.includes("AGENT_PROTOCOL_") ||
+  workerAgentIndex.includes("AGENT_PROTOCOL_") ||
   dartIndex.includes("generated_local_protocols") ||
   [
     "worker.install",

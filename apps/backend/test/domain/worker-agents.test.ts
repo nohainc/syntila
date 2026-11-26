@@ -341,7 +341,7 @@ describe("session fencing", () => {
     // Only the newer session authenticates and is current.
     expect(await authenticateAgentSession(f.env, { workerId: W1, sessionId: older.sessionId, sessionToken: older.sessionToken })).toBeNull();
     const principal = await authenticateAgentSession(f.env, { workerId: W1, sessionId: newer.sessionId, sessionToken: newer.sessionToken });
-    expect(principal).toMatchObject({ workerInstanceId: W1, epoch: 2, executionWorkspaceId: null });
+    expect(principal).toMatchObject({ workerInstanceId: W1, epoch: 2});
     const q = queryOf(f.db);
     expect(await agentFenceIsCurrent(q, older)).toBe(false);
     expect(await agentFenceIsCurrent(q, newer)).toBe(true);

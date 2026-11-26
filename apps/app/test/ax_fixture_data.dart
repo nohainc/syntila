@@ -224,8 +224,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   Future<AxSpace> createSpace(
           {required String name,
           String? description,
-          String? instructions,
-          String? workspaceId}) async =>
+          String? instructions}) async =>
       AxSpace(
         id: 'space-created',
         name: name,
@@ -588,10 +587,7 @@ class EmptyWorkspaceFixtureDataSource extends AxFixtureDataSource {
 
   @override
   Future<AxSpace> createSpace(
-      {required String name,
-      String? description,
-      String? instructions,
-      String? workspaceId}) async {
+      {required String name, String? description, String? instructions}) async {
     hasSpace = true;
     return AxSpace(
       id: 'space-created',

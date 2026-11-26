@@ -79,7 +79,7 @@ const boundedToken = z
 /** Closed diagnostic context: values are bounded scalars only. */
 export const DiagnosticContextSchema = z
   .object({
-    workspaceVersion: boundedToken.optional(),
+    connectVersion: boundedToken.optional(),
     engineVersion: boundedToken.optional(),
     profileDefinitionId: boundedToken.optional(),
     profileReleaseVersion: z.number().int().positive().optional(),
@@ -150,8 +150,6 @@ export const DiagnosticEventSchema = z
     timestamp: z.string().datetime({ offset: true }),
     requestId: boundedToken.optional(),
     assignmentId: boundedToken.optional(),
-    workspaceId: boundedToken.optional(),
-    workspaceRuntimeId: boundedToken.optional(),
     workerId: boundedToken.optional(),
     workerTypeId: boundedToken.optional(),
     runId: boundedToken.optional(),

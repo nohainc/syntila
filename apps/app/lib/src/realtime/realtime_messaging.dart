@@ -73,7 +73,7 @@ class RealtimeMessaging {
     'taskId',
     'attemptId',
     'assignmentId',
-    'workspaceRuntimeId',
+    'workerId',
   ];
 
   /// Handles one decoded server frame. Frames of another protocol are ignored.

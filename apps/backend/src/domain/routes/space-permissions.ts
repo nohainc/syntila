@@ -112,7 +112,7 @@ const PLUS_WORKFLOW_FEATURES: Readonly<Record<string, PaidFeature>> = {
 
 /**
  * Plan admission for a workflow, for the *requesting* account only: a Space
- * owner's, Workspace owner's or another member's plan never grants it. The
+ * owner's or another member's plan never grants it. The
  * standalone Research and Implement workflows (every version) are gated; Chat
  * and Work are not, nor are workflows that merely contain a research step,
  * such as Full Cycle. Called before

@@ -6,14 +6,12 @@ const boundaryDoc = readFileSync(boundaryDocPath, "utf8");
 
 const requiredContractText = [
   "## 1. AX ↔ Cloud — Human Product Protocol",
-  "## 2. Workspace ↔ Cloud — Workspace Runtime Protocol",
-  "## 3. Workspace ↔ CLI Worker Engine — Local Worker Protocol 4.1",
-  "AX MUST NOT open a Workspace Runtime Protocol connection",
+  "## 2. Connect ↔ Cloud — Worker Agent Protocol",
+  "## 3. Worker ↔ CLI Worker Engine — Local Worker Protocol 4.1",
+  "AX MUST NOT open a Worker Runtime Protocol connection",
   "CLI Worker Engine process",
-  "Local Worker Protocol 4.1: implemented by the Workspace supervisor",
+  "Local Worker Protocol: `packages/syntila_worker_protocol`",
   "## Shared canonical domain vocabulary",
-  "`WorkspaceId`",
-  "`WorkspaceRuntimeId`",
   "`WorkerId`",
   "`WorkerTypeId`",
   "`AssignmentId`",
@@ -23,9 +21,9 @@ const requiredContractText = [
   "`AssignmentStatus`",
   "`ErrorCode`",
   "These are canonical domain concepts, not a shared message envelope.",
-  "apps/app/lib/src/ax/ax_data.dart",
-  "apps/cloud/src/workspace-gateway.ts",
-  "apps/workspace/lib/worker_executor.dart",
+  "apps/app/lib/src/realtime",
+  "apps/backend/src/domain/worker-gateway.ts",
+  "apps/connect/lib/src/cli_engine.dart",
 ];
 
 const missingContractText = requiredContractText.filter(
@@ -48,7 +46,7 @@ const violations = missingContractText.map(
 );
 
 const axRuntimeProtocolPattern =
-  /syntila\.workspace-runtime-protocol|workspaceRuntimeProtocol|WorkspaceRuntimeMessage|workspace-runtime\.ts|@syntila\/workspace-runtime-protocol/i;
+  /syntila\.workspace-runtime-protocol|workerAgentProtocol|WorkerAgentMessage|workspace-runtime\.ts|@syntila\/workspace-runtime-protocol/i;
 const firstPartyProviderPackagePattern = /\b(?:codex|antigravity)\b/i;
 
 for (const file of sourceFiles) {

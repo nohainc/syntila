@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://conclaveax.com/schemas/syntila-message.schema.json",
   "title": "Syntila current shared runtime contracts",
-  "description": "Execution error taxonomy, Workspace Runtime Protocol metadata, and realtime event metadata.",
+  "description": "Execution error taxonomy, Worker Agent protocol metadata, and realtime event metadata.",
   "x-execution-error-codes": [
     "worker_not_ready",
     "cli_not_found",
@@ -37,20 +37,20 @@
     "additional_folders_unsupported": "This Worker cannot use the Space's additional folders yet. Detach the additional folders or choose another Worker.",
     "worker_offline": "The selected Worker is offline. Start its Agent and try again."
   },
-  "x-workspace-runtime-protocol": {
+  "x-worker-agent-protocol": {
     "name": "syntila.worker-agent-protocol",
     "version": "5.1",
     "maxMessageSizeBytes": 4194304,
     "messageTypes": [
-      "workspace.hello",
-      "workspace.hello.ack",
-      "workspace.heartbeat",
-      "workspace.heartbeat.ack",
-      "workspace.sync.request",
-      "workspace.sync.result",
-      "workspace.status",
-      "workspace.readiness",
-      "workspace.update",
+      "agent.hello",
+      "agent.hello.ack",
+      "agent.heartbeat",
+      "agent.heartbeat.ack",
+      "agent.sync.request",
+      "agent.sync.result",
+      "agent.status",
+      "agent.readiness",
+      "agent.update",
       "worker.inventory",
       "thread.status",
       "assignment.start",
@@ -86,8 +86,6 @@
       "payload"
     ],
     "assignmentEnvelopeFields": [
-      "executionWorkspaceId",
-      "workspaceRuntimeId",
       "workerId",
       "runId",
       "taskId",
@@ -114,8 +112,6 @@
       "assignmentId",
       "threadId",
       "attemptId",
-      "workspaceRuntimeId",
-      "workspaceId",
       "stream"
     ],
     "durableTypes": [
@@ -155,9 +151,7 @@
       "discussion.created",
       "discussion.updated",
       "discussion.deleted",
-      "workspace_space_grant.updated",
-      "people.updated",
-      "workspace_invitation.updated"
+      "people.updated"
     ],
     "ephemeralTypes": [
       "assignment.activity",
@@ -165,7 +159,7 @@
       "tool.invocation.status",
       "heartbeat"
     ],
-    "streamKinds": ["execution_workspace", "space", "user", "thread", "worker_inbox", "assignment"],
+    "streamKinds": ["space", "user", "thread", "worker_inbox", "assignment"],
     "collaborationTypes": [
       "space.created",
       "space.updated",
@@ -181,9 +175,7 @@
       "discussion.created",
       "discussion.updated",
       "discussion.deleted",
-      "workspace_space_grant.updated",
-      "people.updated",
-      "workspace_invitation.updated"
+      "people.updated"
     ]
   },
   "x-execution-events": {
@@ -191,8 +183,6 @@
     "protocolVersion": "1.0",
     "schemaVersion": 1,
     "identityFields": [
-      "workspaceId",
-      "workspaceRuntimeId",
       "threadId",
       "workRequestId",
       "runId",

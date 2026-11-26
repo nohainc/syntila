@@ -8,7 +8,7 @@ const schema = JSON.parse(
     "utf8",
   ),
 );
-const workspaceRuntime = schema["x-workspace-runtime-protocol"];
+const workspaceRuntime = schema["x-worker-agent-protocol"];
 const realtime = schema["x-realtime-events"];
 const errorCodes = schema["x-execution-error-codes"];
 const errorMessages = schema["x-execution-error-messages"];
@@ -46,9 +46,9 @@ ${tsErrors}
 ${realtimeTsConstants(realtime)}
 `;
 
-const workspaceRuntimeTs = `// GENERATED FILE. Do not edit by hand.
+const workerAgentTs = `// GENERATED FILE. Do not edit by hand.
 
-${workspaceRuntimeTsConstants(workspaceRuntime)}
+${workerAgentTsConstants(workspaceRuntime)}
 `;
 
 const dartProtocol = `// GENERATED FILE. Do not edit by hand.
@@ -60,7 +60,7 @@ const executionErrorMessages = <String, String>{
 ${errorCodes.map((code) => `  '${code}': '${String(errorMessages[code]).replaceAll("'", "\\'")}',`).join("\n")}
 };
 
-${workspaceRuntimeDartConstants(workspaceRuntime)}
+${workerAgentDartConstants(workspaceRuntime)}
 ${realtimeDartConstants(realtime)}
 `;
 
@@ -68,7 +68,7 @@ const generatedFiles = new Map([
   ["packages/protocol/src/generated.ts", `${protocolTs.trimEnd()}\n`],
   [
     "packages/worker-agent-protocol/src/generated.ts",
-    `${workspaceRuntimeTs.trimEnd()}\n`,
+    `${workerAgentTs.trimEnd()}\n`,
   ],
   [
     "packages/dart/protocol/lib/generated_protocol.dart",
@@ -119,17 +119,17 @@ if (process.argv.includes("--check")) {
   }
 }
 
-function workspaceRuntimeTsConstants(value) {
-  return `export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_NAME = ${JSON.stringify(value.name)} as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_VERSION = ${JSON.stringify(value.version)} as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MAX_MESSAGE_SIZE_BYTES = ${value.maxMessageSizeBytes} as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
+function workerAgentTsConstants(value) {
+  return `export const WORKER_AGENT_PROTOCOL_SCHEMA_NAME = ${JSON.stringify(value.name)} as const;
+export const WORKER_AGENT_PROTOCOL_SCHEMA_VERSION = ${JSON.stringify(value.version)} as const;
+export const WORKER_AGENT_PROTOCOL_SCHEMA_MAX_MESSAGE_SIZE_BYTES = ${value.maxMessageSizeBytes} as const;
+export const WORKER_AGENT_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
 ${jsonItems(value.messageTypes)}
 ] as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
+export const WORKER_AGENT_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
 ${jsonItems(value.baseEnvelopeFields)}
 ] as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_ASSIGNMENT_ENVELOPE_FIELDS = [
+export const WORKER_AGENT_PROTOCOL_SCHEMA_ASSIGNMENT_ENVELOPE_FIELDS = [
 ${jsonItems(value.assignmentEnvelopeFields)}
 ] as const;`;
 }
@@ -158,17 +158,17 @@ ${jsonItems(value.ephemeralTypes)}
 `;
 }
 
-function workspaceRuntimeDartConstants(value) {
-  return `const workspaceRuntimeProtocolSchemaName = '${value.name}';
-const workspaceRuntimeProtocolSchemaVersion = '${value.version}';
-const workspaceRuntimeProtocolSchemaMaxMessageSizeBytes = ${value.maxMessageSizeBytes};
-const workspaceRuntimeProtocolSchemaMessageTypes = <String>{
+function workerAgentDartConstants(value) {
+  return `const workerAgentProtocolSchemaName = '${value.name}';
+const workerAgentProtocolSchemaVersion = '${value.version}';
+const workerAgentProtocolSchemaMaxMessageSizeBytes = ${value.maxMessageSizeBytes};
+const workerAgentProtocolSchemaMessageTypes = <String>{
 ${dartItems(value.messageTypes)}
 };
-const workspaceRuntimeProtocolSchemaBaseEnvelopeFields = <String>[
+const workerAgentProtocolSchemaBaseEnvelopeFields = <String>[
 ${dartItems(value.baseEnvelopeFields)}
 ];
-const workspaceRuntimeProtocolSchemaAssignmentEnvelopeFields = <String>[
+const workerAgentProtocolSchemaAssignmentEnvelopeFields = <String>[
 ${dartItems(value.assignmentEnvelopeFields)}
 ];`;
 }

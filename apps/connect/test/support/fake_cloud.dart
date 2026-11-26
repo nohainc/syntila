@@ -174,8 +174,6 @@ class FakeCloud {
     'messageId': 'cloud-${++_counter}',
     'timestamp': DateTime.now().toUtc().toIso8601String(),
     'type': type,
-    'executionWorkspaceId': 'ws-fake',
-    'workspaceRuntimeId': 'rt-fake',
     'workerId': a.workerId,
     'runId': 'run-${a.id}',
     'taskId': 'task-${a.id}',
@@ -444,8 +442,6 @@ class FakeCloud {
       'protocol': wireProtocol,
       'protocolVersion': wireProtocolVersion,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
-      'executionWorkspaceId': 'ws-fake',
-      'workspaceRuntimeId': 'rt-fake',
     };
     void reply(String replyType, Map<String, Object?> payload) =>
         _sendTo(socket, {
@@ -456,21 +452,21 @@ class FakeCloud {
           'payload': payload,
         });
     switch (type) {
-      case 'workspace.hello':
-        reply('workspace.hello.ack', {
+      case 'agent.hello':
+        reply('agent.hello.ack', {
           'sessionId': socket.sessionId,
           'cloudCapabilities': const <String>[],
         });
-      case 'workspace.heartbeat':
-        reply('workspace.heartbeat.ack', {'acknowledged': true});
-      case 'workspace.sync.request':
+      case 'agent.heartbeat':
+        reply('agent.heartbeat.ack', {'acknowledged': true});
+      case 'agent.sync.request':
         final states = [
           for (final a in assignments.values.where(
             (a) => a.workerId == socket.workerId,
           ))
             {'assignmentId': a.id, 'status': a.status},
         ];
-        reply('workspace.sync.result', {
+        reply('agent.sync.result', {
           'activeAssignmentIds': [
             for (final a in assignments.values)
               if (a.workerId == socket.workerId && !_terminal(a.status)) a.id,

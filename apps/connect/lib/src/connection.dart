@@ -268,21 +268,21 @@ class AgentConnection {
         final message = decodeFrame(raw);
         if (message == null) return;
         final type = message['type'];
-        if (type == 'workspace.hello.ack' &&
+        if (type == 'agent.hello.ack' &&
             message['correlationId'] == helloId &&
             !helloAck.isCompleted) {
           final payload = message['payload'];
           helloAck.complete(
             payload is Map<String, Object?> ? payload : <String, Object?>{},
           );
-        } else if (type == 'workspace.sync.result' &&
+        } else if (type == 'agent.sync.result' &&
             message['correlationId'] == syncId &&
             !syncResult.isCompleted) {
           final payload = message['payload'];
           syncResult.complete(
             payload is Map<String, Object?> ? payload : <String, Object?>{},
           );
-        } else if (type == 'workspace.heartbeat.ack') {
+        } else if (type == 'agent.heartbeat.ack') {
           final payload = message['payload'];
           if (payload is Map && payload['removed'] == true) {
             serverRemoved = true;
@@ -322,9 +322,9 @@ class AgentConnection {
         report =
             null; // an unknown readiness is reported as nothing, not as ready
       }
-      final hello = envelope(_ids, 'workspace.hello', {
+      final hello = envelope(_ids, 'agent.hello', {
         'name': 'syntila-connect',
-        'workspaceVersion': clientVersion,
+        'connectVersion': clientVersion,
         'capabilities': const <String>[],
         if (report != null) 'readiness': report,
       });
@@ -344,7 +344,7 @@ class AgentConnection {
       // 3. Report the journal.
       _set(ConnectionPhase.syncing);
       final unreconciled = await unreconciledIds();
-      final request = envelope(_ids, 'workspace.sync.request', {
+      final request = envelope(_ids, 'agent.sync.request', {
         if (unreconciled.isNotEmpty) 'unreconciledAssignmentIds': unreconciled,
       });
       syncId = request['messageId'] as String;
@@ -370,7 +370,7 @@ class AgentConnection {
         final current = _session;
         if (current == null) return;
         send(
-          envelope(_ids, 'workspace.heartbeat', {
+          envelope(_ids, 'agent.heartbeat', {
             'sessionId': current.sessionId,
             'status': 'online',
             'activeAssignments': activeAssignments,

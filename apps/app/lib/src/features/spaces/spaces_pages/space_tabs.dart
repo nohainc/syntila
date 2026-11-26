@@ -1,6 +1,6 @@
 part of '../spaces_pages.dart';
 
-extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
+extension _SpaceViewTabs on _SpaceViewState {
   Widget _threadsTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     Widget tab(bool active, Widget button) => Semantics(

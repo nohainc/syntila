@@ -11,10 +11,8 @@ import { spaceWorkflowDefault } from "../queries.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 
 /**
- * Workflow configuration without a Workspace (ADR-035). Selections name Worker
- * IDs. Saved configurations that still hold legacy Workspace Worker IDs are
- * translated when read; a Worker that no longer exists is dropped from the
- * selection and reported, never silently replaced.
+ * Workflow configuration selects Worker IDs (ADR-035). A Worker that no longer
+ * exists is dropped from the selection and reported, never silently replaced.
  */
 
 export interface ConfigurationIssue {

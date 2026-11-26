@@ -36,7 +36,6 @@ describe("Research v2 definition", () => {
         workflowVersion: 2,
         workflowSnapshot: definition,
         status: "queued",
-        primaryWorkspaceId: "workspace",
         input: {},
         createdAt: "now",
         updatedAt: "now",
@@ -64,8 +63,7 @@ describe("Research v2 definition", () => {
           stepAdditionalInstructions: {},
         },
       };
-      const policy = { mode: "stateless" as const, primaryWorkspaceId: null };
-      expect(() => validateWorkRequest(request, policy)).not.toThrow();
+      expect(() => validateWorkRequest(request)).not.toThrow();
       for (const step of definition.steps) {
         const bindings = { ...request.snapshot!.resolvedBindings };
         delete bindings[stepInstanceId(step)];
@@ -77,7 +75,6 @@ describe("Research v2 definition", () => {
               ...request,
               snapshot: { ...request.snapshot!, resolvedBindings: bindings },
             },
-            policy,
           ),
         ).toThrow("missing a resolved Step input");
       }
@@ -176,7 +173,6 @@ describe("Research v2 definition", () => {
         workflowVersion: definition.version,
         workflowSnapshot: definition,
         status: "completed",
-        primaryWorkspaceId: null,
         input: {},
         createdAt: "then",
         updatedAt: "then",
@@ -204,12 +200,7 @@ describe("Research v2 definition", () => {
           stepAdditionalInstructions: {},
         },
       };
-      expect(() =>
-        validateWorkRequest(request, {
-          mode: "stateless",
-          primaryWorkspaceId: null,
-        }),
-      ).not.toThrow();
+      expect(() => validateWorkRequest(request)).not.toThrow();
     }
   });
 

@@ -16,12 +16,12 @@ export interface WorkflowSelection {
   readonly catalogRevision?: string;
   /**
    * Local MCP server IDs this Step may expose to its Worker. Absent means the
-   * Workspace's own Worker-type bindings decide; an empty list exposes none.
-   * Names only: the Workspace still requires consent, enablement and a binding.
+   * Worker bindings determine availability; an empty list exposes none.
+   * Names only: execution still requires consent, enablement and a binding.
    */
   readonly mcpTools?: readonly string[];
 }
-/** Server IDs as the Workspace registry accepts them. */
+/** Server IDs accepted by the registry. */
 export const MCP_TOOLS_LIMIT = 8;
 const MCP_SERVER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /**

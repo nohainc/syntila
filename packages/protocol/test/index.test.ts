@@ -9,21 +9,27 @@ import {
 describe("realtime event contract", () => {
   const event = {
     eventId: "event-1",
-    type: "run.completed",
-    version: "1.0",
+    type: "work_request.completed",
+    version: "1.1",
     timestamp: "2026-09-23T10:00:00.000Z",
-    workspaceId: "workspace-1",
     spaceId: "space-1",
+    stream: { kind: "space", id: "space-1" },
     runId: "run-1",
     sequence: 7,
-    payload: { entityId: "run-1", status: "completed", summary: "Done" },
+    payload: {
+      entityId: "run-1",
+      workRequestId: "request",
+      threadId: "thread",
+      status: "completed",
+      summary: "Done",
+    },
   };
   const activity = {
     ...event,
     type: "assignment.activity",
+    threadId: "thread-1",
     assignmentId: "assignment-1",
     attemptId: "attempt-1",
-    workspaceRuntimeId: "runtime-1",
     payload: {
       entityId: "assignment-1",
       workerId: "chatgpt",
@@ -55,7 +61,6 @@ describe("realtime event contract", () => {
   it("accepts scoped Worker-first Work events and rejects missing or mismatched scope", () => {
     const workerEvent = {
       ...event,
-      workspaceId: undefined,
       version: "1.1",
       type: "work_request.completed",
       spaceId: "space-1",
@@ -150,12 +155,9 @@ describe("collaboration streams", () => {
     sequence: 1,
     payload: { entityId: "m", threadId: "w" },
   };
-  it("accepts ID-only collaboration signals with no execution Workspace", () => {
+  it("accepts ID-only collaboration signals", () => {
     expect(parseRealtimeEvent(event)).toEqual(event);
     expect(isDurableRealtimeEventType("discussion.created")).toBe(true);
-    expect(isDurableRealtimeEventType("workspace_space_grant.updated")).toBe(
-      true,
-    );
   });
   it.each([
     { ...event, workspaceId: "same-id" },

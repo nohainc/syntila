@@ -29,12 +29,8 @@ import {
 /**
  * Worker-targeted dispatch (ADR-035). The Worker path of `dispatchTaskAssignment`.
  *
- * An assignment here targets a Worker Instance, not a Workspace:
- *  - the row is created with `execution_path = 'worker'`, no Workspace or
- *    runtime identity, and the acceptance snapshot (migration 0029);
- *  - the command goes to the Worker's inbox (`agent_commands`) in the same
- *    transaction, and is delivered by the Worker gateway keyed by the Worker;
- *  - authority is the Agent session fence (ADR-034), never a Workspace runtime.
+ * An assignment targets a Worker Instance. Its command is recorded in the
+ * Worker's durable inbox and authenticated by its Agent session fence.
  *
  * Offline is a rejection, not a wait: with no live Agent session the request
  * fails with `worker_offline`. There is no queue and no other Worker is tried.
@@ -57,7 +53,6 @@ function failed(error: string, workerId = ""): DispatchAssignmentResult {
     assignmentId: "",
     attemptId: "",
     workerId,
-    workspaceRuntimeId: "",
     workerCatalogId: "",
     status: "failed",
     accepted: false,
@@ -233,7 +228,6 @@ export async function dispatchWorkerAssignment(
         assignmentId: "",
         attemptId: "",
         workerId: "",
-        workspaceRuntimeId: "",
         workerCatalogId: "",
         status: "deferred",
         accepted: false,
@@ -256,7 +250,6 @@ export async function dispatchWorkerAssignment(
         assignmentId,
         attemptId,
         workerId: accepted.workerId,
-        workspaceRuntimeId: "",
         workerCatalogId: accepted.workerTypeId,
         status: "cancelled",
         accepted: false,
@@ -360,7 +353,6 @@ export async function dispatchWorkerAssignment(
       assignmentId,
       attemptId,
       workerId: accepted.workerId,
-      workspaceRuntimeId: "",
       workerCatalogId: accepted.workerTypeId,
       status: "failed",
       accepted: false,
@@ -393,7 +385,6 @@ export async function dispatchWorkerAssignment(
         assignmentId,
         attemptId,
         workerId: accepted.workerId,
-        workspaceRuntimeId: "",
         workerCatalogId: accepted.workerTypeId,
         status: "failed",
         accepted: false,
@@ -414,7 +405,6 @@ export async function dispatchWorkerAssignment(
     assignmentId,
     attemptId,
     workerId: accepted.workerId,
-    workspaceRuntimeId: "",
     workerCatalogId: accepted.workerTypeId,
     status: "dispatched",
     accepted: true,

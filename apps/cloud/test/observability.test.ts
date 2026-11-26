@@ -69,7 +69,6 @@ describe("observability", () => {
     const event = logDiagnosticEvent({
       requestId: "request-1",
       assignmentId: "assignment-1",
-      workspaceId: "workspace-1",
       component: "cloud",
       operation: "assignment",
       stage: "transport",

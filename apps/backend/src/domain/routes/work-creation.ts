@@ -29,7 +29,6 @@ import {
   conversationWorkflowForExecution,
   type WorkRequest,
   type WorkRequestSnapshot,
-  type ThreadExecutionPolicy,
   type BuiltinWorkflowDefinition,
   type WorkflowId,
 } from "@syntila/core";
@@ -48,7 +47,6 @@ import { tryLogTraceEvent } from "../observability.js";
 import {
   HttpError,
   authorizeThreadAccess,
-  eligibilityMessage,
   errorMessage,
   json,
   parseJson,
@@ -646,23 +644,6 @@ export async function createWorkRequestForUser(
     stepAdditionalInstructions,
     promptProfileVersions,
   };
-  const policyRow = await dataOf(env).read.row<ThreadExecutionPolicy>`SELECT mode, NULL::text AS "primaryWorkspaceId" FROM thread_execution_policies WHERE thread_id = ${threadId}`;
-  const policy: ThreadExecutionPolicy =
-    canonicalWorkflow.steps.length === 1
-      ? {
-          mode,
-          primaryWorkspaceId:
-            typeof body.primaryWorkspaceId === "string"
-              ? body.primaryWorkspaceId
-              : null,
-        }
-      : (policyRow ?? {
-          mode,
-          primaryWorkspaceId:
-            typeof body.primaryWorkspaceId === "string"
-              ? body.primaryWorkspaceId
-              : null,
-        });
   const now = new Date().toISOString();
   const conversationWorkflow =
     conversationWorkflowForExecution(workflowId, workflowVersion) ??
@@ -700,16 +681,12 @@ export async function createWorkRequestForUser(
     workflowSnapshot,
     snapshot,
     status: "queued",
-    primaryWorkspaceId:
-      typeof body.primaryWorkspaceId === "string"
-        ? body.primaryWorkspaceId
-        : null,
     input: requestInput,
     createdAt: now,
     updatedAt: now,
   };
   try {
-    validateWorkRequest(workRequest, policy, { workerTargeted: true });
+    validateWorkRequest(workRequest);
   } catch (error) {
     throw new HttpError(
       400,
@@ -762,10 +739,7 @@ export async function createWorkRequestForUser(
   // request, so a saved request is never left unannounced.
   const created = {
     type: "work_request.created",
-    workspaceId: workRequest.primaryWorkspaceId ?? undefined,
-    ...(!workRequest.primaryWorkspaceId
-      ? { stream: { kind: "space" as const, id: spaceId } }
-      : {}),
+    stream: { kind: "space" as const, id: spaceId },
     spaceId,
     runId,
     idempotencyKey: `work-request:${workRequest.id}:created`,
@@ -794,7 +768,6 @@ export async function createWorkRequestForUser(
   tryLogTraceEvent({
     traceStage: "cloud_accepted",
     requestId: workRequest.id,
-    workspaceId: workRequest.primaryWorkspaceId ?? undefined,
     runId,
     durationMs: performance.now() - handlerStartedAt,
     context: { status: "persisted" },

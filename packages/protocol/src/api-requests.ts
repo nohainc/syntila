@@ -19,7 +19,6 @@ export const CreateSpaceSchema = z.object({
   description: z.string().max(2000, "description must be at most 2000 characters").nullish(),
   settings: z.record(z.string(), z.unknown(), { error: "settings must be an object" }).optional(),
   kind: z.literal("group", { error: "Direct Spaces cannot be created manually" }).optional(),
-  workspaceId: z.string({ error: "workspaceId must be a string or null" }).nullish(),
 });
 export type CreateSpaceInput = z.infer<typeof CreateSpaceSchema>;
 
@@ -43,38 +42,6 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
-// ---- Workspace runtime and desktop registration ------------------------------
-// The desktop client reads fixed error JSON from these routes, so the handlers
-// map a rejected body to their own response; the schemas type and bound fields.
-
-const runtimeId = z.string({ error: "must be text" }).max(256).optional();
-
-/** Ownership check, reconcile, disconnect and release (the handler checks which fields are required). */
-export const RuntimeIdentitySchema = z.looseObject({
-  contractVersion: z.string({ error: "contractVersion must be text" }).max(16).optional(),
-  installationId: runtimeId,
-  workspaceId: runtimeId,
-  runtimeId,
-});
-
-/** POST /api/workspace-runtime/register. */
-export const RegisterWorkspaceSchema = z.looseObject({
-  contractVersion: z.string({ error: "contractVersion must be text" }).max(16).optional(),
-  installationId: runtimeId,
-  proposedWorkspaceName: z.string({ error: "must be text" }).max(1000).optional(),
-  hostname: z.string({ error: "must be text" }).max(1000).optional(),
-  platform: z.string({ error: "must be text" }).max(32).optional(),
-  architecture: z.string({ error: "must be text" }).max(32).optional(),
-  appVersion: z.string({ error: "must be text" }).max(128).optional(),
-  runtimeCapabilities: z.record(z.string(), z.unknown(), { error: "runtimeCapabilities must be an object" }).optional(),
-});
-
-/** POST /api/workspace-runtime/{sessions,events,poll,sessions/:id/close}: the ids that authenticate; the rest is read per path. */
-export const RuntimeTransportSchema = z.looseObject({
-  workspaceRuntimeId: runtimeId,
-  sessionId: runtimeId,
-});
-
 // ---- Work requests and the Thread request queue --------------------------------
 // The body is stored on queue rows and replayed later, so unknown keys pass; the
 // fields the handler reads are typed and bounded. A wrong-typed text field used
@@ -87,7 +54,6 @@ const workRequestShape = {
   workflowSnapshot: z.unknown().optional(),
   mode: z.string({ error: "mode must be text" }).max(32).optional(),
   conversationId: z.string({ error: "conversationId must be text" }).max(128).nullish(),
-  primaryWorkspaceId: z.string({ error: "primaryWorkspaceId must be text" }).max(128).nullish(),
   replyTo: z.string({ error: "replyTo must be text" }).max(128).nullish(),
   originalRequest: workRequestText("originalRequest"),
   request: workRequestText("request"),
@@ -124,46 +90,13 @@ export const PluginUploadSchema = z.looseObject({
   signer: z.unknown().optional(),
 });
 
-/** PUT /api/workspaces/:id/worker-plugins/:ref. */
+/** PUT /api/workers/:id/plugin-pin. */
 export const PluginPinSchema = z.looseObject({
   version: z.string({ error: "version must be text" }).max(64).optional(),
   manifestDigest: z.string({ error: "manifestDigest must be text" }).max(128).optional(),
   consentHash: z.string({ error: "consentHash must be text" }).max(128).optional(),
   enabled: z.boolean({ error: "enabled must be true or false" }).optional(),
   shareable: z.boolean({ error: "shareable must be true or false" }).optional(),
-});
-
-/** POST /api/workspace-releases/publish as JSON (the multipart form is read separately). */
-export const PublishReleaseSchema = z.object({
-  version: z.string({ error: "'version' is required" }).max(64).optional(),
-  channel: z.enum(["stable", "beta", "development"], { error: "channel must be stable, beta or development" }).optional(),
-  minSupportedWorkspaceVersion: z.string({ error: "minSupportedWorkspaceVersion must be text" }).max(64).optional(),
-  supportedOS: z.array(z.string().max(32), { error: "supportedOS must be a list" }).max(20).optional(),
-  supportedArch: z.array(z.string().max(32), { error: "supportedArch must be a list" }).max(20).optional(),
-  releaseNotes: z.string({ error: "releaseNotes must be text" }).max(20_000).optional(),
-  packageDigest: z.string({ error: "packageDigest must be text" }).max(128).optional(),
-  signature: z.string({ error: "signature must be text" }).max(4096).optional(),
-  signingKeyId: z.string({ error: "signingKeyId must be text" }).max(128).optional(),
-  // The package itself, base64 (the release publisher script sends it this way).
-  packageBase64: z.string({ error: "packageBase64 must be text" }).optional(),
-});
-
-/** Create a Workspace Grant; the handler rejects unknown keys itself and parses the nested policy fields. */
-export const WorkspaceGrantCreateSchema = z.looseObject({
-  allowedWorkerIds: z.array(z.string().max(128), { error: "allowedWorkerIds must be a list" }).max(200).optional(),
-  allowedPermissions: z.unknown().optional(),
-  networkPolicy: z.unknown().optional(),
-  concurrency: z.unknown().optional(),
-  expiresAt: z.unknown().optional(),
-  confirmContribution: z.boolean({ error: "confirmContribution must be a boolean" }).optional(),
-  workspaceId: z.string({ error: "workspaceId must be text" }).max(128).optional(),
-});
-
-/** Update a Workspace Grant (at least one key, checked by the handler). */
-export const WorkspaceGrantUpdateSchema = z.looseObject({
-  status: z.string({ error: "status must be active or suspended" }).max(32).optional(),
-  expiresAt: z.string({ error: "expiresAt must be text" }).max(64).nullish(),
-  allowedPermissions: z.unknown().optional(),
 });
 
 // ---- Threads, discussion, retry and plan approval ----------------------------
@@ -263,14 +196,6 @@ export const PinOrderSchema = z.object({
   spaceId: z.string({ error: "spaceId is required for threads" }).max(128).optional(),
 });
 
-/** PUT /api/spaces/:id/additional-folders. Same bound as MAX_ATTACHED_FOLDERS. */
-export const AdditionalFoldersSchema = z.strictObject({
-  folderIds: z
-    .array(z.string().regex(/^folder-[a-f0-9]{16}$/))
-    .max(32)
-    .refine((ids) => new Set(ids).size === ids.length),
-});
-
 /** PUT /api/me/privacy. */
 export const ReadReceiptPrivacySchema = z.strictObject({
   shareReadReceipts: z.boolean({ error: "shareReadReceipts must be true or false" }),
@@ -281,66 +206,7 @@ export const WorkflowDefaultSchema = z.strictObject({
   defaultWorkflowId: z.string().min(1).max(64),
 });
 
-/** PUT /api/user|spaces/:id/workflow-workspace; `workspaceId` is checked by the handler (string or null). */
-export const WorkflowWorkspaceSchema = z.strictObject({
-  workspaceId: z.string().max(128).nullable().optional(),
-  confirmReset: z.boolean().optional(),
-  inherit: z.boolean().optional(),
-});
-
-/** POST /api/workspace-releases/:version/revoke and the signing-key revoke: a reason, bounded. */
-export const RevokeReasonSchema = z.object({
-  reason: z.string({ error: "reason must be text" }).max(2000).optional(),
-});
-
-// ---- Workspace routes ------------------------------------------------------
-
-/** PUT /api/workspaces/:id/member-access: the policy itself is parsed deeper by parseWorkspaceMemberAccessPolicy. */
-export const WorkspaceMemberAccessSchema = z.strictObject({
-  restricted: z.boolean({ error: "restricted must be true or false" }),
-  workers: z.record(z.string().max(128), z.unknown(), { error: "workers must be an object" }).optional(),
-  mode: z.string({ error: "mode must be text" }).max(32).optional(),
-});
-
-/** PUT /api/workspaces/:id/member-access/people/:userId. */
-export const WorkspaceMemberOverrideSchema = z.strictObject({
-  workers: z.record(z.string().max(128), z.unknown(), { error: "workers must be an object" }).optional(),
-  mode: z.string({ error: "mode must be text" }).max(32).optional(),
-});
-
-/** PATCH /api/workspaces/:id: at least one option; ranges are checked by the handler. */
-export const UpdateWorkspaceSchema = z.object({
-  name: z.string({ error: "Workspace name must be 1 to 120 characters" }).max(1000).optional(),
-  parallelSlots: z.number({ error: "parallelSlots must be a number" }).optional(),
-  spaceAiChat: z.boolean({ error: "spaceAiChat and spaceAiWork must be booleans" }).optional(),
-  spaceAiWork: z.boolean({ error: "spaceAiChat and spaceAiWork must be booleans" }).optional(),
-});
-
-/** POST /api/workspaces/:id/invitations. */
-export const WorkspaceInvitationSchema = z.strictObject({
-  email: z.string({ error: "An email address is required" }).max(320, "Enter a valid email address"),
-});
-
-/** PUT /api/workspaces/:id/person-grants/:userId/quota. */
-export const PersonGrantQuotaSchema = z
-  .strictObject({
-    maxConcurrentRequests: z.int().min(1).max(10).optional(),
-    maxRunSecondsPerMonth: z.int().min(60).max(31 * 24 * 3600).nullable().optional(),
-  })
-  .refine((body) => Object.keys(body).length > 0, { message: "Provide a limit" });
-
 /** POST /api/work-requests/:id/inputs/:inputId/failed. */
 export const InputUploadFailedSchema = z.object({
-  message: z.string({ error: "message must be text" }).max(2000).optional(),
-});
-
-/** POST /api/workspace-runtime/inputs/:fileId/delivered. */
-export const InputDeliveredSchema = z.object({
-  contentDigest: z.string({ error: "contentDigest must be text" }).max(128).optional(),
-});
-
-/** POST /api/workspace-runtime/inputs/:fileId/attempt. */
-export const InputAttemptSchema = z.object({
-  final: z.boolean({ error: "final must be true or false" }).optional(),
   message: z.string({ error: "message must be text" }).max(2000).optional(),
 });

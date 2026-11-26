@@ -76,7 +76,6 @@ export interface WorkRequest {
   /** Immutable execution and prompt inputs captured when submitted. */
   readonly snapshot?: WorkRequestSnapshot;
   readonly status: WorkRequestStatus;
-  readonly primaryWorkspaceId: string | null;
   readonly input: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -171,12 +170,12 @@ export interface WorkflowExecutionBinding {
   readonly reasoningEffort?: string;
   readonly catalogRevision?: string;
   readonly additionalInstructions?: string;
-  /** Frozen MCP server IDs for this Step; absent = Workspace bindings alone. */
+  /** Frozen MCP server IDs for this Step. */
   readonly mcpTools?: readonly string[];
   /**
    * Worker-targeted execution (ADR-035): what was accepted for this Step
    * (Worker, Actor, Type, Profile digest, model, effort, permissions). Present
-   * only on the Worker path; a Step with it never runs on a Workspace.
+   * only for the selected Worker.
    */
   readonly workerTarget?: Readonly<Record<string, unknown>>;
 }
@@ -193,6 +192,7 @@ export interface ThreadWorkConfig {
 }
 
 export type WorkflowExecutionMode = "stateless_read" | "stateful_thread";
+/** Versioned Workflow snapshots persist this execution-class value. */
 export type WorkflowExecutionClass = "analysis" | "workspace_action";
 export const WORKFLOW_CAPABILITIES = [
   "authorized_context_read",
@@ -623,18 +623,13 @@ export function builtinWorkflowReference(
   return `${definition.id}:v${definition.version}`;
 }
 
-export interface ThreadExecutionPolicy {
-  readonly mode: WorkRequestMode;
-  readonly primaryWorkspaceId: string | null;
-}
-
 export type ThreadExecutionLeaseStatus = "active" | "released" | "expired";
 
 export interface ThreadExecutionLease {
   readonly id: string;
   readonly threadId: string;
   readonly workRequestId: string;
-  readonly workspaceId: string;
+  readonly workerId: string;
   readonly fencingToken: number;
   readonly status: ThreadExecutionLeaseStatus;
   readonly acquiredAt: string;
@@ -788,8 +783,6 @@ export function canManageThread(
 
 export function validateWorkRequest(
   request: WorkRequest,
-  policy: ThreadExecutionPolicy,
-  options: { readonly workerTargeted?: boolean } = {},
 ): void {
   required(request.id, "WorkRequest id");
   required(request.threadId, "WorkRequest threadId");
@@ -841,25 +834,7 @@ export function validateWorkRequest(
       }
     }
   }
-  // Worker-targeted stateful Work runs in a Space folder on a Worker's
-  // computer (ADR-040) and has no Workspace to be primary.
-  if (request.mode === "stateful" && !options.workerTargeted) {
-    if (policy.mode !== "stateful" || !policy.primaryWorkspaceId) {
-      throw new DomainInvariantError(
-        "Stateful WorkRequest requires a Primary Workspace",
-      );
-    }
-    if (!request.primaryWorkspaceId) {
-      throw new DomainInvariantError(
-        "Stateful WorkRequest requires a Primary Workspace",
-      );
-    }
-    if (request.primaryWorkspaceId !== policy.primaryWorkspaceId) {
-      throw new DomainInvariantError(
-        "Stateful WorkRequest must use the Thread Primary Workspace",
-      );
-    }
-  }
+
 }
 
 export function validateBuiltinWorkflowDefinition(

@@ -5,7 +5,6 @@ import {
   authorizeRealtimeScope,
   eventMatchesScope,
   isRealtimeIdentityAuthorized,
-  parseRealtimeClientMessage,
   realtimeAuthenticationError,
   reconnectDelayMs,
   requiresRealtimeReconnect,
@@ -29,41 +28,13 @@ describe("realtime gateway contract", () => {
     expect(realtimeAuthenticationError(identity, "active")).toBeNull();
   });
 
-  it("parses user, Space, and Thread scopes and rejects unknown scopes", () => {
-    expect(
-      parseRealtimeClientMessage({
-        type: "subscribe",
-        scope: { kind: "user" },
-      }),
-    ).toEqual({ type: "subscribe", scope: { kind: "user" } });
-    expect(
-      parseRealtimeClientMessage({
-        type: "subscribe",
-        scope: { kind: "space", spaceId: "space-1" },
-      }),
-    ).toEqual({
-      type: "subscribe",
-      scope: { kind: "space", spaceId: "space-1" },
-    });
+  it("builds stable scope keys", () => {
     expect(scopeKey({ kind: "space", spaceId: "space-1" })).toBe(
       "space=space-1",
     );
     expect(scopeKey({ kind: "thread", threadId: "thread-1" })).toBe(
       "thread=thread-1",
     );
-    expect(
-      parseRealtimeClientMessage({
-        type: "subscribe",
-        scope: { kind: "thread", threadId: "thread-1" },
-      }),
-    ).toEqual({
-      type: "subscribe",
-      scope: { kind: "thread", threadId: "thread-1" },
-    });
-    expect(() =>
-      parseRealtimeClientMessage({ type: "subscribe", scope: {} }),
-    ).toThrow();
-    expect(() => parseRealtimeClientMessage({ type: "unknown" })).toThrow();
   });
 
   it("matches scopes by user, Space, and Thread identity", () => {

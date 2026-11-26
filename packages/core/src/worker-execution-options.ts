@@ -77,7 +77,7 @@ export function validateWorkerExecutionSelection(
   catalogRevision?: string | null,
 ): string | null {
   if (options.schemaVersion === 2 && options.catalogStale)
-    return "Worker capabilities are stale; refresh the Workspace catalog";
+    return "Worker capabilities are stale; refresh the Worker catalog";
   if (
     catalogRevision != null &&
     (options.schemaVersion !== 2 || options.catalogRevision !== catalogRevision)
@@ -88,7 +88,7 @@ export function validateWorkerExecutionSelection(
     options.models.options.length === 0 &&
     options.models.catalogAvailable !== true
   )
-    return "Worker capabilities are unavailable; refresh the Workspace catalog";
+    return "Worker capabilities are unavailable; refresh the Worker catalog";
   if (
     modelId !== null &&
     (!options.models.supported ||

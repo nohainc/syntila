@@ -10,11 +10,11 @@
 export type ExecutionPhase =
   /** Work Request accepted; no assignment exists yet. */
   | "submitted"
-  /** Assignment persisted; waiting for the Workspace Service to be ready. */
+  /** Assignment persisted; waiting for Connect to be ready. */
   | "waiting_for_service"
   /** Command handed to the transport; not yet acknowledged. */
   | "delivering"
-  /** Workspace Service acknowledged the command. */
+  /** Connect acknowledged the command. */
   | "delivered"
   /** Service accepted it and is waiting for a Worker slot. */
   | "queued"
@@ -34,7 +34,7 @@ export type FailureCategory =
   | "worker_unavailable"
   | "capacity_exceeded"
   | "thread_busy"
-  | "workspace_start_failed"
+  | "worker_start_failed"
   | "profile_incompatible"
   | "space_folder_confirmation_required"
   | "provider_start_failed"
@@ -47,14 +47,14 @@ export type FailureCategory =
 export const FAILURE_CATEGORY_MESSAGES: Readonly<
   Record<FailureCategory, string>
 > = {
-  service_unavailable: "Workspace Service is offline",
-  sync_incomplete: "Workspace is reconnecting",
+  service_unavailable: "Connect is offline",
+  sync_incomplete: "Connect is reconnecting",
   worker_unavailable: "Worker is not ready",
   capacity_exceeded:
     "No Worker slot became free in time. Retry when another request finishes",
   thread_busy:
     "The previous request in this Thread was still running, so this one could not start in time. Retry when it finishes.",
-  workspace_start_failed: "The Workspace could not start the request",
+  worker_start_failed: "Connect could not start the request",
   profile_incompatible: "Worker Profile is incompatible",
   space_folder_confirmation_required:
     "A folder with this Space's name already exists and is not empty",
@@ -86,8 +86,8 @@ export const EXECUTION_PHASE_DETAILS: Readonly<
   Record<ExecutionPhase, string | null>
 > = {
   submitted: "Request received by Syntila",
-  waiting_for_service: "Waiting for the Workspace Service to be ready",
-  delivering: "Sending to your Workspace",
+  waiting_for_service: "Waiting for Connect to be ready",
+  delivering: "Sending to your Worker",
   delivered: "Worker accepted the request",
   queued: "All Worker slots are busy; starting when one is free",
   starting: "Starting your worker",
@@ -155,7 +155,7 @@ const STARTING_STARTUP_STAGES = new Set([
 interface ParsedError {
   readonly diagnosticStage: string | null;
   /**
-   * Stage reported by the Workspace Service for its own wait. Only these
+   * Stage reported by Connect for its own wait. Only these
    * fixed identifiers are read; Service text never reaches users.
    */
   readonly serviceWaitStage: "space_wait" | "queue_wait" | null;
@@ -190,7 +190,7 @@ function parseError(errorJson: string | null | undefined): ParsedError {
         diagnosticStage = diagnostic.stage;
       }
       if (
-        diagnostic.component === "workspace_service" &&
+        diagnostic.component === "connect_service" &&
         (diagnostic.stage === "space_wait" || diagnostic.stage === "queue_wait")
       ) {
         serviceWaitStage = diagnostic.stage;
@@ -220,7 +220,7 @@ export function deriveExecutionPhase(
   }
   if (status === "running") return "running";
   if (status === "created")
-    return evidence.cloudQueueReason === "workspace_capacity"
+    return evidence.cloudQueueReason === "worker_capacity"
       ? "queued"
       : "waiting_for_service";
   if (status === "dispatched") return "delivering";
@@ -273,8 +273,8 @@ export function deriveFailureCategory(
     return "space_folder_confirmation_required";
   }
   if (
-    diagnosticStage === "workspace_disconnect" ||
-    diagnosticStage === "workspace_lease" ||
+    diagnosticStage === "connect_disconnect" ||
+    diagnosticStage === "connect_lease" ||
     diagnosticStage === "gateway_dispatch"
   ) {
     return "service_unavailable";
@@ -297,7 +297,7 @@ export function deriveFailureCategory(
       STARTING_STARTUP_STAGES.has(evidence.startupStage));
   if (code === "timeout") {
     if (permitted) return "startup_timeout";
-    // Name the wait only when the Workspace reported it. Cloud does not see
+    // Name the wait only when Connect reported it. Cloud does not see
     // slot usage, so "no slot" is never inferred from a timeout alone.
     if (
       evidence.startupStage === "waiting_for_space" ||
@@ -311,7 +311,7 @@ export function deriveFailureCategory(
       return "capacity_exceeded";
     return "startup_timeout";
   }
-  return permitted ? "provider_start_failed" : "workspace_start_failed";
+  return permitted ? "provider_start_failed" : "worker_start_failed";
 }
 
 /**

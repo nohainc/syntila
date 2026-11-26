@@ -202,7 +202,6 @@ it("assembles Work environment and scoped prerequisite results for the receiving
       environment: {
         spaceId: "P",
         threadId: "W",
-        workspaceId: null,
         spaceInstructions: "Space rules",
       },
       artifacts: [],

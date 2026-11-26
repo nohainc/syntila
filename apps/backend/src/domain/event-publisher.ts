@@ -19,7 +19,6 @@ export interface DomainEventInput {
   readonly eventId?: string;
   readonly idempotencyKey?: string;
   readonly type: string;
-  readonly workspaceId?: string;
   readonly stream?: RealtimeStream;
   readonly threadId?: string;
   /** Trusted route audience captured before a destructive mutation; never a wire field. */
@@ -33,7 +32,6 @@ export interface DomainEventInput {
   readonly taskId?: string;
   readonly attemptId?: string;
   readonly assignmentId?: string;
-  readonly workspaceRuntimeId?: string;
   readonly payload: RealtimeEventPayload;
   readonly durable?: boolean;
   readonly occurredAt?: string;
@@ -61,7 +59,6 @@ export function realtimeEventFromRow(
     type: String(row.event_type),
     version: row.stream_kind ? "1.1" : "1.0",
     timestamp: String(row.occurred_at),
-    ...(row.workspace_id ? { workspaceId: String(row.workspace_id) } : {}),
     ...(row.stream_kind
       ? {
           stream: { kind: row.stream_kind, id: row.stream_id },
@@ -106,7 +103,6 @@ export class CloudEventPublisher implements EventPublisher {
         type: input.type,
         version: input.stream ? "1.1" : "1.0",
         timestamp: occurredAt,
-        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         ...(input.stream ? { stream: input.stream } : {}),
         ...(input.threadId ? { threadId: input.threadId } : {}),
         ...(input.spaceId ? { spaceId: input.spaceId } : {}),
@@ -114,9 +110,6 @@ export class CloudEventPublisher implements EventPublisher {
         ...(input.taskId ? { taskId: input.taskId } : {}),
         ...(input.attemptId ? { attemptId: input.attemptId } : {}),
         ...(input.assignmentId ? { assignmentId: input.assignmentId } : {}),
-        ...(input.workspaceRuntimeId
-          ? { workspaceRuntimeId: input.workspaceRuntimeId }
-          : {}),
         sequence: 0,
         payload: input.payload,
       });
@@ -151,7 +144,6 @@ export class CloudEventPublisher implements EventPublisher {
       type: input.type,
       version: input.stream ? "1.1" : "1.0",
       timestamp: input.occurredAt,
-      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...(input.stream ? { stream: input.stream } : {}),
       ...(input.threadId ? { threadId: input.threadId } : {}),
       ...(input.spaceId ? { spaceId: input.spaceId } : {}),
@@ -159,9 +151,6 @@ export class CloudEventPublisher implements EventPublisher {
       ...(input.taskId ? { taskId: input.taskId } : {}),
       ...(input.attemptId ? { attemptId: input.attemptId } : {}),
       ...(input.assignmentId ? { assignmentId: input.assignmentId } : {}),
-      ...(input.workspaceRuntimeId
-        ? { workspaceRuntimeId: input.workspaceRuntimeId }
-        : {}),
       payload: input.payload,
     };
     // Validate the complete contract before a sequence can be consumed.
@@ -174,30 +163,30 @@ export class CloudEventPublisher implements EventPublisher {
     // writer of one stream takes locks in that order, so a Space deletion and
     // the posts racing it cannot deadlock on the cursor and the Space row.
     const inserted = await dataOf(this.env).tx("event.persist", async (tx) => {
-      await tx.run`INSERT INTO realtime_event_cursors (stream_kind, stream_id, workspace_id, next_sequence)
-           VALUES (${stream.kind}, ${stream.id}, ${input.workspaceId ?? null}, COALESCE(
+      await tx.run`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence)
+           VALUES (${stream.kind}, ${stream.id}, COALESCE(
              (SELECT MAX(sequence) + 1 FROM realtime_events
-              WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}), 1))
+              WHERE stream_kind = ${stream.kind} AND stream_id = ${stream.id}), 1))
            ON CONFLICT DO NOTHING`;
       await tx.run`UPDATE realtime_event_cursors SET next_sequence = next_sequence + 1
-         WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+         WHERE stream_kind = ${stream.kind} AND stream_id = ${stream.id}
            AND NOT EXISTS (SELECT 1 FROM realtime_events
-             WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+             WHERE stream_kind = ${stream.kind} AND stream_id = ${stream.id}
                AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey ?? null}))`;
       await input.mutate?.(tx);
       const row = await tx.row<Record<string, unknown>>`INSERT INTO realtime_events
-         (event_id, workspace_id, space_id, run_id, task_id, attempt_id,
+         (event_id, space_id, run_id, task_id, attempt_id,
           assignment_id, sequence, event_type, payload_json,
           idempotency_key, occurred_at, stream_kind, stream_id, thread_id)
-         SELECT ${input.eventId}, ${input.workspaceId ?? null}, ${input.spaceId ?? null}, ${input.runId ?? null},
+         SELECT ${input.eventId}, ${input.spaceId ?? null}, ${input.runId ?? null},
                 ${input.taskId ?? null}, ${input.attemptId ?? null}, ${input.assignmentId ?? null},
                 cursor.next_sequence - 1,
                 ${input.type}, ${json(input.payload)}, ${input.idempotencyKey ?? null}, ${input.occurredAt}::timestamptz,
                 ${stream.kind}, ${stream.id}, ${input.threadId ?? null}
          FROM realtime_event_cursors AS cursor
-         WHERE cursor.stream_kind = ${stream.kind} AND COALESCE(cursor.stream_id, cursor.workspace_id) = ${stream.id}
+         WHERE cursor.stream_kind = ${stream.kind} AND cursor.stream_id = ${stream.id}
            AND NOT EXISTS (SELECT 1 FROM realtime_events
-             WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+             WHERE stream_kind = ${stream.kind} AND stream_id = ${stream.id}
                AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey ?? null}))
          RETURNING *`;
       // The outbox row commits with the event: a crash after the commit can
@@ -213,7 +202,7 @@ export class CloudEventPublisher implements EventPublisher {
     }
 
     const duplicate = await queryOf(db).row<Record<string, unknown>>`SELECT * FROM realtime_events
-         WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+         WHERE stream_kind = ${stream.kind} AND stream_id = ${stream.id}
            AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey})
          LIMIT 1`;
     if (duplicate)
@@ -340,8 +329,8 @@ export class CloudEventPublisher implements EventPublisher {
        ON CONFLICT (event_id) DO NOTHING`;
     const gaps = await q.rows<{ kind: string; id: string; sequence: number; previous: number }>`SELECT s.kind, s.id, s.sequence, s.previous
        FROM (
-         SELECT e.stream_kind AS kind, COALESCE(e.stream_id, e.workspace_id) AS id, e.sequence,
-                lag(e.sequence) OVER (PARTITION BY e.stream_kind, COALESCE(e.stream_id, e.workspace_id) ORDER BY e.sequence) AS previous
+         SELECT e.stream_kind AS kind, e.stream_id AS id, e.sequence,
+                lag(e.sequence) OVER (PARTITION BY e.stream_kind, e.stream_id ORDER BY e.sequence) AS previous
            FROM realtime_events e
           WHERE e.occurred_at > now() - make_interval(mins => ${windowMinutes}::int)
        ) s

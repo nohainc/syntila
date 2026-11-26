@@ -246,7 +246,6 @@ column issue_reports.request_id text not-null
 column issue_reports.status text not-null
 column issue_reports.updated_at timestamptz not-null default
 column issue_reports.worker_type_id text
-column issue_reports.workspace_id text
 column mutation_receipts.created_at timestamptz not-null default
 column mutation_receipts.idempotency_key text not-null
 column mutation_receipts.request_hash text not-null
@@ -292,10 +291,8 @@ column plan_approvals.created_at timestamptz not-null default
 column plan_approvals.plan_work_request_id text not-null
 column plan_approvals.thread_id text not-null
 column realtime_event_cursors.next_sequence int8 not-null default
-column realtime_event_cursors.stream_id text
-column realtime_event_cursors.stream_key text not-null
-column realtime_event_cursors.stream_kind text not-null default
-column realtime_event_cursors.workspace_id text
+column realtime_event_cursors.stream_id text not-null
+column realtime_event_cursors.stream_kind text not-null
 column realtime_events.assignment_id text
 column realtime_events.attempt_id text
 column realtime_events.event_id text not-null
@@ -306,12 +303,10 @@ column realtime_events.payload_json text not-null
 column realtime_events.run_id text
 column realtime_events.sequence int8 not-null
 column realtime_events.space_id text
-column realtime_events.stream_id text
-column realtime_events.stream_kind text not-null default
+column realtime_events.stream_id text not-null
+column realtime_events.stream_kind text not-null
 column realtime_events.task_id text
 column realtime_events.thread_id text
-column realtime_events.workspace_id text
-column realtime_events.workspace_runtime_id text
 column runs.created_at timestamptz not-null default
 column runs.finished_at timestamptz
 column runs.id text not-null
@@ -526,7 +521,6 @@ column worker_activity_history.tool_id text
 column worker_activity_history.tool_name text
 column worker_activity_history.worker_id text not-null
 column worker_activity_history.worker_instance_id text
-column worker_activity_history.workspace_id text not-null
 column worker_agent_sessions.client_version text not-null default
 column worker_agent_sessions.connected_at timestamptz not-null default
 column worker_agent_sessions.credential_id text not-null
@@ -916,11 +910,8 @@ constraint plan_approvals.plan_approvals_approved_by_user_id_fkey foreign-key ->
 constraint plan_approvals.plan_approvals_pkey primary-key
 constraint plan_approvals.plan_approvals_plan_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint plan_approvals.plan_approvals_thread_id_fkey foreign-key -> threads on-delete-cascade
-constraint realtime_event_cursors.realtime_event_cursors_check check
 constraint realtime_event_cursors.realtime_event_cursors_pkey primary-key
 constraint realtime_event_cursors.realtime_event_cursors_stream_kind_check check
-constraint realtime_events.realtime_events_check check
-constraint realtime_events.realtime_events_check1 check
 constraint realtime_events.realtime_events_payload_json_is_json check
 constraint realtime_events.realtime_events_pkey primary-key
 constraint realtime_events.realtime_events_stream_kind_check check
@@ -1258,7 +1249,6 @@ function worker_instances_close_agent_fn/0
 function worker_instances_create_actor_fn/0
 function worker_instances_guard_fn/0
 function worker_instances_tombstone_actor_fn/0
-function workspace_space_grant_status_transition_valid_fn/0
 index account_execution_waiters.account_execution_waiters_pkey (task_id) unique
 index account_execution_waiters.account_execution_waiters_run_id_fkidx (run_id)
 index account_execution_waiters.account_execution_waiters_work_request_id_fkidx (work_request_id)
@@ -1356,7 +1346,6 @@ index issue_reports.idx_issue_reports_request (request_id,created_at)
 index issue_reports.issue_reports_pkey (id) unique
 index issue_reports.issue_reports_public_reference_key (public_reference) unique
 index issue_reports.issue_reports_reporter_user_id_attempt_key_key (reporter_user_id,attempt_key) unique
-index issue_reports.issue_reports_workspace_id_fkidx (workspace_id)
 index mutation_receipts.mutation_receipts_pkey (user_id,scope,idempotency_key) unique
 index outbox.outbox_due_idx (next_attempt_at) partial
 index outbox.outbox_event_uq (event_id) unique
@@ -1377,13 +1366,11 @@ index person_invitations.person_invitations_pkey (id) unique
 index plan_approvals.plan_approvals_approved_by_user_id_fkidx (approved_by_user_id)
 index plan_approvals.plan_approvals_pkey (plan_work_request_id) unique
 index plan_approvals.plan_approvals_thread_id_fkidx (thread_id)
-index realtime_event_cursors.idx_realtime_event_cursors_stream (stream_kind,(expr)) unique
-index realtime_event_cursors.realtime_event_cursors_pkey (stream_kind,stream_key) unique
+index realtime_event_cursors.realtime_event_cursors_pkey (stream_kind,stream_id) unique
 index realtime_events.idx_realtime_events_assignment_activity (assignment_id,event_type,occurred_at,sequence)
-index realtime_events.idx_realtime_events_stream_idempotency (stream_kind,(expr),idempotency_key) unique
-index realtime_events.idx_realtime_events_stream_seq (stream_kind,(expr),sequence) unique
-index realtime_events.idx_realtime_events_stream_time (stream_kind,(expr),occurred_at)
-index realtime_events.idx_realtime_events_workspace_time (workspace_id,occurred_at)
+index realtime_events.idx_realtime_events_stream_idempotency (stream_kind,stream_id,idempotency_key) unique
+index realtime_events.idx_realtime_events_stream_seq (stream_kind,stream_id,sequence) unique
+index realtime_events.idx_realtime_events_stream_time (stream_kind,stream_id,occurred_at)
 index realtime_events.realtime_events_occurred_idx (occurred_at)
 index realtime_events.realtime_events_pkey (event_id) unique
 index runs.idx_runs_thread (thread_id,created_at)
@@ -1462,7 +1449,6 @@ index work_requests.work_requests_pkey (id) unique
 index work_requests.work_requests_primary_worker_instance_id_fkidx (primary_worker_instance_id)
 index work_requests.work_requests_requested_by_user_id_fkidx (requested_by_user_id)
 index worker_activity_history.idx_worker_activity_history_assignment (assignment_id,occurred_at,provider_sequence)
-index worker_activity_history.idx_worker_activity_history_workspace (workspace_id,occurred_at)
 index worker_activity_history.worker_activity_history_assignment_id_attempt_id_provider_s_key (assignment_id,attempt_id,provider_sequence) unique
 index worker_activity_history.worker_activity_history_assignment_id_attempt_id_source_eve_key (assignment_id,attempt_id,source_event_id) unique
 index worker_activity_history.worker_activity_history_pkey (history_id) unique

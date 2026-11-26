@@ -226,7 +226,7 @@ describe("issue reports", () => {
     const body = (await admin.json()) as {
       report: Record<string, unknown>;
       diagnostics: { data: Record<string, Record<string, unknown>> };
-      investigation: { workspace: Record<string, unknown> };
+      investigation: { connect: Record<string, unknown> };
     };
     expect(body.report).toMatchObject({
       component: "cli_worker_engine",
@@ -235,7 +235,7 @@ describe("issue reports", () => {
     expect(body.diagnostics.data.execution).toMatchObject({
       failureDetail: expect.stringContaining('"providerStarted":false'),
     });
-    expect(body.investigation.workspace).toMatchObject({
+    expect(body.investigation.connect).toMatchObject({
       state: "diagnostics_unavailable",
       reason: "assignment_error_only",
     });
@@ -425,7 +425,7 @@ describe("issue reports", () => {
     };
     expect(detailBody.timeline.length).toBeGreaterThan(0);
     expect(detailBody.investigation.missingEvidence).toContain(
-      "workspace_diagnostics",
+      "connect_diagnostics",
     );
     expect(
       detailBody.investigation.failure.firstSignificantError,

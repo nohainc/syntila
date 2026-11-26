@@ -5,8 +5,8 @@ const root = process.cwd();
 const roots = [
   "apps/app/lib",
   "apps/cloud/src",
-  "apps/cloud/migrations-v8",
-  "apps/workspace/lib",
+  "apps/backend/src",
+  "apps/connect/lib",
   "packages",
 ];
 

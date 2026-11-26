@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { WorkspaceWorkerInventoryEntrySchema } from "@syntila/worker-agent-protocol";
+import { WorkerInventoryEntrySchema } from "@syntila/worker-agent-protocol";
 import {
   modelSelectionVersionMatches,
   type ToolProfileV1,
@@ -55,7 +55,7 @@ export function spaceModelOptions(
   };
   const allowlist = efforts(model.allowlist);
   // A discovery-backed profile has no fallback catalog. The local
-  // Workspace is the authority for the models and effort values available on
+  // Connect reports the models and effort values available on
   // that installation; until it publishes a matching catalog, no choices are
   // exposed to AX.
   let catalog = model.discovery
@@ -75,7 +75,7 @@ export function spaceModelOptions(
       rawCatalog = null;
     }
     const parsedCatalog =
-      WorkspaceWorkerInventoryEntrySchema.shape.modelCatalog.safeParse(
+      WorkerInventoryEntrySchema.shape.modelCatalog.safeParse(
         rawCatalog,
       );
     const discovered = parsedCatalog.success ? parsedCatalog.data : null;
@@ -274,7 +274,7 @@ export function spaceWorkerExecutionOptions(
   let catalogAvailable = false;
   try {
     const parsed =
-      WorkspaceWorkerInventoryEntrySchema.shape.modelCatalog.safeParse(
+      WorkerInventoryEntrySchema.shape.modelCatalog.safeParse(
         typeof discoveredCatalog === "string"
           ? JSON.parse(discoveredCatalog)
           : discoveredCatalog,
@@ -393,7 +393,7 @@ export function pluginExecutionOptions(
     catalog = null;
   }
   const parsed =
-    WorkspaceWorkerInventoryEntrySchema.shape.modelCatalog.safeParse(catalog);
+    WorkerInventoryEntrySchema.shape.modelCatalog.safeParse(catalog);
   const discovered =
     parsed.success &&
     parsed.data?.profileDigest === manifestDigest &&

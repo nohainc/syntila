@@ -101,8 +101,8 @@ class JournalEntry {
   /// that never started; dropped afterwards.
   Map<String, Object?>? command;
 
-  /// The envelope correlation of the command (Workspace, runtime and Worker
-  /// ids plus the run, task, attempt, assignment and idempotency ids). Every
+  /// The envelope correlation of the command (Worker, run, task, attempt,
+  /// assignment and idempotency ids). Every
   /// reply echoes it, so it stays after the assignment is terminal.
   Map<String, Object?> correlation;
 

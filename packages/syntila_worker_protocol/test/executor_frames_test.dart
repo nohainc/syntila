@@ -97,15 +97,15 @@ void main() {
   test('negotiation can select 4.2 when both sides support it', () {
     expect(
       negotiateProtocolVersion(
-        workspaceVersions: ['4.1', '4.2'],
-        workerVersions: ['4.0', '4.1', '4.2'],
+        connectVersions: ['4.1', '4.2'],
+        engineVersions: ['4.0', '4.1', '4.2'],
       ),
       '4.2',
     );
     expect(
       negotiateProtocolVersion(
-        workspaceVersions: ['4.1', '4.2'],
-        workerVersions: ['4.0', '4.1'],
+        connectVersions: ['4.1', '4.2'],
+        engineVersions: ['4.0', '4.1'],
       ),
       '4.1',
     );

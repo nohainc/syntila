@@ -46,7 +46,6 @@ async function seed(status: AssignmentLifecycleStatus = "dispatched") {
   const fence = {
     assignmentId: "A1",
     attemptId: "ATT1",
-    executionWorkspaceId: "WS",
     runtimeIdentityId: "RT",
   };
   const admit = () => transitionAssignment(f.read, { fence, to: "acknowledged" });

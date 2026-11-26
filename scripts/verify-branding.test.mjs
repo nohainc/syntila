@@ -225,9 +225,9 @@ class MyWidget extends StatelessWidget {
     it("flags direct hardcoded hex code #B8A9FE in application code", () => {
       const tempDir = join(tmpdir(), `syntila-test-hardhex-${Date.now()}`);
       try {
-        mkdirSync(join(tempDir, "apps/workspace/lib"), { recursive: true });
+        mkdirSync(join(tempDir, "apps/connect_gui/lib"), { recursive: true });
         writeFileSync(
-          join(tempDir, "apps/workspace/lib/sample_panel.dart"),
+          join(tempDir, "apps/connect_gui/lib/sample_panel.dart"),
           `const brandColor = '#b8a9fe';`,
         );
 

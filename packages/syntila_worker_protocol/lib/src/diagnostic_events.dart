@@ -51,8 +51,6 @@ final class DiagnosticEvent {
     required this.severity,
     this.requestId,
     this.assignmentId,
-    this.workspaceId,
-    this.workspaceRuntimeId,
     this.workerId,
     this.workerTypeId,
     this.runId,
@@ -73,8 +71,6 @@ final class DiagnosticEvent {
     for (final entry in <String?, String>{
       requestId: 'requestId',
       assignmentId: 'assignmentId',
-      workspaceId: 'workspaceId',
-      workspaceRuntimeId: 'workspaceRuntimeId',
       workerId: 'workerId',
       workerTypeId: 'workerTypeId',
       runId: 'runId',
@@ -93,8 +89,6 @@ final class DiagnosticEvent {
     required String severity,
     String? requestId,
     String? assignmentId,
-    String? workspaceId,
-    String? workspaceRuntimeId,
     String? workerId,
     String? workerTypeId,
     String? runId,
@@ -113,8 +107,6 @@ final class DiagnosticEvent {
         severity: severity,
         requestId: requestId,
         assignmentId: assignmentId,
-        workspaceId: workspaceId,
-        workspaceRuntimeId: workspaceRuntimeId,
         workerId: workerId,
         workerTypeId: workerTypeId,
         runId: runId,
@@ -150,8 +142,6 @@ final class DiagnosticEvent {
       timestamp: requiredString('timestamp', maxLength: 64),
       requestId: _optionalString(json, 'requestId'),
       assignmentId: _optionalString(json, 'assignmentId'),
-      workspaceId: _optionalString(json, 'workspaceId'),
-      workspaceRuntimeId: _optionalString(json, 'workspaceRuntimeId'),
       workerId: _optionalString(json, 'workerId'),
       workerTypeId: _optionalString(json, 'workerTypeId'),
       runId: _optionalString(json, 'runId'),
@@ -174,8 +164,6 @@ final class DiagnosticEvent {
   final String timestamp;
   final String? requestId;
   final String? assignmentId;
-  final String? workspaceId;
-  final String? workspaceRuntimeId;
   final String? workerId;
   final String? workerTypeId;
   final String? runId;
@@ -195,9 +183,6 @@ final class DiagnosticEvent {
         'timestamp': timestamp,
         if (requestId != null) 'requestId': requestId,
         if (assignmentId != null) 'assignmentId': assignmentId,
-        if (workspaceId != null) 'workspaceId': workspaceId,
-        if (workspaceRuntimeId != null)
-          'workspaceRuntimeId': workspaceRuntimeId,
         if (workerId != null) 'workerId': workerId,
         if (workerTypeId != null) 'workerTypeId': workerTypeId,
         if (runId != null) 'runId': runId,
@@ -216,7 +201,7 @@ final class DiagnosticEvent {
   /// nested objects are discarded instead of relying on best-effort redaction.
   static Map<String, Object?> sanitizeContext(Map<String, Object?> input) {
     const allowed = {
-      'workspaceVersion',
+      'connectVersion',
       'engineVersion',
       'profileDefinitionId',
       'profileReleaseVersion',

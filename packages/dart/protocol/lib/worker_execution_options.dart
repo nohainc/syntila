@@ -145,7 +145,7 @@ class WorkerSelectionCapability {
   String? validate(ExecutionSelection value) {
     if (state == CapabilityState.loading) return 'Loading Worker capabilities…';
     if (state == CapabilityState.stale)
-      return 'Worker capabilities are stale; refresh the Workspace catalog.';
+      return 'Worker capabilities are stale; refresh the Worker catalog.';
     if (state == CapabilityState.unavailable)
       return 'Model and effort options are unavailable for this Worker.';
     if (value.catalogRevision != null &&

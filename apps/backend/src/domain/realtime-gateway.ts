@@ -30,17 +30,6 @@ export interface RealtimeScope {
   runId?: string;
 }
 
-export type RealtimeClientMessage =
-  | {
-      type: "realtime.hello";
-      lastDurableSequences?: Record<string, number>;
-      lastDurableStreamSequences?: Record<string, number>;
-    }
-  | { type: "ack"; stream: RealtimeStream; sequence: number }
-  | { type: "subscribe"; scope: RealtimeScope }
-  | { type: "unsubscribe"; scope: RealtimeScope }
-  | { type: "ping" };
-
 export interface RealtimeGatewayEnv {
   readonly SYNTILA_DB: Db;
 }
@@ -120,125 +109,6 @@ export function scopeKey(scope: RealtimeScope): string {
   return ["spaceId", "runId"]
     .map((field) => `${field}=${scope[field as keyof RealtimeScope] ?? ""}`)
     .join("&");
-}
-
-export function parseRealtimeClientMessage(
-  input: unknown,
-): RealtimeClientMessage {
-  if (input === null || typeof input !== "object" || Array.isArray(input)) {
-    throw new Error("Realtime client message must be an object");
-  }
-  const value = input as Record<string, unknown>;
-  if (typeof value.type !== "string") {
-    throw new Error("Realtime client message type is required");
-  }
-  if (value.type === "realtime.hello" || value.type === "ping") {
-    if (value.type === "ping") return { type: "ping" };
-    const rawSequences = value.lastDurableSequences;
-    if (
-      rawSequences !== undefined &&
-      (rawSequences === null ||
-        typeof rawSequences !== "object" ||
-        Array.isArray(rawSequences))
-    ) {
-      throw new Error("lastDurableSequences must be an object");
-    }
-    const sequences: Record<string, number> = {};
-    for (const [workspaceId, sequence] of Object.entries(
-      (rawSequences ?? {}) as Record<string, unknown>,
-    )) {
-      if (
-        workspaceId.length === 0 ||
-        typeof sequence !== "number" ||
-        !Number.isInteger(sequence) ||
-        sequence < 0
-      ) {
-        throw new Error(
-          "lastDurableSequences must map Workspace IDs to non-negative integers",
-        );
-      }
-      sequences[workspaceId] = sequence;
-    }
-    const streams: Record<string, number> = {};
-    const rawStreams = value.lastDurableStreamSequences;
-    if (
-      rawStreams !== undefined &&
-      (!rawStreams ||
-        typeof rawStreams !== "object" ||
-        Array.isArray(rawStreams))
-    ) {
-      throw new Error("lastDurableStreamSequences must be an object");
-    }
-    for (const [key, sequence] of Object.entries(
-      (rawStreams ?? {}) as Record<string, unknown>,
-    )) {
-      const parts = JSON.parse(key) as unknown;
-      if (!Array.isArray(parts) || parts.length !== 2)
-        throw new Error("Invalid stream cursor key");
-      const stream = RealtimeStreamSchema.parse({
-        kind: parts[0],
-        id: parts[1],
-      });
-      if (
-        typeof sequence !== "number" ||
-        !Number.isSafeInteger(sequence) ||
-        sequence < 0
-      )
-        throw new Error("Invalid stream sequence");
-      streams[realtimeStreamKey(stream)] = sequence;
-    }
-    return {
-      type: "realtime.hello",
-      ...(Object.keys(streams).length > 0
-        ? { lastDurableStreamSequences: streams }
-        : {}),
-      ...(Object.keys(sequences).length > 0
-        ? { lastDurableSequences: sequences }
-        : {}),
-    };
-  }
-  if (value.type === "ack") {
-    const stream = RealtimeStreamSchema.parse(value.stream);
-    if (
-      typeof value.sequence !== "number" ||
-      !Number.isSafeInteger(value.sequence) ||
-      value.sequence < 0
-    )
-      throw new Error("Invalid acknowledged sequence");
-    return { type: "ack", stream, sequence: value.sequence };
-  }
-  if (value.type !== "subscribe" && value.type !== "unsubscribe") {
-    throw new Error(`Unsupported realtime client message: ${value.type}`);
-  }
-  const rawScope = value.scope;
-  if (
-    rawScope === null ||
-    typeof rawScope !== "object" ||
-    Array.isArray(rawScope)
-  ) {
-    throw new Error("Realtime subscription scope is required");
-  }
-  const scope = rawScope as Record<string, unknown>;
-  if (scope.kind === "user")
-    return { type: value.type, scope: { kind: "user" } };
-  if (
-    scope.kind === "space" ||
-    scope.kind === "thread" ||
-    scope.kind === "run"
-  ) {
-    const idField = `${scope.kind}Id`;
-    if (
-      typeof scope[idField] !== "string" ||
-      (scope[idField] as string).length === 0
-    ) {
-      throw new Error(`Realtime ${scope.kind} scope id is required`);
-    }
-    return {
-      type: value.type,
-      scope: { kind: scope.kind, [idField]: scope[idField] },
-    } as RealtimeClientMessage;
-  }
-  throw new Error("Realtime subscription scope kind is required");
 }
 
 export function reconnectDelayMs(
@@ -608,7 +478,7 @@ export class RealtimeGateway implements DurableObject {
         const space = await this.backingStream(stream);
         if (!space) return 0;
         const row = await dataOf(this.env).read.row<{ head: string | null }>`SELECT MAX(sequence)::text AS head FROM realtime_events
-           WHERE stream_kind = ${space.kind} AND COALESCE(stream_id, workspace_id) = ${space.id}`;
+           WHERE stream_kind = ${space.kind} AND stream_id = ${space.id}`;
         return Number(row?.head ?? 0);
       },
       // Resume from a client's cursor: the kept durable events above it.
@@ -620,7 +490,7 @@ export class RealtimeGateway implements DurableObject {
                   payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId",
                   space_id AS "spaceId", thread_id AS "threadId", task_id AS "taskId", attempt_id AS "attemptId"
              FROM realtime_events
-            WHERE stream_kind = ${backing.kind} AND COALESCE(stream_id, workspace_id) = ${backing.id}
+            WHERE stream_kind = ${backing.kind} AND stream_id = ${backing.id}
               AND event_type <> 'assignment.activity'
               AND (${threadId}::text IS NULL OR thread_id = ${threadId}::text)
               AND sequence > ${afterSequence}::bigint AND sequence <= ${throughSequence}::bigint
@@ -662,7 +532,7 @@ export class RealtimeGateway implements DurableObject {
       ...(event.runId || event.assignmentId ? { correlationId: event.assignmentId ?? event.runId } : {}),
       context: eventContext({
         spaceId: event.spaceId, threadId: event.threadId, runId: event.runId, taskId: event.taskId,
-        attemptId: event.attemptId, assignmentId: event.assignmentId, workspaceRuntimeId: event.workspaceRuntimeId,
+        attemptId: event.attemptId, assignmentId: event.assignmentId,
       }),
       payload: event.payload as Record<string, unknown>,
     });
@@ -883,7 +753,6 @@ export class RealtimeGateway implements DurableObject {
               },
             }
           : {}),
-        ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
         stream: realtimeEventStream(event),
         ...(connected.appliedSequences.has(
           realtimeStreamKey(realtimeEventStream(event)),
@@ -1109,10 +978,10 @@ export class RealtimeGateway implements DurableObject {
     const result = await q.rows<{ streamKind: string; streamId: string | null; head: number }>`SELECT s.stream_kind AS "streamKind", s.stream_id AS "streamId",
               (SELECT MAX(x.sequence) FROM realtime_events x
                 WHERE x.stream_kind = s.stream_kind
-                  AND COALESCE(x.stream_id, x.workspace_id) = s.stream_id) AS head
+                  AND x.stream_id = s.stream_id) AS head
        FROM (
          SELECT DISTINCT e.stream_kind AS stream_kind,
-                COALESCE(e.stream_id, e.workspace_id) AS stream_id
+                e.stream_id AS stream_id
          FROM realtime_events e${audience.join}
          WHERE (${audience.where})
        ) s`;
@@ -1143,7 +1012,7 @@ export class RealtimeGateway implements DurableObject {
       FROM realtime_events e${audience.join}
        WHERE (${audience.where}) AND NOT EXISTS (
       SELECT 1 FROM jsonb_each_text(${cursorJson}::text::jsonb) cursor(key, value)
-      WHERE cursor.key::jsonb = jsonb_build_array(e.stream_kind, COALESCE(e.stream_id, e.workspace_id))
+      WHERE cursor.key::jsonb = jsonb_build_array(e.stream_kind, e.stream_id)
         AND e.sequence <= cursor.value::bigint
     )
        ORDER BY e.occurred_at ASC, e.sequence ASC, e.event_id ASC
@@ -1183,7 +1052,6 @@ export class RealtimeGateway implements DurableObject {
       type: "sync.required",
       reason: "durable_event_gap",
       scope,
-      ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
       stream: realtimeEventStream(event),
       lastDurableSequence: lastSequence,
       nextSequence: event.sequence,

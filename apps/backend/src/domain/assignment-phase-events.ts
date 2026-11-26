@@ -35,7 +35,7 @@ export async function publishAssignmentPhase(
               wa.error_json::text AS "errorJson", wa.run_id AS "runId",
               wt.status AS "taskStatus", wt.step_kind AS "stepKind", wt.step_id AS "stepId",
               wt.work_request_id AS "workRequestId", wt.error AS "taskError",
-              wr.thread_id AS "threadId", NULL::text AS "workspaceId",
+              wr.thread_id AS "threadId",
               th.space_id AS "spaceId"
          FROM worker_assignments wa
          JOIN workflow_tasks wt ON wt.id = wa.task_id
@@ -63,9 +63,7 @@ export async function publishAssignmentPhase(
     });
     await createEventPublisher(env as never).publish({
       type: "step.phase",
-      ...(row.workspaceId
-        ? { workspaceId: String(row.workspaceId) }
-        : { stream: { kind: "space" as const, id: String(row.spaceId) } }),
+      stream: { kind: "space" as const, id: String(row.spaceId) },
       spaceId: String(row.spaceId),
       ...(row.runId ? { runId: String(row.runId) } : {}),
       idempotencyKey: `step-phase:${assignmentId}:${presentation.executionPhase}`,
@@ -86,7 +84,7 @@ export async function publishAssignmentPhase(
   }
 }
 
-/** Commit the mutation and, when a Workspace-backed phase exists, its event together. */
+/** Commit the mutation and, when a Space-scoped phase exists, its event together. */
 export async function withAssignmentPhase<E extends PhaseEnv, T>(
   env: E,
   assignmentId: string,

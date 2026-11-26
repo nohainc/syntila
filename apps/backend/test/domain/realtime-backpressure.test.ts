@@ -1,7 +1,7 @@
 import { pgD1 } from "./helpers/pg-d1";
 import { member as membership, space, user } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { RealtimeGateway, parseRealtimeClientMessage } from "../../src/domain/realtime-gateway.js";
+import { RealtimeGateway } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
 import type { RealtimeEventEnvelope } from "@syntila/protocol";
 
@@ -48,16 +48,6 @@ describe("bounded queue", () => {
     queue.enqueue({ frame: "abc", durable: true });
     queue.clear();
     expect([queue.depth, queue.byteSize]).toEqual([0, 0]);
-  });
-});
-
-describe("acknowledgement message", () => {
-  it("parses a stream acknowledgement and rejects bad ones", () => {
-    expect(
-      parseRealtimeClientMessage({ type: "ack", stream: { kind: "space", id: "s" }, sequence: 4 }),
-    ).toEqual({ type: "ack", stream: { kind: "space", id: "s" }, sequence: 4 });
-    expect(() => parseRealtimeClientMessage({ type: "ack", stream: { kind: "space", id: "s" }, sequence: -1 })).toThrow();
-    expect(() => parseRealtimeClientMessage({ type: "ack", stream: { kind: "nope", id: "s" }, sequence: 1 })).toThrow();
   });
 });
 

@@ -437,51 +437,10 @@ grant IDs, status, permissions, assignments, indexes, and triggers remain.
 Fresh baseline databases need no alignment. Do not replay the baseline or revive
 revoked grants to fix this error.
 
-An older **empty** `worker_assignments` table may still require `worker_id`
-instead of v8 `worker_type_id`, breaking both dispatch and Work history reads.
-Export its schema with `wrangler d1 export --table worker_assignments --no-data`,
-verify the table is empty and no index or trigger depends on obsolete columns,
-then run `node scripts/align-worker-assignment-schema.mjs` and apply the generated
-`.development/align-worker-assignment-schema.sql` once. It adds the current
-required logical Worker catalog reference and removes `worker_id`, `account_id`,
-`checkout_id`, and `execution_lease_id`. It preserves the table identity, inbound
-references, and unrelated indexes. Do not use this empty-table repair on populated
-tables or rewrite failed Work Requests; operators can retry their failed Step.
-Fresh v8 baseline databases require no repair or compatibility migration.
-
-If an older hosted `realtime_events` table lacks `workspace_runtime_id`, live
-event publication fails before WebSocket delivery. Run
-`node scripts/align-realtime-event-schema.mjs` and apply the generated SQL once
-after confirming the column is missing. This adds the current nullable field
-and preserves all events and indexes; new baseline databases already include it.
-Worker HTTP delivery persists queued messages before reporting dispatch
-success. Unacknowledged assignments fail after 30 seconds; acknowledged provider
-execution retains its Step deadline.
-
-## Durable realtime stream alignment
-
-The [1.1 synchronization contract](../specifications/REALTIME_SYNCHRONIZATION.md)
-separates collaboration sequencing from Worker ownership. Fresh v8
-baseline databases include the stream columns and indexes.
-
-For an existing database with Worker-only realtime tables, export/back up the
-`realtime_events` and `realtime_event_cursors` tables first. Confirm that
-`workspace_runtime_id` exists (apply the preceding nullable-field alignment if
-needed) and that `stream_kind` does not yet exist. Run
-`node scripts/align-realtime-stream-schema.mjs` to produce
-`.development/align-realtime-stream-schema.sql`. Inspect it against the hosted
-schema and apply its ordered statements as one transactional D1 batch during a
-publication maintenance window, before deploying the new publisher. Do not
-reapply it to an already aligned database.
-
-The alignment copies all existing events/counters into Worker
-streams and rebuilds the current indexes. It preserves payloads, runtime IDs,
-idempotency keys and sequence counters, including counters ahead of retained
-rows. Verify row counts and counters against the backup before deploying Cloud
-and AX. Restore the backup if alignment fails; do not reset execution sequences.
-The repository's fresh-start baseline remains the canonical schema rather than
-an upgrade migration chain. No deployment or hosted-schema changes happen when
-running the SQL generator.
+Worker assignments and realtime streams are stored by the PostgreSQL backend.
+Apply its forward-only migrations and verify `migrations/schema.lock` using the
+backend deployment procedure; do not apply obsolete D1 table-alignment SQL.
+See [VPS backend](VPS_BACKEND.md) for the current deployment boundary.
 
 ## Space/Thread API cutover and authentication
 

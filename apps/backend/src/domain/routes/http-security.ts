@@ -15,7 +15,6 @@ import {
   hashToken,
   resolveSpaceSecurityContextFromIdentity,
   authorizeSpaceMembership,
-  authorizeWorkspaceOwner,
   authorizeSpaceOwner,
   type Permission,
   type SecurityContext,
@@ -78,23 +77,6 @@ export function json(data: unknown, init?: ResponseInit): Response {
       ...init?.headers,
     },
   });
-}
-
-export async function recordAudit(
-  env: SecurityEnv,
-  context: SecurityContext,
-  action: string,
-  targetType: string,
-  targetId: string,
-  details: Record<string, unknown> = {},
-  _resourceWorkspaceId?: string,
-): Promise<void> {
-  const spaceId =
-    typeof details.spaceId === "string" ? details.spaceId : null;
-  if (!spaceId) return;
-  await dataOf(env).read.run`INSERT INTO space_audit_log
-       (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()})`;
 }
 
 export function errorMessage(error: unknown): string {
@@ -305,7 +287,6 @@ export async function authorizeRequest(
       outcome: "denied",
       userId: context.userId,
       sessionId: context.sessionId,
-      workspaceId: null,
       reason: "not_authorized",
       operation: permission,
     });
@@ -317,45 +298,9 @@ export async function authorizeRequest(
   return context;
 }
 
-export async function requireWorkspaceContext(
-  context: SecurityContext,
-  env: SecurityEnv,
-  workspaceId: string,
-): Promise<void> {
-  try {
-    await authorizeWorkspaceOwner(dataOf(env).read, context, workspaceId);
-  } catch {
-    if (!testAuthenticationEnabled(env))
-      throw new HttpError(404, "Resource not found");
-  }
-}
-
 export function artifactName(value: string | null): string {
   const normalized = (value ?? "artifact").replace(/[^a-zA-Z0-9._-]/g, "_");
   return normalized.slice(0, 160) || "artifact";
-}
-
-export async function workspaceOwnerContext(
-  request: Request,
-  env: SecurityEnv,
-  workspaceId: string,
-  permission: Permission,
-  accessContext?: ExecutionContext,
-  options?: { provisionUser?: boolean },
-): Promise<SecurityContext> {
-  const context = await securityContext(request, env, accessContext, options);
-  try {
-    await authorizeWorkspaceOwner(
-      dataOf(env).read,
-      context,
-      workspaceId,
-      permission,
-    );
-  } catch {
-    if (testAuthenticationEnabled(env)) return context;
-    throw new HttpError(404, "Workspace not found");
-  }
-  return context;
 }
 
 export function securityEnv(env: Env): SecurityEnv {

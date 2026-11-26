@@ -4,14 +4,12 @@ import 'package:test/test.dart';
 void main() {
   test('validates assignment provider failure details', () {
     final envelope = <String, Object?>{
-      'protocol': workspaceRuntimeProtocolName,
-      'protocolVersion': workspaceRuntimeProtocolVersion,
+      'protocol': workerAgentProtocolName,
+      'protocolVersion': workerAgentProtocolVersion,
       'messageId': 'message',
       'timestamp': '2026-01-01T00:00:00Z',
       'type': 'assignment.error',
       for (final field in [
-        'executionWorkspaceId',
-        'workspaceRuntimeId',
         'workerId',
         'runId',
         'taskId',
@@ -29,18 +27,18 @@ void main() {
         }
       },
     };
-    expect(WorkspaceRuntimeMessage.parse(envelope).type, 'assignment.error');
+    expect(WorkerAgentMessage.parse(envelope).type, 'assignment.error');
     final details = envelope['payload'];
     envelope['payload'] = {'providerFailureUnavailable': true};
-    expect(WorkspaceRuntimeMessage.parse(envelope).type, 'assignment.error');
+    expect(WorkerAgentMessage.parse(envelope).type, 'assignment.error');
     envelope['payload'] = {'providerFailureUnavailable': false};
-    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+    expect(() => WorkerAgentMessage.parse(envelope),
         throwsA(isA<ProtocolException>()));
     envelope['payload'] = {
       ...(details as Map<String, Object?>),
       'providerFailureUnavailable': true,
     };
-    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+    expect(() => WorkerAgentMessage.parse(envelope),
         throwsA(isA<ProtocolException>()));
     envelope['payload'] = {
       'providerFailure': {
@@ -49,7 +47,7 @@ void main() {
         'providerErrorText': 'x' * 4097
       }
     };
-    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+    expect(() => WorkerAgentMessage.parse(envelope),
         throwsA(isA<ProtocolException>()));
   });
   test('maps unknown execution errors to the generic failure code', () {
@@ -57,7 +55,7 @@ void main() {
     expect(executionErrorMessage('timeout'), isNotEmpty);
   });
 
-  test('collaboration streams accept 1.1 without an execution Workspace', () {
+  test('collaboration streams accept 1.1 and require a stream', () {
     final event = RealtimeEvent.parse({
       'eventId': 'e',
       'type': 'discussion.created',
@@ -69,11 +67,10 @@ void main() {
       'threadId': 'W',
       'payload': {'entityId': 'm', 'threadId': 'W'},
     });
-    expect(event.workspaceId, isNull);
     expect(event.streamKey, '["space","same"]');
     expect(RealtimeEvent.parse(event.encode()).payload['entityId'], 'm');
     expect(
-        () => RealtimeEvent.parse({...event.toJson(), 'workspaceId': 'same'}),
+        () => RealtimeEvent.parse({...event.toJson()}..remove('stream')),
         throwsA(isA<ProtocolException>()));
     expect(
         () => RealtimeEvent.parse({
@@ -84,33 +81,25 @@ void main() {
     expect(() => RealtimeEvent.parse({...event.toJson(), 'version': '1.0'}),
         throwsA(isA<ProtocolException>()));
   });
-  test('legacy execution events infer an independent stream key', () {
-    final event = RealtimeEvent.parse({
-      'eventId': 'e',
-      'type': 'step.running',
-      'version': '1.0',
-      'timestamp': '2026-10-06T00:00:00.000Z',
-      'workspaceId': 'same',
-      'sequence': 1,
-      'payload': {'workRequestId': 'R', 'threadId': 'W', 'stepKind': 'test'}
-    });
-    expect(event.streamKey, '["execution_workspace","same"]');
-  });
   test('round trips durable and ephemeral realtime events', () {
     final event = RealtimeEvent.parse({
       'eventId': 'event-1',
-      'type': 'run.completed',
-      'version': '1.0',
+      'type': 'work_request.completed',
+      'version': '1.1',
       'timestamp': '2026-09-23T10:00:00.000Z',
-      'workspaceId': 'workspace-1',
+      'stream': {'kind': 'space', 'id': 'space-1'},
+      'spaceId': 'space-1',
       'sequence': 7,
       'payload': <String, Object?>{
-        'entityId': 'run-1',
+        'entityId': 'wr-1',
+        'workRequestId': 'wr-1',
+        'threadId': 'thread-1',
         'status': 'completed',
       },
     });
-    expect(RealtimeEvent.parse(event.encode()).type, equals('run.completed'));
-    expect(durableRealtimeEventTypes, contains('run.completed'));
+    expect(RealtimeEvent.parse(event.encode()).type,
+        equals('work_request.completed'));
+    expect(durableRealtimeEventTypes, contains('work_request.completed'));
     expect(ephemeralRealtimeEventTypes, contains('stream.delta'));
   });
 
@@ -119,10 +108,11 @@ void main() {
     final event = {
       'eventId': 'activity-1',
       'type': 'assignment.activity',
-      'version': '1.0',
+      'version': '1.1',
       'timestamp': '2026-09-23T10:00:00.000Z',
-      'workspaceId': 'workspace-1',
-      'workspaceRuntimeId': 'runtime-1',
+      'stream': {'kind': 'space', 'id': 'space-1'},
+      'spaceId': 'space-1',
+      'threadId': 'thread-1',
       'assignmentId': 'assignment-1',
       'attemptId': 'attempt-1',
       'sequence': 7,
@@ -171,13 +161,13 @@ void main() {
   });
 
   test('validates optional base64 echo on diagnostic.probe messages', () {
-    expect(workspaceProbePayloadCapability, 'workspace.probe_payload.v1');
+    expect(workerAgentProbePayloadCapability, 'agent.probe_payload.v1');
     expect(diagnosticProbeEchoMaxChars, 65536);
 
     Map<String, Object?> envelope(String type, Map<String, Object?> payload) =>
         {
-          'protocol': workspaceRuntimeProtocolName,
-          'protocolVersion': workspaceRuntimeProtocolVersion,
+          'protocol': workerAgentProtocolName,
+          'protocolVersion': workerAgentProtocolVersion,
           'messageId': 'msg-1',
           'timestamp': '2026-10-12T12:00:00.000Z',
           'type': type,
@@ -185,14 +175,14 @@ void main() {
         };
 
     expect(
-      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+      WorkerAgentMessage.parse(envelope('diagnostic.probe', {
         'probeId': 'p1',
         'sentAt': '2026-10-12T12:00:00.000Z',
       })).type,
       'diagnostic.probe',
     );
     expect(
-      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+      WorkerAgentMessage.parse(envelope('diagnostic.probe', {
         'probeId': 'p1',
         'sentAt': '2026-10-12T12:00:00.000Z',
         'echo': 'YWJjZA==',
@@ -200,7 +190,7 @@ void main() {
       'YWJjZA==',
     );
     expect(
-      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe.ack', {
+      WorkerAgentMessage.parse(envelope('diagnostic.probe.ack', {
         'probeId': 'p1',
         'receivedAt': '2026-10-12T12:00:00.000Z',
         'ackedAt': '2026-10-12T12:00:00.001Z',
@@ -217,7 +207,7 @@ void main() {
       42,
     ]) {
       expect(
-        () => WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+        () => WorkerAgentMessage.parse(envelope('diagnostic.probe', {
           'probeId': 'p1',
           'sentAt': '2026-10-12T12:00:00.000Z',
           'echo': invalidEcho,
@@ -225,7 +215,7 @@ void main() {
         throwsA(isA<ProtocolException>()),
       );
       expect(
-        () => WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe.ack', {
+        () => WorkerAgentMessage.parse(envelope('diagnostic.probe.ack', {
           'probeId': 'p1',
           'receivedAt': '2026-10-12T12:00:00.000Z',
           'ackedAt': '2026-10-12T12:00:00.001Z',

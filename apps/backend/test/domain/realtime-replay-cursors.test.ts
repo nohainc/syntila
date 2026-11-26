@@ -43,19 +43,18 @@ async function harness() {
     type = "discussion.updated",
   ) {
     const statement = database.prepare(
-      `INSERT INTO realtime_events (event_id, event_type, payload_json, occurred_at, sequence, stream_kind, stream_id, workspace_id, space_id, thread_id, run_id, idempotency_key)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'S', 'T', 'R', ?1)`,
+      `INSERT INTO realtime_events (event_id, event_type, payload_json, occurred_at, sequence, stream_kind, stream_id, space_id, thread_id, run_id, idempotency_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'S', 'T', 'R', ?1)`,
     );
     for (let sequence = 1; sequence <= count; sequence++) {
       await statement.run(
         `${kind}-${id}-${sequence}`,
-        kind === "execution_workspace" ? "run.completed" : type,
+        type,
         '{"entityId":"message","threadId":"T"}',
         "2026-10-15T00:00:00.000Z",
         sequence,
         kind,
         id,
-        kind === "execution_workspace" ? id : null,
       );
     }
   }

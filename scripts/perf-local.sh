@@ -6,12 +6,12 @@
 #
 # Prerequisite:
 #   Run `pnpm start:local` so the local backend (:8788) and PostgreSQL are up.
-#   Scenario A probes the developer Workspace transport,
-#   Scenario C runs real Chat requests on the developer Workspace and may use provider quota.
-#   Temporary benchmark data is removed on completion.
+#   Scenario A is retired; no Worker Agent delivery probe exists.
+#   Scenario C runs real requests on a Worker and may use provider quota.
+#   A Space with active work is preserved for inspection.
 #
 # Options:
-#   --probes N         Delivery probes per payload size in Scenario A (default 50)
+#   --probes N         Accepted for existing invocations; transport is skipped
 #   --chats N          Sequential real requests in Scenario C (default 1)
 #   --workflow MODE    chat (default) or stateful work
 #   --allow-offline    Allow a request before the Workspace reconnects

@@ -33,11 +33,9 @@ A file that fails under parallel load is re-run once alone; if it then passes it
 | --- | --- |
 | `scripts/start-local-backend.sh` | Local backend on `:8788` with local PostgreSQL. `SYNTILA_FEATURE_FLAGS` defaults to none; the Worker-first flags no longer exist and stop the backend as unknown. |
 | `scripts/regenerate-schema-lock.sh [--check]` | Rebuilds `apps/backend/migrations/schema.lock` from the migrations in a scratch database (`--check` only compares; exit 1 when out of date). Uses the local credentials (`syntila_app` / `devpass`). Never leaves an empty lock file. |
-| `scripts/run-worker-agent.sh <command>` | Runs the Worker Agent CLI from source with its data in `.development/worker-agent` (`install --pairing-code CODE --no-service`, `run`, `status`, `permissions add-folder PATH --write`, ...). |
-| `scripts/rehearse-legacy-cutover.sh` | Applies and rolls back every cutover step on a scratch database and checks each result. |
 | `scripts/cleanup-local-stale-execution.sh` | Clears orphaned leases, never-sent assignments and Agent commands, and stuck queued Work Requests in the local PostgreSQL database. Refuses non-local hosts. |
 
-pnpm aliases: `db:schema-lock`, `db:schema-lock:check`, `worker-agent:run`, `worker-agent:test`, `test:all`, `test:two-node`.
+pnpm aliases include `db:schema-lock`, `db:schema-lock:check`, and `test:two-node`.
 
 ## Local performance (`perf-*.sh`)
 
@@ -47,10 +45,13 @@ pnpm aliases: `db:schema-lock`, `db:schema-lock:check`, `worker-agent:run`, `wor
 | `scripts/perf-local.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and available timing percentiles) without failing on threshold limits. |
 | `scripts/test-perf.sh` | Short perf run with history in `_perf/` and comparison against configured limits. `scripts/test-all.sh --perf` adds it as the last step (opt-in). See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md). |
 
-Options (`--probes N`, `--chats N`, `--workflow chat|work`, `--json out.json`, `--thresholds file.json`, `--no-thresholds`) control the three scenarios:
+Options (`--chats N`, `--workflow chat|work`, `--json out.json`, `--thresholds file.json`, `--no-thresholds`) control the Workflow benchmark and reporting.
 
-1. **Transport (`Scenario A`)**: Calls `POST /api/workspaces/:workspaceId/delivery-probe` on the developer account's live Worker (`0`, `1024`, and `32768` payload bytes) and reports `p50`/`p95`/`p99`/`max` of `roundTripMs` and timeout counts (warns and skips if the Worker is offline or unresponsive).
-2. **Workflows (`Scenario C`)**: Sends real sequential Chat requests through the developer account's connected Worker and ready Worker, reporting completion and persisted startup intervals. This invokes a provider and may consume quota. The temporary Space is removed after completion and preserved if a request times out.
+The retired transport probe is reported as skipped; `--probes` is accepted for
+existing invocations but does not send probes. The Workflow
+scenario sends real sequential Chat requests through a connected Worker and may
+consume provider quota. It removes its temporary Space after completion and
+preserves it if a request times out.
 
 ## Production deploys (`prod-*.sh`)
 

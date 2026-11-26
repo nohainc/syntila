@@ -92,7 +92,6 @@ async function seed(status: string) {
   const fence = {
     assignmentId: "A1",
     attemptId: "ATT1",
-    executionWorkspaceId: "WS",
     runtimeIdentityId: "RT",
   };
   const activeCount = async () =>

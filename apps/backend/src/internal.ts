@@ -81,7 +81,7 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
     const q = dataOf(env).read;
     const rows = await q.rows<Record<string, unknown> & { id: string }>`SELECT u.id,
          (SELECT count(*) FROM space_memberships m WHERE m.user_id = u.id) AS spaces,
-         (SELECT count(*) FROM worker_instances w WHERE w.owner_user_id = u.id AND w.revoked_at IS NULL) AS workspaces,
+         (SELECT count(*) FROM worker_instances w WHERE w.owner_user_id = u.id AND w.revoked_at IS NULL) AS workers,
          (SELECT count(*) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS requests,
          (SELECT count(*) FROM work_requests r WHERE r.requested_by_user_id = u.id AND r.status = 'failed') AS failed_requests,
          (SELECT max(r.created_at) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS last_request_at,

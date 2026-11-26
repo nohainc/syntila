@@ -2,10 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./helpers/vitest-compat";
 
-const httpSecurity = readFileSync(
-  fileURLToPath(new URL("../../src/domain/routes/http-security.ts", import.meta.url)),
-  "utf8",
-);
 const spaces = readFileSync(
   fileURLToPath(new URL("../../src/domain/routes/spaces.ts", import.meta.url)),
   "utf8",
@@ -26,9 +22,9 @@ describe("Space lifecycle integrity", () => {
     );
   });
 
-  it("records Space-scoped audits without requiring a Workspace", () => {
-    expect(httpSecurity).toContain("space_audit_log");
-    expect(httpSecurity).not.toContain(".catch(() => undefined)");
+  it("records Space-scoped audits without swallowing failures", () => {
+    expect(spaces).toContain("space_audit_log");
+    expect(spaces).not.toContain(".catch(() => undefined)");
   });
 
   it("guards duplicate names and invitations across lifecycle changes", () => {

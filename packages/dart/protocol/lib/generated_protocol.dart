@@ -20,41 +20,34 @@ const executionErrorCodes = <String>{
 const executionErrorMessages = <String, String>{
   'worker_not_ready': 'The selected Worker is not ready.',
   'cli_not_found': 'The required local CLI could not be found.',
-  'authentication_required':
-      'Sign in to the configured provider on this computer.',
-  'unsupported_cli_version':
-      'The installed local CLI version is not supported.',
+  'authentication_required': 'Sign in to the configured provider on this computer.',
+  'unsupported_cli_version': 'The installed local CLI version is not supported.',
   'model_not_supported': 'The selected model is not supported by this Worker.',
-  'permission_denied':
-      'A local permission required for this assignment was denied.',
-  'space_folder_exists':
-      'A folder with this Space\'s name already exists on this computer and is not empty. Confirm to use it.',
+  'permission_denied': 'A local permission required for this assignment was denied.',
+  'space_folder_exists': 'A folder with this Space\'s name already exists on this computer and is not empty. Confirm to use it.',
   'quota_exhausted': 'The provider\'s usage limit has been reached.',
   'provider_unavailable': 'The provider is temporarily unavailable.',
   'timeout': 'The assignment exceeded its time limit.',
   'cancelled': 'The assignment was cancelled.',
   'execution_failed': 'The assignment could not be completed.',
-  'context_limit_exceeded':
-      'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
-  'additional_folders_unsupported':
-      'This Worker cannot use the Space\'s additional folders yet. Detach the additional folders or choose another Worker.',
-  'worker_offline':
-      'The selected Worker is offline. Start its Agent and try again.',
+  'context_limit_exceeded': 'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
+  'additional_folders_unsupported': 'This Worker cannot use the Space\'s additional folders yet. Detach the additional folders or choose another Worker.',
+  'worker_offline': 'The selected Worker is offline. Start its Agent and try again.',
 };
 
-const workspaceRuntimeProtocolSchemaName = 'syntila.worker-agent-protocol';
-const workspaceRuntimeProtocolSchemaVersion = '5.1';
-const workspaceRuntimeProtocolSchemaMaxMessageSizeBytes = 4194304;
-const workspaceRuntimeProtocolSchemaMessageTypes = <String>{
-  'workspace.hello',
-  'workspace.hello.ack',
-  'workspace.heartbeat',
-  'workspace.heartbeat.ack',
-  'workspace.sync.request',
-  'workspace.sync.result',
-  'workspace.status',
-  'workspace.readiness',
-  'workspace.update',
+const workerAgentProtocolSchemaName = 'syntila.worker-agent-protocol';
+const workerAgentProtocolSchemaVersion = '5.1';
+const workerAgentProtocolSchemaMaxMessageSizeBytes = 4194304;
+const workerAgentProtocolSchemaMessageTypes = <String>{
+  'agent.hello',
+  'agent.hello.ack',
+  'agent.heartbeat',
+  'agent.heartbeat.ack',
+  'agent.sync.request',
+  'agent.sync.result',
+  'agent.status',
+  'agent.readiness',
+  'agent.update',
   'worker.inventory',
   'thread.status',
   'assignment.start',
@@ -80,7 +73,7 @@ const workspaceRuntimeProtocolSchemaMessageTypes = <String>{
   'mcp.inventory',
   'input.available',
 };
-const workspaceRuntimeProtocolSchemaBaseEnvelopeFields = <String>[
+const workerAgentProtocolSchemaBaseEnvelopeFields = <String>[
   'protocol',
   'protocolVersion',
   'messageId',
@@ -89,9 +82,7 @@ const workspaceRuntimeProtocolSchemaBaseEnvelopeFields = <String>[
   'type',
   'payload',
 ];
-const workspaceRuntimeProtocolSchemaAssignmentEnvelopeFields = <String>[
-  'executionWorkspaceId',
-  'workspaceRuntimeId',
+const workerAgentProtocolSchemaAssignmentEnvelopeFields = <String>[
   'workerId',
   'runId',
   'taskId',
@@ -116,12 +107,9 @@ const realtimeEventOptionalEnvelopeFields = <String>[
   'assignmentId',
   'threadId',
   'attemptId',
-  'workspaceRuntimeId',
-  'workspaceId',
   'stream',
 ];
 const realtimeStreamKinds = <String>{
-  'execution_workspace',
   'space',
   'user',
   'thread',
@@ -143,9 +131,7 @@ const collaborationRealtimeEventTypes = <String>{
   'discussion.created',
   'discussion.updated',
   'discussion.deleted',
-  'workspace_space_grant.updated',
   'people.updated',
-  'workspace_invitation.updated',
 };
 const durableRealtimeEventTypes = <String>{
   'work_request.created',
@@ -184,9 +170,7 @@ const durableRealtimeEventTypes = <String>{
   'discussion.created',
   'discussion.updated',
   'discussion.deleted',
-  'workspace_space_grant.updated',
   'people.updated',
-  'workspace_invitation.updated',
 };
 const ephemeralRealtimeEventTypes = <String>{
   'assignment.activity',

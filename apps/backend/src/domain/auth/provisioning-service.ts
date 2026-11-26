@@ -3,8 +3,7 @@ import type { AuthenticatedIdentity } from "./identity-service.js";
 
 /**
  * Initialize Syntila application state after Better Auth has authenticated
- * the human. Workspace registration is not created as a side effect of
- * sign-in; Workspace creation is an explicit user action.
+ * the human. Worker registration is a separate user action.
  */
 // Tokens arrive on every request; provisioning writes at most every 5 minutes
 // per user and process (and immediately when the token's name/email change).

@@ -137,12 +137,10 @@ export function logDiagnosticEvent(
     {
       requestId: event.requestId,
       eventId: event.eventId,
-      workspaceId: event.workspaceId,
       runId: event.runId,
       taskId: event.taskId,
       attemptId: event.attemptId,
       assignmentId: event.assignmentId,
-      workspaceRuntimeId: event.workspaceRuntimeId,
       workerId: event.workerId,
     },
     { event },

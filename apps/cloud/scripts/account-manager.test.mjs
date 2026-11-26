@@ -49,15 +49,17 @@ test("list merges usage and plans from the backend, and degrades without it", as
   const backend = async (_config, path, body) => {
     assert.equal(path, "/internal/admin/accounts/stats");
     assert.deepEqual(body.ids.sort(), ["one", "two"]);
-    return { stats: { one: { spaces: 2, requests: 5, plan: "paid", plan_management: "provider" } } };
+    return { stats: { one: { spaces: 2, workers: 3, requests: 5, plan: "paid", plan_management: "provider" } } };
   };
   const { users, warning } = await handle({ environment: "local", action: "list" }, sqliteQuery(db), fetch, backend);
   const one = users.find((u) => u.id === "one");
   assert.equal(one.spaces, 2);
+  assert.equal(one.workers, 3);
   assert.equal(one.plan, "paid");
   assert.equal(one.plan_management, "provider");
   assert.equal(one.email, "one@example.com");
   assert.equal(users.find((u) => u.id === "two").plan, "free");
+  assert.equal(users.find((u) => u.id === "two").workers, 0);
   assert.equal(users.find((u) => u.id === "two").plan_management, "manual");
   assert.equal(warning, undefined);
   const offline = await handle({ environment: "local", action: "list" }, sqliteQuery(db), fetch, async () => { throw new Error("HTTP 503"); });

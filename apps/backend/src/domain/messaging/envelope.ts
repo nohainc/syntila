@@ -24,7 +24,7 @@ export interface MessagingEnvelope {
   readonly correlationId?: string;
   /**
    * The entities the event belongs to (`spaceId`, `threadId`, `runId`, `taskId`,
-   * `attemptId`, `assignmentId`, `workspaceRuntimeId`), as ids only. Routing
+   * `attemptId`, `assignmentId`, `workerId`), as ids only. Routing
    * information for clients; it grants nothing.
    */
   readonly context?: Record<string, string>;

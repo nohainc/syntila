@@ -33,7 +33,7 @@ const FEATURE_LABELS: Record<PaidFeature, string> = {
 /**
  * Concurrent AI executions a Free requester may have. Plus has no
  * subscription-based cap. An execution is one non-terminal Worker Assignment
- * attributed to the authenticated requester (never the Workspace owner): the
+ * attributed to the authenticated requester (never the Worker owner): the
  * slot is taken by the assignment INSERT and freed only by a terminal status,
  * so a revocation that is not yet confirmed keeps holding it.
  */
@@ -256,7 +256,7 @@ const ENTITLED_STATUSES = new Set<AccountPlanStatus>([
 
 /**
  * SQL condition that `ownerColumn` is on the paid tier now; it mirrors
- * [effectiveTier] for queries that join many owners. Lent Workspaces are
+ * [effectiveTier] for queries that join many owners. Shared Workers are
  * honored only while it holds, so a lapsed plan pauses sharing without
  * deleting grants, and renewing restores it.
  */
@@ -269,7 +269,7 @@ export function paidOwnerSql(ownerColumn: string): string {
 }
 
 /**
- * SQL condition that the Workspace owner column currently holds the custom
+ * SQL condition that the Worker owner column currently holds the custom
  * plugin entitlement (ADR-027). It is `paidOwnerSql`, named for its purpose so
  * every plugin call site reads the same and a feature split later changes one
  * place. Evaluated live, so a lapse by `current_period_end` needs no event.

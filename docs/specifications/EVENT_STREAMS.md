@@ -2,6 +2,13 @@
 
 Implements ADR-033 (Worker-first P2). Related: `REALTIME_SYNCHRONIZATION.md` (client protocol), `docs/decisions/ADR-033-durable-events-outbox-and-command-inbox.md`.
 
+Migration `0050_remove_workspace_columns.sql` removes the retired
+`execution_workspace` streams and their outbox rows, and retains the current
+user, Space, Thread, Worker inbox and assignment streams. Deploy the matching
+backend and Connect protocol changes together; older peers using the retired
+envelope fields are incompatible. The sections below that describe the retired
+stream need the documentation sweep tracked in F6.
+
 ## The rule: commit first, notify second
 
 A durable event is written in **one PostgreSQL transaction** together with the domain change it describes:

@@ -282,8 +282,6 @@ export async function handleCreateSpace(
     typeof settings.showAiHistory !== "boolean"
   )
     throw new HttpError(400, "showAiHistory must be a boolean");
-  // The Workspace is an explicit choice per Space (or none); Spaces never
-  // receive a Workspace implicitly.
   const now = new Date().toISOString();
   const id = `space-${crypto.randomUUID()}`;
 

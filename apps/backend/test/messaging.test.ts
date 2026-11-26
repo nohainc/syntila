@@ -65,7 +65,7 @@ test("a subscription is checked once and removed the moment access is revoked", 
 test("the bridge maps unified commands to legacy messages and back, without trusting client ids", () => {
   const f = parseCommandFrame(frame({ payload: { assignmentId: "a1", attemptId: "t1", accepted: true } }));
   const legacy = commandToLegacy(f, "worker:w1", { protocolName: "p", protocolVersion: "5.1" });
-  expect(legacy).toMatchObject({ type: "assignment.ack", assignmentId: "a1", attemptId: "t1", executionWorkspaceId: "worker:w1", payload: { accepted: true } });
+  expect(legacy).toMatchObject({ type: "assignment.ack", assignmentId: "a1", attemptId: "t1", payload: { accepted: true } });
   const out = legacyToEnvelope({ type: "assignment.cancel", assignmentId: "a1", messageId: "m1", payload: { reason: "x" } }, "w1");
   expect(out).toMatchObject({ protocol: MESSAGING_PROTOCOL, eventId: "m1", stream: { kind: "assignment", id: "a1" }, payload: { reason: "x", assignmentId: "a1" } });
 });
@@ -116,7 +116,7 @@ test("a cursor resumes from the events it missed, or falls back to a snapshot", 
 test("parity: every bridged command round-trips between the legacy frame and the unified envelope", () => {
   const legacy = { protocolName: "syntila.workspace-runtime", protocolVersion: "4.1" };
   const commands = [
-    ["session.hello", "workspace.hello"], ["session.heartbeat", "workspace.heartbeat"], ["session.sync", "workspace.sync.request"],
+    ["session.hello", "agent.hello"], ["session.heartbeat", "agent.heartbeat"], ["session.sync", "agent.sync.request"],
     ["assignment.ack", "assignment.ack"], ["assignment.start.ack", "assignment.start.ack"],
     ["assignment.start.permit", "assignment.start.permit.request"], ["assignment.result", "assignment.result"],
     ["assignment.error", "assignment.error"], ["assignment.cancelled", "assignment.cancelled"], ["assignment.cancel.ack", "assignment.cancel.ack"],

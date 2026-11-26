@@ -1197,4 +1197,4 @@ Every Workflow step must name an explicit Worker from that Worker; Cloud never
 selects a replacement Worker. A confirmed Worker change
 resets scope preferences but leaves accepted execution snapshots and retries
 unchanged. Worker selection, grant authorization, and migration 0022 are
-specified in [User Workflow Configuration v1](USER_WORKFLOW_CONFIGURATION_V1.md#workspace-selection).
+specified in [User Workflow Configuration v1](USER_WORKFLOW_CONFIGURATION_V1.md#worker-selection).

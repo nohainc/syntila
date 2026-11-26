@@ -39,8 +39,6 @@ export interface AssignmentFence {
   assignmentId: string;
   /** Rejects messages from a previous attempt of the same task. */
   attemptId?: string;
-  /** Rejects messages from another Workspace. */
-  executionWorkspaceId?: string;
   /** Rejects messages from a previous or revoked runtime identity. */
   runtimeIdentityId?: string;
   /**
@@ -81,7 +79,7 @@ export type AssignmentTransitionOutcome =
   | "superseded"
   /** The assignment is terminal and immutable. */
   | "terminal"
-  /** The row exists but belongs to another attempt, runtime or Workspace. */
+  /** The row exists but belongs to another attempt or Worker. */
   | "stale"
   | "not_found";
 

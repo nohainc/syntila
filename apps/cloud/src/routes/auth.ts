@@ -284,7 +284,7 @@ export async function handleDesktopPasswordSignIn(
         method: "POST",
         headers,
         body: JSON.stringify({
-          clientName: "Syntila Headless Workspace",
+          clientName: "Syntila Connect",
           contractVersion: "1.1",
         }),
       }),

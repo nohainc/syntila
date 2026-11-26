@@ -24,7 +24,7 @@ export interface ConversationSessionCapabilities {
   readonly compatibleProfileVersions: readonly number[];
 }
 
-/** Native handles stay with Workspace; the router needs only logical metadata. */
+/** Native handles stay on the Worker computer; the router needs only logical metadata. */
 export type RoutableWorkerSession = Omit<WorkerSession, "nativeSessionId"> & {
   readonly nativeSessionAvailable: boolean;
 };

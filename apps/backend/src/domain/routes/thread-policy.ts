@@ -1,16 +1,5 @@
 import { dataOf } from "../../platform/data.js";
-import { stepInstanceId, type ModelIdentityCatalog } from "@syntila/core";
 import { loadSpacePermissions } from "./space-permissions.js";
-import {
-  pluginExecutionOptions,
-  spaceWorkerExecutionOptions,
-} from "../worker-execution-options.js";
-import {
-  canRevalidateAcceptedSelection,
-  supportsPluginExecutor,
-} from "../execution-selection-snapshot.js";
-import { paidOwner } from "../account-plan.js";
-import { PluginInventoryExecutorSchema } from "@syntila/worker-agent-protocol";
 import {
   AuthorizationError,
   authorizeSpaceMembership,
@@ -19,7 +8,6 @@ import {
   type SecurityContext,
 } from "@syntila/security";
 import {
-  validateWorkerExecutionSelection,
   canDiscussThread,
   canExecuteThread,
   canManageThread,
@@ -28,12 +16,9 @@ import {
   type SpaceKind,
   type SpaceMembership,
   type Thread,
-  type BuiltinWorkflowDefinition,
   type WorkflowId,
   WORKFLOW_IDS,
   THREAD_BINDING_IDS,
-  validateWorkspaceGrantPermissions,
-  validateWorkspaceGrantWorkerIds,
 } from "@syntila/core";
 
 import type { SecurityEnv } from "./http-security.js";
@@ -230,10 +215,6 @@ export function threadMetadata(
       ),
       viewerUserId,
     ),
-    primaryWorkspace:
-      accessPolicy.primaryWorkspaceId ??
-      accessPolicy.primary_workspace_id ??
-      null,
     queueStatus: "Idle",
     hasActiveWork: Number(row.hasActiveWork) === 1,
     hasUnread: Number(row.hasUnread) === 1,
@@ -420,74 +401,6 @@ async function threadAccessForContext(
   if (!allowed) throw new HttpError(403, `Thread ${access} access is required`);
   return { context, thread, spaceId: String(row.spaceId) };
 }
-
-export type WorkEligibilityIssue = {
-  stepKind: string;
-  workerTypeId: string | null;
-  code: string;
-  message: string;
-};
-
-export function eligibilityMessage(
-  stepKind: string,
-  workerTypeId: string | null,
-  code: string,
-  readinessIssueCode?: string | null,
-  displayName?: string | null,
-): string {
-  const step = stepKind[0]?.toUpperCase() + stepKind.slice(1);
-  const worker =
-    displayName?.trim() || (workerTypeId ? "Selected Worker" : "Worker");
-  if (code === "binding_missing") return `${step}: choose a Worker.`;
-  if (code === "worker_missing")
-    return `${step}: the selected Worker is no longer available.`;
-  if (code === "space_workspace_grant_missing")
-    return `${step}: select this Worker's Workspace in the Space Workflows tab.`;
-  if (code === "worker_disabled") return `${step}: ${worker} is disabled.`;
-  if (code === "worker_not_ready") {
-    if (
-      readinessIssueCode === "sign_in_required" ||
-      readinessIssueCode === "provider_authentication_required"
-    ) {
-      return `${step}: ${worker} needs sign-in.`;
-    }
-    return `${step}: ${worker} is not Ready${readinessIssueCode ? ` (${readinessIssueCode.replaceAll("_", " ")})` : ""}.`;
-  }
-  if (code === "worker_catalog_unavailable")
-    return `${step}: this Worker is no longer available in the Workspace catalog.`;
-  if (code === "plugin_entitlement_required")
-    return `${step}: ${worker} is a custom plugin and needs an active Syntila Plus plan.`;
-  if (code === "plugin_not_enabled")
-    return `${step}: ${worker} is not enabled on this Workspace.`;
-  if (code === "plugin_digest_not_pinned")
-    return `${step}: ${worker} changed since it was enabled; enable the current version again.`;
-  if (code === "worker_engine_update_required")
-    return `${step}: ${worker} needs a newer Syntila Workspace (Engine 1.4.0 or newer).`;
-  if (code === "worker_scheduling_disabled")
-    return `${step}: ${worker} is not enabled for scheduling.`;
-  if (code === "permission_not_granted")
-    return `${step}: the Space Workspace grant does not allow the access this Step needs.`;
-  if (code === "worker_not_allowed_by_grant")
-    return `${step}: this Worker is not included in the Space Workspace grant.`;
-  if (code === "worker_type_not_allowed_by_thread")
-    return `${step}: this Worker type is not allowed by the Thread execution policy.`;
-  if (code === "workspace_offline")
-    return `${step}: the Worker's Workspace is offline.`;
-  if (code === "workspace_mismatch")
-    return `${step}: all Steps in this Workflow must use Workers from the same Workspace.`;
-  if (code === "workspace_not_primary")
-    return `${step}: the Worker must be on this Thread's primary Workspace.`;
-  if (code === "engine_profile_unavailable")
-    return `${step}: the Worker has no compatible Engine and Tool Profile release.`;
-  if (code === "model_not_allowed")
-    return `${step}: the selected model is not allowed by this Thread.`;
-  if (code === "model_required")
-    return `${step}: choose a model allowed by this Thread.`;
-  if (code === "runtime_coordinator_unavailable")
-    return "Thread execution coordination is unavailable. Try again later.";
-  return `${step}: ${worker} is not eligible to run this Work.`;
-}
-
 
 export function summarizeTestCounts(text: string): string | null {
   const counts: string[] = [];

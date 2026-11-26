@@ -46,13 +46,6 @@ class AxWorkerVisibility {
       hiddenEfforts[worker]?[model]?.contains(effort) ?? false;
 }
 
-abstract interface class AxWorkerVisibilityDataSource {
-  Future<AxWorkerVisibility> loadWorkerVisibility(String workspaceId);
-  Future<AxWorkerVisibility> saveWorkerVisibility(
-      String workspaceId, AxWorkerVisibility preferences);
-  Future<AxWorkerVisibility> resetWorkerVisibility(String workspaceId);
-}
-
 /// Display-only view over an already authorized catalog. The original catalog
 /// remains authoritative for validation and retains all capability metadata.
 class AxWorkerVisibilityProjection {

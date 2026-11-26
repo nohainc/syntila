@@ -10,7 +10,7 @@ mkdir -p "$ROOT/_perf"
 commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo nogit)"
 out="$ROOT/_perf/$(date +%Y-%m-%dT%H%M%S)-$commit.json"
 
-"$ROOT/scripts/perf-local.sh" --probes 20 --chats 1 --json "$out" "$@"
+"$ROOT/scripts/perf-local.sh" --chats 1 --json "$out" "$@"
 status=$?
 
 exit "$status"

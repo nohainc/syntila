@@ -33,7 +33,7 @@ it("keeps Workspace capacity waiting (all workflows) separate from readiness and
   const waiting = {
     status: "created",
     createdAt: new Date(start).toISOString(),
-    cloudQueueReason: "workspace_capacity",
+    cloudQueueReason: "worker_capacity",
     cloudQueueSince: new Date(start).toISOString(),
     workflowId: "research",
     workflowVersion: 2,

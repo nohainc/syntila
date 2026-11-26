@@ -7,7 +7,6 @@ import {
   authorizeSpaceOwner,
   authorizeSpaceInvitationResponse,
   canAccessSpaceInvitation,
-  authorizeWorkspaceOwner,
   computePackageDigest,
   extractBearerToken,
   hashToken,
@@ -69,20 +68,7 @@ describe("current authorization model", () => {
     ).rejects.toBeInstanceOf(AuthorizationError);
   });
 
-  it("authorizes Workspace access by ownership, not membership role", async () => {
-    await expect(
-      authorizeWorkspaceOwner(
-        database({ id: "workspace-1" }),
-        context,
-        "workspace-1",
-      ),
-    ).resolves.toBeUndefined();
-    await expect(
-      authorizeWorkspaceOwner(database(null), context, "workspace-1"),
-    ).rejects.toBeInstanceOf(AuthorizationError);
-  });
-
-  it("keeps Profile administration separate from Space and Workspace roles", () => {
+  it("keeps Profile administration separate from Space roles", () => {
     expect(() => authorizeProfileAdmin(context, ["user-1"])).not.toThrow();
     expect(() => authorizeProfileAdmin(context, ["another-user"])).toThrow(
       AuthorizationError,

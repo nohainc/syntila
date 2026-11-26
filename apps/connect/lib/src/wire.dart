@@ -6,8 +6,6 @@ const wireProtocolVersion = '5.1';
 
 /// The fields an assignment command carries and every reply must echo.
 const correlationFields = [
-  'executionWorkspaceId',
-  'workspaceRuntimeId',
   'workerId',
   'runId',
   'taskId',

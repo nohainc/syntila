@@ -178,7 +178,7 @@ export function summarize(values) {
 /**
  * Builds one trace per Work request. Service timestamps are shifted onto the
  * Cloud clock with the event's own `clockOffsetMs` (Cloud minus Service); the
- * latest known offset per workspaceRuntimeId is the fallback. Traces that needed
+ * latest known offset per Worker process is the fallback. Traces that needed
  * an uncorrected Service timestamp are flagged `uncorrected`.
  */
 export function buildTraces(events, webRecords = []) {
@@ -218,15 +218,16 @@ export function buildTraces(events, webRecords = []) {
     if (e.requestId) g.requestId = e.requestId;
     if (e.assignmentId) g.assignmentIds.add(e.assignmentId);
     const stage = e.context.traceStage;
-    const runtime = e.workspaceRuntimeId ?? "";
-    const isService = ["service", "workspace", "workspace_service"].includes(
+    const runtime = e.workerId && e.context.traceEpochId
+      ? `${e.workerId}:${e.context.traceEpochId}` : null;
+    const isService = ["service", "workspace", "connect_service"].includes(
       e.component,
     );
     let ts = Date.parse(e.timestamp);
     if (!Number.isFinite(ts)) continue;
     if (isService) {
-      const offset = e.context.clockOffsetMs ?? lastOffset.get(runtime);
-      if (e.context.clockOffsetMs !== undefined)
+      const offset = e.context.clockOffsetMs ?? (runtime ? lastOffset.get(runtime) : undefined);
+      if (runtime && e.context.clockOffsetMs !== undefined)
         lastOffset.set(runtime, e.context.clockOffsetMs);
       if (offset === undefined) g.uncorrected = true;
       else ts += offset;

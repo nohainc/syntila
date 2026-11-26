@@ -15,10 +15,8 @@ class RealtimeEvent {
   String get eventId => value['eventId']! as String;
   String get type => value['type']! as String;
   String get version => value['version']! as String;
-  String? get workspaceId => value['workspaceId'] as String?;
-  Map<String, Object?> get stream => value['stream'] is Map
-      ? Map<String, Object?>.from(value['stream'] as Map)
-      : {'kind': 'execution_workspace', 'id': workspaceId};
+  Map<String, Object?> get stream =>
+      Map<String, Object?>.from(value['stream']! as Map);
   String get streamKey => jsonEncode([stream['kind'], stream['id']]);
   int get sequence => value['sequence']! as int;
   Map<String, Object?> get payload =>
@@ -67,24 +65,14 @@ class RealtimeEvent {
       if (!realtimeStreamKinds.contains(kind)) {
         throw const ProtocolException('Realtime stream kind is invalid');
       }
-      if (kind == 'execution_workspace') {
-        if (_requiredString(decoded, 'workspaceId') != streamId) {
-          throw const ProtocolException(
-            'Execution stream must match workspaceId',
-          );
-        }
-      } else {
-        if (decoded.containsKey('workspaceId') || version == '1.0') {
-          throw const ProtocolException(
-            'Synchronization streams require 1.1 and no workspaceId',
-          );
-        }
-        if (kind == 'space' && decoded['spaceId'] != streamId) {
-          throw const ProtocolException('Space stream must match spaceId');
-        }
+      if (version == '1.0') {
+        throw const ProtocolException('Synchronization streams require 1.1');
+      }
+      if (kind == 'space' && decoded['spaceId'] != streamId) {
+        throw const ProtocolException('Space stream must match spaceId');
       }
     } else {
-      _requiredString(decoded, 'workspaceId');
+      throw const ProtocolException('Realtime events require a stream');
     }
     if (decoded['sequence'] is! int || (decoded['sequence'] as int) < 0) {
       throw const ProtocolException('Realtime event sequence is invalid');
@@ -94,7 +82,7 @@ class RealtimeEvent {
       throw const ProtocolException('Realtime event payload must be an object');
     }
     if (collaborationRealtimeEventTypes.contains(decoded['type'])) {
-      if (rawStream is! Map || rawStream['kind'] == 'execution_workspace') {
+      if (rawStream is! Map) {
         throw const ProtocolException(
           'Collaboration requires a synchronization stream',
         );
@@ -114,22 +102,17 @@ class RealtimeEvent {
       }
     } else if ((durableRealtimeEventTypes.contains(decoded['type']) ||
             ephemeralRealtimeEventTypes.contains(decoded['type'])) &&
-        decoded['workspaceId'] == null &&
         !(rawStream is Map &&
             rawStream['kind'] == 'space' &&
             (decoded['type'] == 'assignment.activity' ||
                 (decoded['type'] as String).startsWith('work_request.') ||
                 (decoded['type'] as String).startsWith('step.')))) {
-      throw const ProtocolException('Execution events require workspaceId');
+      throw const ProtocolException('Execution events require a scoped Space Work stream');
     }
     if (decoded['type'] == 'assignment.activity') {
       _requiredString(decoded, 'assignmentId');
       _requiredString(decoded, 'attemptId');
-      if (decoded['workspaceId'] != null) {
-        _requiredString(decoded, 'workspaceRuntimeId');
-      } else {
-        _requiredString(decoded, 'threadId');
-      }
+      _requiredString(decoded, 'threadId');
       final activity = Map<String, Object?>.from(payload);
       if (_requiredString(activity, 'entityId') != decoded['assignmentId']) {
         throw const ProtocolException(
@@ -146,8 +129,7 @@ class RealtimeEvent {
       _requiredString(activity, 'activityType');
       _requiredString(activity, 'activityStatus');
       _requiredString(activity, 'title');
-    } else if (decoded['workspaceId'] == null &&
-        ((decoded['type'] as String).startsWith('work_request.') ||
+    } else if (((decoded['type'] as String).startsWith('work_request.') ||
             (decoded['type'] as String).startsWith('step.'))) {
       final work = Map<String, Object?>.from(payload);
       _requiredString(work, 'threadId');

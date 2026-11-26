@@ -143,7 +143,6 @@ function cloudFailureDiagnostic(
 /** Syntila scope reference only; does not expose or certify a native CLI thread. */
 export function conversationWorkerSessionReference(
   target: {
-    readonly workspaceId: string | null;
     readonly workerId: string;
     readonly profileDefinitionId: string;
     readonly profileReleaseVersion: number;
@@ -156,7 +155,6 @@ export function conversationWorkerSessionReference(
     ? `worker-session-${createHash("sha256")
         .update(
           JSON.stringify([
-            target.workspaceId,
             target.workerId,
             target.profileDefinitionId,
             target.conversationId ?? null,
@@ -189,7 +187,7 @@ export interface TaskToDispatch {
   /** Human-readable label used only to choose a stable local Space directory. */
   readonly spaceName?: string;
   readonly spaceOwnerUserId?: string;
-  /** The user confirmed that the Workspace may use an existing, non-empty
+  /** The user confirmed that the Worker may use an existing, non-empty
    * folder for this Space. Only set by an explicit retry after
    * `space_folder_exists`. */
   readonly spaceFolderAdoptionConfirmed?: boolean;
@@ -209,8 +207,8 @@ export interface TaskToDispatch {
   readonly readOnly?: boolean;
   /**
    * Set when the request was accepted for a specific Worker (ADR-035). The
-   * assignment then runs on the Worker path only; it is never given to a
-   * Workspace, whatever the flag says later.
+   * assignment then runs on the Worker path only; it is never given to
+   * another Worker, whatever the flag says later.
    */
   readonly workerTarget?: WorkerTargetSnapshot;
 }
@@ -228,7 +226,6 @@ export interface DispatchAssignmentResult {
   readonly assignmentId: string;
   readonly attemptId: string;
   readonly workerId: string;
-  readonly workspaceRuntimeId: string;
   readonly workerCatalogId: string;
   /**
    * `queued`: persisted, but the Service is connected and not ready, so no
@@ -254,7 +251,6 @@ function deferredDispatch(
     assignmentId: "",
     attemptId: "",
     workerId: "",
-    workspaceRuntimeId: "",
     workerCatalogId: "",
     status: "deferred",
     accepted: false,
@@ -327,7 +323,6 @@ export async function dispatchTaskAssignment(
       assignmentId: "",
       attemptId: "",
       workerId: "",
-      workspaceRuntimeId: "",
       workerCatalogId: "",
       status: "failed",
       accepted: false,
@@ -339,14 +334,13 @@ export async function dispatchTaskAssignment(
     sessionPolicy,
     ...(sessionKey !== undefined ? { sessionKey } : {}),
   };
-  // Every assignment carries the authenticated Space requester so Workspace
+  // Every assignment carries the authenticated Space requester so Worker
   // selection, grants, and the immutable assignment target are evaluated.
   if (!normalizedTask.spaceId || !normalizedTask.requestedByUserId) {
     return {
       assignmentId: "",
       attemptId: "",
       workerId: "",
-      workspaceRuntimeId: "",
       workerCatalogId: "",
       status: "failed",
       accepted: false,
@@ -359,7 +353,6 @@ export async function dispatchTaskAssignment(
       assignmentId: "",
       attemptId: "",
       workerId: "",
-      workspaceRuntimeId: "",
       workerCatalogId: "",
       status: "failed",
       accepted: false,
@@ -544,10 +537,10 @@ async function runTerminalTransition(
 }
 
 /**
- * Revokes assignments whose Workspace can no longer be expected to report a
+ * Revokes assignments whose Worker can no longer be expected to report a
  * terminal result. This is intentionally Cloud-owned recovery: a transport
- * heartbeat proves only that the Workspace service is reachable, not that the
- * Engine/provider process is still alive, and a Workspace that stopped
+ * heartbeat proves only that Syntila Connect is reachable, not that the
+ * Engine/provider process is still alive, and a Worker that stopped
  * answering may still be running the process. So recovery never writes a
  * terminal outcome for work that may have been delivered; it starts a
  * revocation (see assignment-revocation.ts) and keeps re-sending the cancel.

@@ -23,14 +23,13 @@ Every local Worker needs its own durable, user-owned identity (`worker_instances
 
 - `actors(id, kind, user_id NULL UNIQUE, created_at, tombstoned_at)`
 - `worker_instances(id, actor_id UNIQUE, owner_user_id, worker_type_id, name, description, enabled, default_model, created_at, updated_at, revoked_at)`. Indexes: `(owner_user_id, created_at)` and `(worker_type_id)`. There is **no** unique constraint on name.
-- Backfill: one human Actor per user. One `worker_instances` row per existing `workspace_worker_inventory` entry, keeping `worker_id` where it is valid, plus a `legacy_worker_mapping` table where it isn't.
 
 ## Consequences
 
-- Workers can be listed, created, renamed and revoked without touching Workspaces (`/api/workers` CRUD, owner-only).
-- All later ADRs reference `worker_instance_id` and `actor_id`. Nothing changes yet in execution or transport.
+- Workers can be listed, created, renamed and revoked (`/api/workers` CRUD, owner-only).
+- Execution and attribution use `worker_instance_id` and `actor_id`.
 - Two Workers with the same name and Type are a valid, tested case.
 
 ## Non-goals
 
-Sharing a Worker with another user (deferred; see ADR-035), connection and credentials (ADR-034), and message authorship (ADR-036).
+Sharing is governed by ADR-042; connection and credentials by ADR-034; message authorship by ADR-036.

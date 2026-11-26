@@ -22,7 +22,7 @@ export async function readBody<S extends z.ZodType>(request: Request, schema: S,
   let value: unknown;
   try {
     // `limit` raises the 2 MiB default for the few routes that carry a file
-    // inline (a Workspace release package); keep it behind authentication.
+    // inline (a release package); keep it behind authentication.
     const text = await readBodyText(request, options.limit);
     value = text.trim() ? JSON.parse(text) : {};
   } catch (error) {

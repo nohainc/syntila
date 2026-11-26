@@ -44,8 +44,6 @@ async function workerGatewayFixture(
         messageId: `message-${counter}`,
         timestamp: new Date().toISOString(),
         type,
-        executionWorkspaceId: "worker-a",
-        workspaceRuntimeId: "sess-a",
         workerId: "worker-a",
         runId: "RUN",
         taskId: "T",

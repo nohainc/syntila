@@ -7,46 +7,15 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 export const SUITES = {
-  cloud: {
-    cwd: root,
-    command: process.execPath,
-    args: [
-      "node_modules/vitest/vitest.mjs",
-      "run",
-      "--maxWorkers=1",
-      "--no-file-parallelism",
-      ...[
-        "assignment-lifecycle-races",
-        "assignment-lifecycle-gateway",
-        "assignment-revocation",
-        "assignment-revocation-gateway",
-        "assignment-start-permit",
-        "assignment-startup-gateway",
-        "assignment-recovery",
-        "service-readiness-gateway",
-        "assignment-workflow-signal",
-        "workflow-terminal-wait",
-      ].map((name) => `apps/cloud/test/${name}.test.ts`),
-    ],
+  backend: {
+    cwd: fileURLToPath(new URL("../apps/backend/", import.meta.url)),
+    command: "bun",
+    args: ["scripts/test.ts", ...["assignment-lifecycle-races", "assignment-revocation", "assignment-start-permit", "assignment-recovery", "service-readiness", "workflow-terminal-wait"].map((name) => `test/domain/${name}.test.ts`)],
   },
-  service: {
-    cwd: fileURLToPath(new URL("../apps/workspace/", import.meta.url)),
-    command: "flutter",
-    // Flutter tests run in flutter_tester; subprocess fixtures need Dart.
-    env: { DART_EXECUTABLE: process.env.DART_EXECUTABLE || "dart" },
-    args: [
-      "test",
-      "--concurrency=1",
-      ...[
-        "cloud_connection",
-        "assignment_journal",
-        "workspace_transport",
-        "workspace_websocket_transport",
-        "worker_launch_plan",
-        "cli_worker_engine_supervisor",
-        "workspace_single_owner",
-      ].map((name) => `test/${name}_test.dart`),
-    ],
+  connect: {
+    cwd: fileURLToPath(new URL("../apps/connect/", import.meta.url)),
+    command: "dart",
+    args: ["test", "--concurrency=1", "test/agent_matrix_test.dart", "test/journal_test.dart", "test/mcp_worker_runner_test.dart"],
   },
   engine: {
     cwd: fileURLToPath(
@@ -97,7 +66,7 @@ export async function runAcceptance(
     new Set(suites).size !== suites.length
   )
     throw new Error(
-      "Choose unique suites: cloud, service, engine, web, or all",
+      "Choose unique suites: backend, connect, engine, web, or all",
     );
   const runs = [];
   for (let iteration = 1; iteration <= repeat; iteration++)
@@ -124,7 +93,7 @@ export async function runAcceptance(
     runs,
     liveEvidenceRequired: [
       "real Codex/Gemini/Claude fresh and second requests",
-      "deployed Cloud event buffering/hibernation and transport recovery",
+      "deployed Cloud event delivery and transport recovery",
       "complete idle/burst latency capture",
     ],
   };

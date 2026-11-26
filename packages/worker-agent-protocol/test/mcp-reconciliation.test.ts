@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   McpToolCallStatusRequestSchema,
   McpToolCallStatusResultSchema,
-  parseWorkspaceRuntimeMessage,
-  SERVICE_MCP_INVENTORY_CAPABILITY,
-  SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY,
-  WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  parseWorkerAgentMessage,
+  WORKER_AGENT_PROTOCOL_NAME,
+  WORKER_AGENT_PROTOCOL_VERSION,
 } from "../src/index.js";
 
 const key = (taskId: string) => ({
@@ -14,24 +12,15 @@ const key = (taskId: string) => ({
   dispatchKey: `mcp-tool-v1:${taskId}`,
 });
 const envelope = (type: string, payload: unknown) => ({
-  protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  protocol: WORKER_AGENT_PROTOCOL_NAME,
+  protocolVersion: WORKER_AGENT_PROTOCOL_VERSION,
   messageId: "message-1",
   timestamp: "2026-11-06T12:00:00.000Z",
   type,
-  executionWorkspaceId: "workspace-a",
-  workspaceRuntimeId: "runtime-a",
   payload,
 });
 
 describe("tool-call status (reconciliation) v1", () => {
-  it("advertises distinct capabilities", () => {
-    expect(SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY).toBe(
-      "workspace.mcp_tool_call_status.v1",
-    );
-    expect(SERVICE_MCP_INVENTORY_CAPABILITY).toBe("workspace.mcp_inventory.v1");
-  });
-
   it("accepts a request that names the logical dispatch identity only", () => {
     const ok = { schemaVersion: 1, ...key("t1") };
     expect(McpToolCallStatusRequestSchema.safeParse(ok).success).toBe(true);
@@ -88,12 +77,12 @@ describe("tool-call status (reconciliation) v1", () => {
   it("is validated inside the runtime envelope", () => {
     const request = { schemaVersion: 1, ...key("t1") };
     expect(
-      parseWorkspaceRuntimeMessage(
+      parseWorkerAgentMessage(
         envelope("mcp.tool_call.status.request", request),
       ).type,
     ).toBe("mcp.tool_call.status.request");
     expect(() =>
-      parseWorkspaceRuntimeMessage(
+      parseWorkerAgentMessage(
         envelope("mcp.tool_call.status.request", {
           ...request,
           dispatchKey: "x",
@@ -101,7 +90,7 @@ describe("tool-call status (reconciliation) v1", () => {
       ),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage(
+      parseWorkerAgentMessage(
         envelope("mcp.tool_call.status.result", {
           schemaVersion: 1,
           ...key("t1"),
@@ -131,10 +120,10 @@ describe("mcp.inventory envelope", () => {
   };
   it("accepts the sanitized contract and rejects secrets", () => {
     expect(
-      parseWorkspaceRuntimeMessage(envelope("mcp.inventory", inventory)).type,
+      parseWorkerAgentMessage(envelope("mcp.inventory", inventory)).type,
     ).toBe("mcp.inventory");
     expect(() =>
-      parseWorkspaceRuntimeMessage(
+      parseWorkerAgentMessage(
         envelope("mcp.inventory", {
           ...inventory,
           servers: [{ ...inventory.servers[0], command: "/bin/x" }],

@@ -1,4 +1,4 @@
-name: Setup workspace
+name: Setup repository
 description: Install pnpm and Node, then install repository dependencies with the frozen lockfile.
 
 inputs:

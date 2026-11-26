@@ -31,7 +31,7 @@ export async function handleSession(
 }
 
 /**
- * Desktop callers (Workspace Service, Profile Lab) sign in at the Cloudflare
+ * Desktop callers (Connect, Profile Lab) sign in at the Cloudflare
  * auth Worker and present a backend token with `client: "desktop"` and the
  * desktop audience. The session itself lives in the auth Worker.
  */

@@ -1,20 +1,20 @@
 // GENERATED FILE. Do not edit by hand.
 
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_NAME =
+export const WORKER_AGENT_PROTOCOL_SCHEMA_NAME =
   "syntila.worker-agent-protocol" as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_VERSION = "5.1" as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MAX_MESSAGE_SIZE_BYTES =
+export const WORKER_AGENT_PROTOCOL_SCHEMA_VERSION = "5.1" as const;
+export const WORKER_AGENT_PROTOCOL_SCHEMA_MAX_MESSAGE_SIZE_BYTES =
   4194304 as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
-  "workspace.hello",
-  "workspace.hello.ack",
-  "workspace.heartbeat",
-  "workspace.heartbeat.ack",
-  "workspace.sync.request",
-  "workspace.sync.result",
-  "workspace.status",
-  "workspace.readiness",
-  "workspace.update",
+export const WORKER_AGENT_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
+  "agent.hello",
+  "agent.hello.ack",
+  "agent.heartbeat",
+  "agent.heartbeat.ack",
+  "agent.sync.request",
+  "agent.sync.result",
+  "agent.status",
+  "agent.readiness",
+  "agent.update",
   "worker.inventory",
   "thread.status",
   "assignment.start",
@@ -40,7 +40,7 @@ export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
   "mcp.inventory",
   "input.available",
 ] as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
+export const WORKER_AGENT_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
   "protocol",
   "protocolVersion",
   "messageId",
@@ -49,9 +49,7 @@ export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
   "type",
   "payload",
 ] as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_ASSIGNMENT_ENVELOPE_FIELDS = [
-  "executionWorkspaceId",
-  "workspaceRuntimeId",
+export const WORKER_AGENT_PROTOCOL_SCHEMA_ASSIGNMENT_ENVELOPE_FIELDS = [
   "workerId",
   "runId",
   "taskId",

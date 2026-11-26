@@ -1,8 +1,6 @@
 {
   "assignmentId": "assignment-permission-contract",
   "spaceId": "space-permission-contract",
-  "executionWorkspaceId": "workspace-permission-contract",
-  "workspaceRuntimeId": "runtime-permission-contract",
   "workerId": "worker-permission-contract",
   "workerTypeId": "fixture-worker",
   "runId": "run-permission-contract",
@@ -10,14 +8,21 @@
   "attemptId": "attempt-permission-contract",
   "idempotencyKey": "idem-permission-contract",
   "executionClass": "stateless_read",
-  "permissions": ["repository:read"],
+  "permissions": [
+    "repository:read"
+  ],
   "permissionSnapshot": {
     "spaceId": "space-permission-contract",
     "workspaceId": "workspace-permission-contract",
     "grantId": "grant-permission-contract",
     "requesterUserId": "user-permission-contract",
-    "permissions": ["repository:read"],
-    "networkPolicy": { "mode": "deny_all", "allowedHosts": [] }
+    "permissions": [
+      "repository:read"
+    ],
+    "networkPolicy": {
+      "mode": "deny_all",
+      "allowedHosts": []
+    }
   },
   "input": {
     "prompt": "Reply with exactly the word OK. Do not use tools."

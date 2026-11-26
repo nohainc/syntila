@@ -16,7 +16,7 @@ describe("execution diagnostics", () => {
     });
     for (const traceEpochId of ["service-epoch:123_ABC.def", "a".repeat(128)]) {
       const event = createDiagnosticEvent({
-        component: "workspace_service",
+        component: "connect_service",
         operation: "assignment",
         stage: "trace",
         severity: "info",
@@ -62,10 +62,8 @@ describe("execution diagnostics", () => {
     const event = createDiagnosticEvent({
       assignmentId: "assignment-1",
       attemptId: "attempt-1",
-      workspaceId: "workspace-1",
-      workspaceRuntimeId: "runtime-1",
       workerId: "worker-1",
-      component: "workspace_service",
+      component: "connect_service",
       operation: "assignment",
       stage: "slot_reservation",
       severity: "info",
@@ -73,6 +71,12 @@ describe("execution diagnostics", () => {
       context: { status: "reserved" },
     });
     expect(parseDiagnosticEvent(event)).toEqual(event);
+  });
+
+  it("preserves the Connect version in diagnostic context", () => {
+    expect(DiagnosticContextSchema.parse({ connectVersion: "1.2.3" })).toEqual({
+      connectVersion: "1.2.3",
+    });
   });
 
   it("numbers the twelve latency stages T1-T12 in order", () => {
@@ -98,7 +102,7 @@ describe("execution diagnostics", () => {
     expect(TRACE_STAGES).toHaveLength(12);
     const event = createDiagnosticEvent({
       assignmentId: "assignment-1",
-      component: "workspace_service",
+      component: "connect_service",
       operation: "assignment",
       stage: "trace",
       severity: "info",
@@ -118,7 +122,7 @@ describe("execution diagnostics", () => {
   it("carries bounded timing context and rejects unknown stages", () => {
     const event = createDiagnosticEvent({
       assignmentId: "assignment-1",
-      component: "workspace_service",
+      component: "connect_service",
       operation: "assignment",
       stage: "trace",
       severity: "info",

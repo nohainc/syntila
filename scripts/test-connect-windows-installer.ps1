@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) { throw "Installed syntila-connect.exe help failed: $LA
 Run-Setup
 
 if ($env:SYNTILA_WINDOWS_SIGNING) {
-    & (Join-Path $PSScriptRoot 'sign-workspace-windows.ps1') (Join-Path $Target 'unins000.exe') -VerifyOnly
+    & (Join-Path $PSScriptRoot 'sign-connect-windows.ps1') (Join-Path $Target 'unins000.exe') -VerifyOnly
 }
 $Uninstall = Start-Process (Join-Path $Target 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
 if ($Uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($Uninstall.ExitCode)" }

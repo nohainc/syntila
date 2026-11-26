@@ -2,9 +2,9 @@ import { conversationFixture } from "./helpers/conversation";
 import { expect, it } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import {
-  parseWorkspaceRuntimeMessage,
-  WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  parseWorkerAgentMessage,
+  WORKER_AGENT_PROTOCOL_NAME,
+  WORKER_AGENT_PROTOCOL_VERSION,
 } from "@syntila/worker-agent-protocol";
 
 it.each([null, "low"])(

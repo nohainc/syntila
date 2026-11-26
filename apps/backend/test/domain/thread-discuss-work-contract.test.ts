@@ -37,7 +37,7 @@ describe("Thread Discuss / Work boundary", () => {
     expect(router).toMatch(/threads.*discussion-messages/);
     expect(router).toMatch(/threads.*work-requests/);
     expect(`${work}\n${threadPolicy}`).toContain('"run.start"');
-    expect(work).toMatch(/validateWorkRequest\(workRequest, policy[,)]/);
+    expect(work).toContain("validateWorkRequest(workRequest)");
     expect(work).toContain("thread.work_requested");
   });
 

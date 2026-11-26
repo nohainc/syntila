@@ -6,7 +6,7 @@ import type { SecurityEnv } from "./http-security.js";
 /**
  * GET /api/worker-agent/gateway?workerId=&workerSessionId= (WebSocket upgrade).
  * Forwards to the Worker's own gateway object, which authenticates the session
- * token; no Workspace is involved (ADR-034, ADR-035).
+ * token (ADR-034, ADR-035).
  */
 export async function handleWorkerGatewayConnect(request: Request, env: SecurityEnv): Promise<Response> {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {

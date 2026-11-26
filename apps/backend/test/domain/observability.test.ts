@@ -49,12 +49,10 @@ describe("observability", () => {
     const record = structuredLogRecord("info", "assignment.completed", {
       requestId: "request-1",
       eventId: "event-1",
-      workspaceId: "workspace-1",
       runId: "run-1",
       taskId: "task-1",
       attemptId: "attempt-1",
       assignmentId: "assignment-1",
-      workspaceRuntimeId: "host-1",
       workerId: "worker-1",
     });
 
@@ -69,7 +67,7 @@ describe("observability", () => {
     const event = logDiagnosticEvent({
       requestId: "request-1",
       assignmentId: "assignment-1",
-      workspaceId: "workspace-1",
+      workerId: "worker-1",
       component: "cloud",
       operation: "assignment",
       stage: "transport",

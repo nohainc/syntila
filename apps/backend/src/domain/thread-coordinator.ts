@@ -26,8 +26,7 @@ export type CoordinatorRequestRow = {
   threadId: string;
   mode: "stateless" | "stateful";
   status: string;
-  primaryWorkspaceId: string | null;
-  /** Set instead of primaryWorkspaceId when the request runs on one Worker Agent (ADR-040). */
+  /** Set when the request runs on one Worker Agent (ADR-040). */
   primaryWorkerInstanceId: string | null;
   createdAt: string;
 };
@@ -36,7 +35,6 @@ export type CoordinatorLeaseRow = {
   id: string;
   threadId: string;
   workRequestId: string;
-  workspaceId: string | null;
   workerInstanceId?: string | null;
   fencingToken: number;
   status: "active" | "released" | "expired";
@@ -80,7 +78,7 @@ export type ExpiredLeaseAssignment = {
 
 export type ExpiredLeaseFacts = {
   acquiredAt: string;
-  workspaceOnline: boolean;
+  workerOnline: boolean;
   assignments: readonly ExpiredLeaseAssignment[];
   /** Workflow steps not started yet (no assignment, not terminal). */
   remainingSteps?: number;
@@ -148,7 +146,7 @@ export function classifyExpiredLease(
     ),
   );
   if (
-    facts.workspaceOnline &&
+    facts.workerOnline &&
     Number.isFinite(lastSign) &&
     now - lastSign <= WORKER_ALIVE_WINDOW_MS
   ) {
@@ -198,7 +196,7 @@ export function selectNextStatefulRequest(
  * increases and survives clearing Work history (that deletes the lease rows).
  * The counter is first raised to the highest recorded lease token so a drifted
  * counter heals, then incremented; the lease reads the new value in the same
- * batch. Workspaces compare tokens only within a Thread, so a token that goes
+ * batch. Workers compare tokens only within a Thread, so a token that goes
  * backwards is rejected there as a stale fence.
  */
 export async function startStatefulLease(
@@ -206,7 +204,6 @@ export async function startStatefulLease(
   input: {
     readonly threadId: string;
     readonly workRequestId: string;
-    readonly workspaceId: string | null;
     readonly workerInstanceId?: string | null;
     readonly leaseId: string;
     readonly now: string;
@@ -223,7 +220,7 @@ export async function startStatefulLease(
           WHERE id = ${input.threadId}`;
   await q.run`INSERT INTO thread_runtime_leases
          (id, thread_id, work_request_id, worker_instance_id, fencing_token, status, acquired_at, expires_at)
-         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workerInstanceId ?? input.workspaceId},
+         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workerInstanceId ?? null},
                  (SELECT lease_fence_counter FROM threads WHERE id = ${input.threadId}),
                  'active', ${input.now}::timestamptz, ${input.expiresAt}::timestamptz)`;
 }
@@ -316,7 +313,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
   private async status(): Promise<Response> {
     const threadId = await this.threadId();
     const active = await dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT id, work_request_id AS "workRequestId",
-              worker_instance_id AS "workspaceId", fencing_token AS "fencingToken",
+              worker_instance_id AS "workerInstanceId", fencing_token AS "fencingToken",
               status, expires_at AS "expiresAt"
        FROM thread_runtime_leases
        WHERE thread_id = ${threadId} AND status = 'active'
@@ -401,7 +398,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       (await this.workerMayBeRunning(lease.workRequestId))
     ) {
       // The Thread is not free while its Worker may still be running: the
-      // next request would only wait for it in the Workspace. Keep the lease
+      // next request would only wait for the Worker. Keep the lease
       // and finish once the Worker has stopped (or when the Workflow reports
       // completion, or when the lease expires).
       await this.state.storage.put(pendingKey, {
@@ -505,17 +502,17 @@ export class ThreadExecutionCoordinator implements DurableObject {
         id: string;
         workRequestId: string;
         acquiredAt: string;
-        workspaceId: string;
+        workerInstanceId: string;
         expiresAt: string;
-        workspaceStatus: string | null;
+        workerStatus: string | null;
       }>`SELECT l.id, l.work_request_id AS "workRequestId",
-              l.acquired_at AS "acquiredAt", l.worker_instance_id AS "workspaceId",
+              l.acquired_at AS "acquiredAt", l.worker_instance_id AS "workerInstanceId",
               l.expires_at AS "expiresAt",
               CASE WHEN EXISTS (
                 SELECT 1 FROM worker_agent_sessions s
                  WHERE s.worker_instance_id = l.worker_instance_id
                    AND s.disconnected_at IS NULL AND s.lease_expires_at > now()
-              ) THEN 'online' ELSE 'offline' END AS "workspaceStatus"
+              ) THEN 'online' ELSE 'offline' END AS "workerStatus"
          FROM thread_runtime_leases l
         WHERE l.thread_id = ${threadId} AND l.status = 'active'`;
     for (const lease of leases) {
@@ -552,7 +549,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       const decision = classifyExpiredLease(
         {
           acquiredAt: lease.acquiredAt,
-          workspaceOnline: lease.workspaceStatus === "online",
+          workerOnline: lease.workerStatus === "online",
           assignments: rows,
           remainingSteps,
         },
@@ -626,7 +623,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async publishWorkRequestOutcome(
     threadId: string,
-    lease: { workRequestId: string; workspaceId: string },
+    lease: { workRequestId: string; workerInstanceId: string },
     status: "completed" | "failed",
     message?: string,
   ): Promise<void> {
@@ -638,7 +635,6 @@ export class ThreadExecutionCoordinator implements DurableObject {
       const type = `work_request.${status}` as const;
       await createEventPublisher(this.env).publish({
         type,
-        workspaceId: lease.workspaceId,
         spaceId: row.spaceId,
         idempotencyKey: `work-request:${lease.workRequestId}:${type}`,
         payload: {
@@ -657,7 +653,6 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async startNext(threadId: string): Promise<void> {
     const rows = await dataOf(this.env).read.rows<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
-              NULL::text AS "primaryWorkspaceId",
               primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt"
        FROM work_requests WHERE thread_id = ${threadId} AND mode = 'stateful' AND status = 'queued'
@@ -671,7 +666,6 @@ export class ThreadExecutionCoordinator implements DurableObject {
       startStatefulLease(q, {
         threadId,
         workRequestId: next.id,
-        workspaceId: next.primaryWorkspaceId,
         workerInstanceId: next.primaryWorkerInstanceId,
         leaseId,
         now,
@@ -683,7 +677,6 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async requestRow(id: string): Promise<CoordinatorRequestRow | null> {
     return dataOf(this.env).read.row<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
-              NULL::text AS "primaryWorkspaceId",
               primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt" FROM work_requests WHERE id = ${id}`;
   }
@@ -694,7 +687,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
     token: number,
   ) {
     return dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT l.id, l.thread_id AS "threadId", l.work_request_id AS "workRequestId",
-              l.worker_instance_id AS "workspaceId",
+              l.worker_instance_id AS "workerInstanceId",
               fencing_token AS "fencingToken", l.status, l.expires_at AS "expiresAt"
        FROM thread_runtime_leases l
        WHERE l.id = ${leaseId} AND l.work_request_id = ${workRequestId} AND l.fencing_token = ${token}`;

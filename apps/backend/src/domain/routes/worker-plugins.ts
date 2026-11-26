@@ -14,9 +14,9 @@ const selectAccountWorkerPluginsByPluginRef = <T = Record<string, unknown>>(q: Q
   q.row<T>`SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ${p1} AND owner_user_id = ${p2}`;
 
 /**
- * Account library and Workspace enablement for custom Worker plugins
+ * Account library and Worker enablement for custom Worker plugins
  * (ADR-027). Cloud keeps metadata only: the manifest as imported, its digest,
- * origin display strings, a signer fingerprint and a per-Workspace pin. It never
+ * origin display strings, a signer fingerprint and a per-Worker pin. It never
  * stores or runs an executable and never sees a secret or a local path.
  *
  * Managing plugins (register, enable, disable, remove) is free on every plan.
@@ -204,7 +204,7 @@ export async function handlePluginLibrary(
              (plugin_ref, owner_user_id, plugin_id, display_name, created_at, updated_at)
            VALUES (${ref}, ${userId}, ${manifest.pluginId}, ${manifest.displayName}, ${now}, ${now})`;
       // The catalog row lets assignments reference the plugin Worker. Only its
-      // owner's Workspaces ever list it (readers filter on origin/owner).
+      // owner's Workers list it (readers filter on origin/owner).
       await q.run`INSERT INTO worker_catalog
              (worker_type_id, display_name, description, lifecycle_state,
               created_at, updated_at, engine_family, visibility_state,
@@ -251,7 +251,7 @@ export async function handlePluginLibrary(
 
 /**
  * Removing a plugin from the library. Free, so a downgraded owner can clean up.
- * Refused while any Workspace still has it enabled. The catalog row is retired
+ * Refused while any Worker still has it enabled. The catalog row is retired
  * rather than deleted because assignment history references it; it holds only
  * the display name.
  */

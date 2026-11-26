@@ -64,7 +64,7 @@ export function requestsWorkerTarget(body: WorkerBindingRequest): boolean {
   );
 }
 
-/** The binding ID a Step is frozen under; the same rule the Workspace path uses. */
+/** The binding ID a Step is frozen under. */
 export function stepBindingId(definition: BuiltinWorkflowDefinition, step: BuiltinWorkflowDefinition["steps"][number]): string {
   if (definition.id === "direct") return "direct";
   return definition.id === "research" && definition.version === 2 ? stepInstanceId(step) : step.kind;
@@ -107,7 +107,7 @@ export async function resolveWorkerTargetBindings(
       throw new HttpError(400, `Unknown Worker binding: ${bindingId}`);
     }
   }
-  // The same Space rules as the Workspace path: support Threads take messages
+  // Space rules: support Threads take messages
   // only, personal Spaces run Chat only, and a disabled Workflow stays disabled.
   const spacePolicy = await loadSpacePermissions(env, input.userId, input.spaceId);
   if (spacePolicy.isSupport) throw new HttpError(403, "Support Threads accept messages only");
@@ -230,7 +230,7 @@ function ineligibleResponse(definition: BuiltinWorkflowDefinition, issues: reado
   );
 }
 
-/** The Worker a Step was frozen with at acceptance, or null on the Workspace path. */
+/** The Worker a Step was frozen with at acceptance, if any. */
 export function frozenWorkerTarget(
   bindings: Readonly<Record<string, object | undefined>>,
   definition: BuiltinWorkflowDefinition,

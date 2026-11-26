@@ -5,7 +5,6 @@ import {
   type WorkRequest,
   type Thread,
   type ThreadExecutionLease,
-  type ThreadExecutionPolicy,
   type BuiltinWorkflowDefinition,
   BUILTIN_WORKFLOWS,
   BUILTIN_WORKFLOW_CATALOG,
@@ -70,11 +69,6 @@ const thread: Thread = {
   },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
-};
-
-const statefulPolicy: ThreadExecutionPolicy = {
-  mode: "stateful",
-  primaryWorkspaceId: "workspace-1",
 };
 
 describe("Thread domain", () => {
@@ -190,7 +184,7 @@ describe("Thread domain", () => {
     ).toBe(true);
   });
 
-  it("requires a Primary Workspace for stateful Work Requests", () => {
+  it("accepts a stateful Worker-targeted Work Request", () => {
     const request: WorkRequest = {
       id: "request-1",
       threadId: "thread-1",
@@ -200,18 +194,11 @@ describe("Thread domain", () => {
       workflowVersion: 2,
       workflowSnapshot: BUILTIN_WORKFLOWS.direct,
       status: "queued",
-      primaryWorkspaceId: "workspace-1",
       input: {},
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    expect(() => validateWorkRequest(request, statefulPolicy)).not.toThrow();
-    expect(() =>
-      validateWorkRequest(
-        { ...request, primaryWorkspaceId: null },
-        statefulPolicy,
-      ),
-    ).toThrow(/requires a Primary Workspace/);
+    expect(() => validateWorkRequest(request)).not.toThrow();
   });
 
   it("enforces one active runtime lease per Thread", () => {
@@ -220,7 +207,7 @@ describe("Thread domain", () => {
         id: "lease-1",
         threadId: "thread-1",
         workRequestId: "request-1",
-        workspaceId: "workspace-1",
+        workerId: "worker-1",
         fencingToken: 1,
         status: "active",
         acquiredAt: "2026-01-01T00:00:00.000Z",
@@ -342,12 +329,11 @@ describe("Thread domain", () => {
       workflowVersion: 2,
       workflowSnapshot: BUILTIN_WORKFLOWS.direct,
       status: "queued",
-      primaryWorkspaceId: "workspace-1",
       input: {},
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
-    expect(() => validateWorkRequest(request, statefulPolicy)).not.toThrow();
+    expect(() => validateWorkRequest(request)).not.toThrow();
     const historical: WorkRequest = {
       ...request,
       workflowVersion: 1,
@@ -355,7 +341,7 @@ describe("Thread domain", () => {
     };
     const stored = deserializeEntity<WorkRequest>(serializeEntity(historical));
     expect(stored.workflowSnapshot.name).toBe("Direct");
-    expect(() => validateWorkRequest(stored, statefulPolicy)).not.toThrow();
+    expect(() => validateWorkRequest(stored)).not.toThrow();
   });
 });
 

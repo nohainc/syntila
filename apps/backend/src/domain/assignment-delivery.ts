@@ -3,8 +3,6 @@ export const ASSIGNMENT_ACCEPTANCE_DEADLINE_MS = 30_000;
 export const ASSIGNMENT_STARTUP_DEADLINE_MS = 30_000;
 /** Default time an accepted assignment may remain queued before startup. */
 export const DEFAULT_QUEUE_WAIT_TIMEOUT_MS = 2 * 60_000;
-/** Parallel slots a Workspace gets before its owner chooses a number. */
-export const DEFAULT_WORKSPACE_PARALLEL_SLOTS = 3;
 
 /**
  * How long Cloud waits for a Service to confirm a revocation before it shows
@@ -91,7 +89,7 @@ export interface AssignmentDeadlineInput {
   readonly queueWaitTimeoutMs?: number | null;
   /** Provider execution timeout. */
   readonly timeoutMs?: number | null;
-  /** Cloud queue evidence; never supplied by the Workspace Service. */
+  /** Cloud queue evidence; never supplied by Syntila Connect. */
   readonly cloudQueueReason?: string | null;
   readonly cloudQueueSince?: string | null;
   /** Trusted, accepted Workflow identity. */
@@ -100,16 +98,16 @@ export interface AssignmentDeadlineInput {
 }
 
 /**
- * Workspace capacity is a wait, not an execution/readiness failure, for every
- * workflow: parallel work (Plus) legitimately queues behind the Workspace's
+ * Worker capacity is a wait, not an execution/readiness failure, for every
+ * workflow: parallel work (Plus) legitimately queues behind the Worker's
  * parallel slots without holding one.
  */
-export function isWorkspaceCapacityQueue(
+export function isWorkerCapacityQueue(
   input: Pick<AssignmentDeadlineInput, "status" | "cloudQueueReason">,
 ): boolean {
   return (
     input.status === "created" &&
-    input.cloudQueueReason === "workspace_capacity"
+    input.cloudQueueReason === "worker_capacity"
   );
 }
 
@@ -118,7 +116,7 @@ export async function recordCloudQueueReason(
   q: Query,
   assignmentId: string,
   attemptId: string,
-  reason: "workspace_capacity" | "service_not_ready",
+  reason: "worker_capacity" | "service_not_ready",
   now = new Date().toISOString(),
 ): Promise<void> {
   await q.run`
@@ -132,7 +130,7 @@ export async function recordCloudQueueReason(
 /** Readiness loss applies to the entire persisted queue, including after a restart. */
 export async function recordCloudQueueNotReady(
   q: Query,
-  workspaceId: string,
+  workerInstanceId: string,
   runtimeId: string,
   now = new Date().toISOString(),
 ): Promise<void> {
@@ -141,7 +139,7 @@ export async function recordCloudQueueNotReady(
        SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
              THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
            cloud_queue_reason = 'service_not_ready'
-     WHERE worker_instance_id = ${workspaceId}
+     WHERE worker_instance_id = ${workerInstanceId}
        AND status = 'created'`;
 }
 
@@ -181,7 +179,7 @@ export function currentAssignmentDeadline(input: AssignmentDeadlineInput): {
   const queueWait = input.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS;
   switch (input.status) {
     case "created":
-      if (isWorkspaceCapacityQueue(input)) return null;
+      if (isWorkerCapacityQueue(input)) return null;
       // Persisted but not handed to the transport: either the Service is not
       // ready yet (the durable queue) or dispatch never completed. Bounded by
       // the queue wait limit; nothing was ever sent, so expiry is a direct,
@@ -286,7 +284,7 @@ export function classifyStepAssignmentOutcome(input: {
     return {
       kind: "failed",
       message:
-        "The Workspace has not confirmed that the Worker stopped. Syntila is reconciling it; the step was not retried.",
+        "The Worker has not confirmed that the Worker stopped. Syntila is reconciling it; the step was not retried.",
       retryable: false,
     };
   }

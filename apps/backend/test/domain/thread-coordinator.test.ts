@@ -138,7 +138,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [running(1)],
           },
           now,
@@ -151,7 +151,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [running(20)],
           },
           now,
@@ -168,7 +168,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: false,
+            workerOnline: false,
             assignments: [running(1)],
           },
           now,
@@ -181,7 +181,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: new Date(now - MAX_LEASE_LIFETIME_MS).toISOString(),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [running(1)],
           },
           now,
@@ -195,7 +195,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [done],
           },
           now,
@@ -205,7 +205,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [],
           },
           now,
@@ -219,7 +219,7 @@ describe("Thread execution coordinator", () => {
         classifyExpiredLease(
           {
             acquiredAt: minutesAgo(48),
-            workspaceOnline: true,
+            workerOnline: true,
             assignments: [done],
             remainingSteps: 1,
           },

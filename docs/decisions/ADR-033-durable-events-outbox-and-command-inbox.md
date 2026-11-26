@@ -12,7 +12,7 @@ Syntila needs one durability model for realtime events (`realtime_events`, `real
 
 1. **Commit first, notify second.** The domain change, the stream sequence, the event row and the outbox row are written in **one transaction**. Socket delivery is only an optimization.
 2. **Per-stream sequence.** Each event takes the next number with `UPDATE realtime_event_cursors … RETURNING` inside the same transaction. Numbers have no gaps within a stream. We don't use a PostgreSQL `SEQUENCE` for durable stream positions.
-3. **Stream kinds:** `user`, `space`, `thread`, `worker_inbox`, `assignment` (plus legacy `execution_workspace` until it is retired). Each event goes to **exactly one** durable stream. Fanning one event out to several streams is not allowed, to avoid lock contention on hot counter rows.
+3. **Stream kinds:** `user`, `space`, `thread`, `worker_inbox`, `assignment`. Each event goes to **exactly one** durable stream. Fanning one event out to several streams is not allowed, to avoid lock contention on hot counter rows.
 4. **Delivery classes:**
 
    | Class | Persisted | Behavior |

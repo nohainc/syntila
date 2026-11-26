@@ -43,8 +43,15 @@ void main() {
     final m = RealtimeMessaging();
     final result = m.receive(envelope('message.created', 'space', 's1',
         sequence: 7,
-        context: {'spaceId': 's1', 'threadId': 't1', 'bogus': 'x'},
-        payload: {'entityId': 'm1'}));
+        context: {
+          'spaceId': 's1',
+          'threadId': 't1',
+          'workerId': 'w1',
+          'bogus': 'x'
+        },
+        payload: {
+          'entityId': 'm1'
+        }));
     expect(result.replies, isEmpty);
     expect(result.events.single, {
       'eventId': 'evt-message.created-7',
@@ -55,6 +62,7 @@ void main() {
       'sequence': 7,
       'spaceId': 's1',
       'threadId': 't1',
+      'workerId': 'w1',
       'payload': {'entityId': 'm1'},
     });
     expect(m.cursors.of('space', 's1'), 7);

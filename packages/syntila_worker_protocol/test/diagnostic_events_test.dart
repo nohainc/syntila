@@ -8,7 +8,6 @@ void main() {
       timestamp: '2026-10-11T12:00:00.000Z',
       requestId: 'request-1',
       assignmentId: 'assignment-1',
-      workspaceId: 'workspace-1',
       workerTypeId: 'gemini',
       component: 'cli_worker_engine',
       operation: 'execute',

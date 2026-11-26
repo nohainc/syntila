@@ -2,7 +2,7 @@
 
 - **Status:** Accepted and implemented
 - **Date:** 2026-11-22
-- **Depends on:** ADR-020 (Workspace member access modes), ADR-032 (Worker Instances), ADR-035 (Worker-targeted dispatch)
+- **Depends on:** ADR-032 (Worker Instances), ADR-035 (Worker-targeted dispatch)
 
 ## Implementation Notes
 
@@ -20,7 +20,7 @@ Worker Instances (`worker_instances`, ADR-032) are owned by a single user (`owne
 
 ### 1. Storage Schema: `worker_space_members`
 
-Add a dedicated relational table rather than overloading `workspace_member_access.policy_json`, because Worker Instances are independent of legacy Workspaces and access is scoped per `(worker_id, space_id, user_id)`:
+Access is scoped per `(worker_id, space_id, user_id)`:
 
 ```sql
 CREATE TABLE worker_space_members (
@@ -44,7 +44,7 @@ Because `worker_instances` uses a `revoked_at` tombstone on `DELETE /api/workers
 
 ### 2. Permission Semantics
 
-`permissions_json` reuses the existing `WorkspaceAccessMode` ceiling from `workspace-member-access.ts`:
+`permissions_json` defines the member access ceiling:
 
 ```json
 { "mode": "chat" | "work" | "work+shell" }
@@ -59,7 +59,7 @@ Effective permissions for a non-owner member are the **intersection** of:
 2. The `worker_space_members` row (`enabled = true` and `permissions_json.mode`), and
 3. The Workflow/step's `requiredCapabilities` and `readOnly` flag.
 
-The Worker owner (`w.owner_user_id = requesterUserId`) is never restricted by `worker_space_members` and requires no row in this table.
+The Worker owner (`w.owner_user_id = requesterUserId`) requires no member row. The Space owner's Workers are also available to eligible Space members under their Space rights, subject to any explicit member restriction and the Worker model allow-list.
 
 ### 3. Edit Rights and Cloud Routes
 
@@ -77,11 +77,11 @@ Server-side enforcement lives in `acceptWorkerTarget` (`apps/backend/src/domain/
 - **Request admission & retry:** `resolveWorkerTargetBindings` and `recheckWorkerTarget` (`apps/backend/src/domain/routes/worker-target-bindings.ts`, invoked by `work-creation.ts` and `thread-request-queue.ts`).
 - **Step dispatch:** `dispatchWorkerAssignment` (`apps/backend/src/domain/worker-dispatch.ts`).
 
-For a non-owner requester, `acceptWorkerTarget` requires an enabled `worker_space_members` row matching `(request.workerId, request.spaceId, request.requesterUserId)` and enforces `permissions_json.mode` against the step's `workflowId` and `capabilities`. `handleListEligibleWorkers` (`apps/backend/src/domain/routes/work-creation.ts`) also includes shared Workers (`worker_space_members` where `space_id = spaceId AND user_id = requesterUserId AND enabled = true`) in its candidate query so members can see and select them in the picker.
+For a non-owner requester, `acceptWorkerTarget` enforces the applicable Space rights, Worker access and model policy against the step. Workers owned by the Space owner follow the Space rights; an explicit member row can further restrict access. Workers owned by other members require an enabled access row. `handleListEligibleWorkers` (`apps/backend/src/domain/routes/work-creation.ts`) also includes shared Workers (`worker_space_members` where `space_id = spaceId AND user_id = requesterUserId AND enabled = true`) in its candidate query so members can see and select them in the picker.
 
 ## Consequences
 
-- **Positive:** Clean relational isolation from legacy `workspace_member_access`; foreign-key cascades and explicit cleanup on Worker revoke or Space departure; single server-side enforcement point covering both admission and per-step dispatch; reuses the familiar `chat` / `work` / `work+shell` mode semantics.
+- **Positive:** Relational isolation; foreign-key cascades and explicit cleanup on Worker revoke or Space departure; single server-side enforcement point covering both admission and per-step dispatch; reuses the familiar `chat` / `work` / `work+shell` mode semantics.
 - **Negative / Risks:** Additive migration and new Cloud/App endpoints are required before UI and dispatch enforcement can be enabled. Existing `worker_instances` owner-only assumptions in tests must be preserved for the owner path.
 
 ## Amendment: Worker-wide model and effort allow-list for members

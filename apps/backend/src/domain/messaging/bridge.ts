@@ -1,13 +1,12 @@
 import { buildEnvelope, MESSAGING_PROTOCOL, type CommandFrame, type MessagingEnvelope } from "./envelope.js";
 
 /**
- * The compatibility bridge (ADR-038 decision 7): the only place that knows the
- * old Workspace runtime frame names. Delete this file after cutover.
+ * Translates unified commands to the Worker Agent message handlers (ADR-038).
  */
 const COMMAND_OF_LEGACY: Record<string, string> = {
-  "workspace.hello": "session.hello",
-  "workspace.heartbeat": "session.heartbeat",
-  "workspace.sync.request": "session.sync",
+  "agent.hello": "session.hello",
+  "agent.heartbeat": "session.heartbeat",
+  "agent.sync.request": "session.sync",
   "assignment.ack": "assignment.ack",
   "assignment.start.ack": "assignment.start.ack",
   "assignment.activity": "assignment.activity",
@@ -42,8 +41,6 @@ export function commandToLegacy(frame: CommandFrame, workerScope: string, legacy
     messageId: frame.requestId,
     timestamp: new Date().toISOString(),
     type,
-    executionWorkspaceId: workerScope,
-    workspaceRuntimeId: workerScope,
     ...top,
     payload: body,
   };

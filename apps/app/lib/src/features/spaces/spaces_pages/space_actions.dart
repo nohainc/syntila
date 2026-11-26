@@ -1,6 +1,6 @@
 part of '../spaces_pages.dart';
 
-extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
+extension _SpaceViewActions on _SpaceViewState {
   Future<void> _setMemberPermission(
       AxSpaceMember member, String key, bool value) async {
     _updateState(() => _savingMembers.add(member.userId));

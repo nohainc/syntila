@@ -44,7 +44,7 @@ async function harness(member = true) {
       }),
     );
   const event = (
-    kind: "space" | "execution_workspace",
+    kind: "space" | "thread",
     sequence: number,
   ): RealtimeEventEnvelope => ({
     eventId: `${kind}-${sequence}`,
@@ -58,7 +58,14 @@ async function harness(member = true) {
           spaceId: "same",
           stream: { kind, id: "same" },
         }
-      : { type: "run.completed", version: "1.0", workspaceId: "same" }),
+      : {
+          type: "thread.updated",
+          version: "1.1",
+          spaceId: "same",
+          threadId: "same",
+          payload: { entityId: "same", threadId: "same" },
+          stream: { kind, id: "same" },
+        }),
   });
   return { frames, cursors, publish, event, clients };
 }
@@ -67,16 +74,16 @@ describe("durable stream delivery", () => {
   it("isolates execution and Space sequences, scopes gaps, and never regresses cursors", async () => {
     const f = await harness();
     for (const event of [
-      f.event("execution_workspace", 1),
+      f.event("thread", 1),
       f.event("space", 1),
-      f.event("execution_workspace", 2),
+      f.event("thread", 2),
     ])
       expect((await f.publish(event)).ok).toBe(true);
     expect(f.frames.filter((frame) => frame.type === "event")).toHaveLength(3);
     expect(f.frames.some((frame) => frame.type === "sync.required")).toBe(
       false,
     );
-    await f.publish(f.event("execution_workspace", 2));
+    await f.publish(f.event("thread", 2));
     expect(f.frames.filter((frame) => frame.type === "event")).toHaveLength(3);
     await f.publish(f.event("space", 3));
     expect(f.frames.at(-1)).toMatchObject({
@@ -86,87 +93,16 @@ describe("durable stream delivery", () => {
       lastDurableSequence: 1,
       nextSequence: 3,
     });
-    expect(f.frames.at(-1)).not.toHaveProperty("workspaceId");
-    await f.publish(f.event("space", 2));
+        await f.publish(f.event("space", 2));
     expect(f.cursors.get('["space","same"]')).toBe(3);
-    expect(f.cursors.get('["execution_workspace","same"]')).toBe(2);
-    await f.publish(f.event("execution_workspace", 4));
+    expect(f.cursors.get('["thread","same"]')).toBe(2);
+    await f.publish(f.event("thread", 4));
     expect(f.frames.at(-1)).toMatchObject({
       type: "sync.required",
-      workspaceId: "same",
-      stream: { kind: "execution_workspace", id: "same" },
+      stream: { kind: "thread", id: "same" },
     });
   });
 
-  it("does not replay previously stored Worker Activity", async () => {
-    const frames: Record<string, unknown>[] = [];
-    const socket = {
-      readyState: 1,
-      bufferedAmount: 0,
-      send(text: string) {
-        frames.push(JSON.parse(text));
-      },
-      close() {},
-    };
-    const { db, sqlite } = await pgD1();
-    await sqlite.exec(user("owner"));
-    for (const sequence of [1, 2, 3])
-      (await sqlite
-        .prepare(
-          `INSERT INTO realtime_events (
-             event_id, stream_kind, stream_id, workspace_id, thread_id, space_id, run_id, task_id,
-             attempt_id, assignment_id, workspace_runtime_id, sequence, event_type, payload_json,
-             idempotency_key, occurred_at
-           ) VALUES (?, 'execution_workspace', 'workspace-activity', 'workspace-activity', 'thread-activity',
-             'space-activity', 'run-activity', 'task-activity', 'attempt-activity', 'assignment-activity',
-             'runtime-activity', ?, 'assignment.activity', ?, ?, ?)`,
-        )
-        .run(
-          `activity-${sequence}`,
-          sequence,
-          JSON.stringify({
-            entityId: "assignment-activity",
-            workerId: "chatgpt",
-            sourceEventId: `source-${sequence}`,
-            executionId: "execution-activity",
-            activitySequence: sequence,
-            activityType: "tool.started",
-            activityStatus: "running",
-            title: "Running tool",
-          }),
-          `activity-${sequence}`,
-          `2026-10-12T18:00:0${sequence}.000Z`,
-        ));
-    const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: db } as never);
-    const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
-    clients.set("client", {
-      socket,
-      identity: { userId: "owner" },
-      subscriptions: new Map(),
-      lastEnqueuedSequences: new Map([
-        ['["execution_workspace","workspace-activity"]', 1],
-      ]),
-      appliedSequences: new Map(),
-      queue: new BoundedRealtimeQueue(),
-      flushScheduled: false,
-    });
-    const handle = Reflect.get(gateway, "handleClientMessage") as (
-      connectionId: string,
-      data: unknown,
-    ) => Promise<void>;
-    const subscribe = {
-      type: "subscribe",
-      scope: {
-        kind: "execution_workspace",
-        executionWorkspaceId: "workspace-activity",
-      },
-    };
-    await handle.call(gateway, "client", JSON.stringify(subscribe));
-    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(0);
-
-    await handle.call(gateway, "client", JSON.stringify(subscribe));
-    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(0);
-  });
   it("resumes a hibernated connection with its subscriptions and never stores cursors", async () => {
     const frames: Record<string, unknown>[] = [];
     const socket = {
@@ -212,9 +148,9 @@ describe("durable stream delivery", () => {
             timestamp: "2026-10-06T00:00:00.000Z",
             sequence,
             payload: { entityId: "same" },
-            type: "run.completed",
-            version: "1.0",
-            workspaceId: "same",
+            type: "people.updated",
+            version: "1.1",
+            stream: { kind: "user", id: "owner" },
           }),
         }),
       );

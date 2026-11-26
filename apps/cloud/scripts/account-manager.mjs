@@ -136,7 +136,7 @@ export async function executeSQL(config, sql) {
     throw new Error("Database operation failed.");
   return result.flatMap((r) => r.results ?? []);
 }
-const EMPTY_STATS = { spaces: 0, workspaces: 0, requests: 0, failed_requests: 0, last_request_at: null, messages: 0, last_message_at: null, plan: "free", plan_source: null, plan_management: null, plan_period_end: null };
+const EMPTY_STATS = { spaces: 0, workers: 0, requests: 0, failed_requests: 0, last_request_at: null, messages: 0, last_message_at: null, plan: "free", plan_source: null, plan_management: null, plan_period_end: null };
 export async function handle(input, query = executeSQL, fetcher = fetch, backend = callBackend) {
   const config = environment(input.environment);
   if (input.action === "list") {

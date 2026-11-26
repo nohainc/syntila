@@ -7,7 +7,7 @@ export type SpaceKind = (typeof SPACE_KINDS)[number];
 
 export type SpaceRole = "owner" | "collaborator" | "viewer";
 
-/** A person participating in a Space; this does not grant Workspace access. */
+/** A person participating in a Space; this does not grant Worker access. */
 export interface SpaceMembership {
   readonly id: string;
   readonly spaceId: string;
@@ -15,7 +15,7 @@ export interface SpaceMembership {
   readonly role: SpaceRole;
   readonly permissions?: {
     readonly chat: boolean;
-    /** Chat only: the member may answer with Workers from Workspaces they own. */
+    /** Chat only: the member may answer with Workers they own. */
     readonly useOwnWorkers: boolean;
     readonly work: boolean;
     readonly manageOwnThreads: boolean;

@@ -48,7 +48,6 @@ jobs:
           SYNTILA_AUTH_GITHUB_CLIENT_SECRET: ${{ secrets.SYNTILA_AUTH_GITHUB_CLIENT_SECRET || secrets.CONCLAVE_AUTH_GITHUB_CLIENT_SECRET }}
           SYNTILA_AUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.SYNTILA_AUTH_GOOGLE_CLIENT_SECRET || secrets.CONCLAVE_AUTH_GOOGLE_CLIENT_SECRET }}
           SYNTILA_RELEASE_PUBLISH_TOKEN: ${{ secrets.SYNTILA_RELEASE_PUBLISH_TOKEN }}
-          SYNTILA_WORKSPACE_ED25519_SEED: ${{ secrets.SYNTILA_WORKSPACE_ED25519_SEED }}
         run: node scripts/assert-no-browser-secrets.mjs apps/app/build/web
 
       - name: Verify production security configuration

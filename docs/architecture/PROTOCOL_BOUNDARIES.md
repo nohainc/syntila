@@ -57,53 +57,24 @@ do not carry runtime assignments and do not make the Worker CLI an AX
 client. The separate runtime credential and Worker Runtime Protocol remain
 required for machine participation.
 
-## 2. Worker ↔ Cloud — Worker Runtime Protocol
+## 2. Connect ↔ Cloud — Worker Agent Protocol
 
-**Endpoints:** the Syntila Worker runtime and Cloud's Worker Gateway.  
-**Authentication:** a machine runtime credential bound to one Worker
-runtime, sent as a Bearer credential in the `Authorization` header. Runtime
-credentials MUST NOT be accepted from WebSocket URL query parameters.
-**Transport:** WSS is primary; HTTPS long-poll is the functional fallback.
-Worker retries WSS after 5 minutes, doubling the interval after failures
-to a maximum of one hour. Wake/app resume resets the delay and requests a
-fresh WSS attempt while HTTPS is Ready. Each WSS attempt uses a fresh network
-client; timed-out or superseded attempts close late sockets. HTTPS stays active
-during the upgrade attempt. Cloud accepts only one active runtime session, so
-an accepted upgrade fences the HTTPS session; Worker then tears down its
-old timers, subscription, transport and session state before authenticating and
-synchronizing WSS. WSS is Ready only after synchronization, inventory and
-assignment reconciliation complete; failure restores HTTPS through reconnect.
-Automatic recovery does not invoke the human owner disconnect workflow.
-**Contract ownership:** the versioned Worker Runtime Protocol schema and
-Cloud Gateway implementation.
+Connect obtains a Worker session using the Worker's local key and a signed
+challenge, then connects to `/api/worker-agent/gateway` with the Worker and
+session identifiers and a bearer session token. Each Worker has its own
+credential, session, journal and lock. Connect reconciles its journal before
+reporting readiness; a newer session epoch fences an older session.
 
-This protocol carries runtime hello/heartbeat, safe Worker inventory and
-status, assignment delivery/acknowledgement/progress/results/errors, and
-cancellation. Cloud scheduling and Worker execution use this boundary;
-transport choice does not change assignment semantics.
+The versioned `syntila.worker-agent-protocol` contract is defined in
+`packages/worker-agent-protocol/src/worker-agent.ts` and consumed by the
+Worker gateway and Connect. It carries Worker readiness, assignment delivery,
+acknowledgements, activity, results, and cancellation. Cloud owns admission,
+authorization and durable state; Connect supervises the local Engine and
+checks local execution permissions. Cloud never receives local folder paths.
+Request files and handoffs travel through the artifact service.
 
-Cloud-facing Worker Type IDs are product concepts. Space and Thread
-policy, Worker inventory, and assignment snapshots use IDs such as
-`chatgpt` and `gemini`; internal Worker release identifiers are not accepted
-in this protocol.
-Cloud forwards the selected product Worker Type ID unchanged. Worker
-validates it against the selected local Worker slot, then resolves the admitted
-Engine and compatible official Tool Profile Release for that logical Worker.
-AX therefore does not need to know which Engine build or Profile implements a
-product Worker.
-
-Only Syntila Worker speaks this protocol as a client. Cloud's Worker
-Gateway is its server. Syntila is not a runtime client. CLI Worker Engine
-processes are not runtime clients and MUST NOT connect to Cloud, invoke
-Worker Gateway routes, or receive the Worker runtime credential.
-Worker translates between runtime messages and Local Worker Protocol 4.1
-frames.
-
-The current implementation is named
-`syntila.worker-agent-protocol` and is defined in
-`packages/worker-agent-protocol/src/workspace-runtime.ts`. Keep its runtime identity,
-authentication, transport negotiation, and assignment envelopes inside this
-boundary.
+The human client and the Engine do not use a Worker credential or directly
+open this gateway. The Engine runs as a separate child process of Connect.
 
 ## 3. Worker ↔ CLI Worker Engine — Local Worker Protocol 4.1
 
@@ -158,7 +129,7 @@ Durable execute requests may carry version 1 `workerSession` metadata: Syntila
 session, Conversation, and Worker IDs plus a frozen context target revision.
 Worker validates ownership before forwarding it; the Engine retains native
 handles in Worker-local state only. Model and effort changes do not partition
-sessions. See [Conversation Continuity Phase 6](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-6--workspace-owned-worker-sessions)
+sessions. See [Conversation continuity](../specifications/CONVERSATION_CONTINUITY_V1.md)
 for local file upgrades, context synchronization limits, and coordinated rollout.
 
 Local Worker Protocol 4.1 is the sole Worker-to-Engine protocol contract;
@@ -175,8 +146,7 @@ These names describe Syntila domain values used across boundaries:
 | `SpaceId` | Stable identity of a collaboration Space |
 | `ThreadId` | Stable identity of a persistent unit of work |
 | `WorkerId` | Cloud identity of a registered machine Worker |
-| `WorkerRuntimeId` | Identity of the connected machine runtime |
-| `WorkerId` | Identity of one Worker-owned local Worker slot/configuration |
+| `WorkerSessionId` | Identity of one authenticated Worker session |
 | `WorkerTypeId` | Stable product integration type, such as `chatgpt` or `gemini` |
 | `AssignmentId` | Identity of one immutable unit of scheduled execution |
 | `RunId` | Identity of the orchestration Run containing work |
@@ -214,25 +184,14 @@ unchanged across a boundary.
 
 ## Current schema locations
 
-- Human Product Protocol: AX `apps/app/lib/src/ax/ax_data.dart` and
-  `apps/app/lib/src/realtime/realtime_client.dart`; Cloud
-  `apps/cloud/src/routes/handlers.ts` and `apps/cloud/src/realtime-gateway.ts`.
-- Worker Runtime Protocol: Worker
-  `apps/workspace/lib/cloud_connection.dart`; schema
-  `packages/worker-agent-protocol/src/workspace-runtime.ts`; Cloud
-  `apps/cloud/src/workspace-gateway.ts`.
-- Local Worker Protocol 4.1: implemented by the Worker supervisor
-  `apps/workspace/lib/cli_worker_engine_supervisor.dart`, assignment handler
-  `apps/workspace/lib/worker_executor.dart`, generic Engine
-  `engines/cli_worker/lib/src/cli_worker_engine.dart`, and shared schema
-  `packages/syntila_worker_protocol`.
-- Canonical domain model: domain entities in `packages/core/src` and the
-  canonical vocabulary in this document; wire validators remain protocol-owned.
-
-Protocol binding generation covers the product envelope, Cloud Worker
-message metadata, and realtime event metadata. It does not generate Local
-Worker Protocol bindings: `packages/syntila_worker_protocol` is the single
-source for Worker Protocol 4.1 models and validation.
+- Human API and realtime: `apps/backend/src/domain/routes`,
+  `apps/backend/src/domain/realtime-gateway.ts`, and `apps/app/lib/src/realtime`.
+- Worker Agent: `packages/worker-agent-protocol`,
+  `apps/backend/src/domain/worker-gateway.ts`, and `apps/connect/lib/src/wire.dart`.
+- Local Worker Protocol: `packages/syntila_worker_protocol`, Connect's Engine
+  supervisor in `apps/connect/lib/src/cli_engine.dart`, and
+  `engines/cli_worker/lib/src/cli_worker_engine.dart`.
+- Canonical domain types: `packages/core/src`.
 
 Discussion reads use the [versioned paging contract](../specifications/DISCUSSION_PAGING.md). AX retains shared cached history across page disposal,
 synchronizes on reopening, and reconciles optimistic sends and edits per message.
@@ -241,13 +200,6 @@ Human Product realtime collaboration signals and independent durable Space/user
 stream sequencing are specified in [Realtime synchronization 1.1](../specifications/REALTIME_SYNCHRONIZATION.md).
 Existing Worker envelopes remain compatible; this does not change
 Worker Runtime or Local Worker Protocol transport.
-
-Worker Space grant collections and the additive aggregate count in
-`GET /api/workspaces` are Human Product HTTP read models. Their versioned
-read model contract 1.1 preserves
-existing mutation endpoints and authorization. Runtime inventory and grant
-admission still belong to their existing Cloud/Worker boundaries.
-
 
 For model replacement, version 1 `workerSession` may also contain optional version
 1 `bootstrap`: Syntila Conversation/context IDs, a frozen canonical history

@@ -16,6 +16,41 @@ const source = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("CI acceptance orchestration", () => {
+  it("builds the Profile Lab Engine without recreating a retired app directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "syntila-engine-output-"));
+    try {
+      mkdirSync(join(root, "scripts/internal"), { recursive: true });
+      mkdirSync(join(root, "engines/cli_worker/.dart_tool"), { recursive: true });
+      mkdirSync(join(root, "bin"));
+      writeFileSync(join(root, "engines/cli_worker/pubspec.yaml"), "name: fake\nversion: 1.2.3\n");
+      writeFileSync(join(root, "engines/cli_worker/.dart_tool/package_config.json"), "{}");
+      copyFileSync(new URL("./internal/build-cli-worker-engine.sh", import.meta.url), join(root, "scripts/internal/build-cli-worker-engine.sh"));
+      const dart = join(root, "bin/dart");
+      writeFileSync(dart, '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nshift\nprintf engine > "$1"\n');
+      chmodSync(dart, 0o755);
+      const result = spawnSync("bash", [join(root, "scripts/internal/build-cli-worker-engine.sh")], {
+        env: { ...process.env, SYNTILA_DART_EXECUTABLE: dart, SYNTILA_BUILD_TARGET_OS: "", SYNTILA_BUILD_TARGET_ARCH: "" },
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(join(root, "dist/cli-worker-engine/host/syntila-agent"), "utf8")).toBe("engine");
+      expect(readFileSync(join(root, "apps/profile_lab/assets/engines/syntila-agent"), "utf8")).toBe("engine");
+      expect(() => readFileSync(join(root, "apps/workspace/assets/engines/syntila-agent"))).toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("points signed Connect release and installer checks at the available signer", () => {
+    const signer = "sign-connect-windows.ps1";
+    expect(source(`scripts/${signer}`)).toContain("VerifyOnly");
+    for (const file of [
+      ".github/workflows/release-windows.yml",
+      "scripts/package-connect-windows.ps1",
+      "scripts/test-connect-windows-installer.ps1",
+    ]) {
+      expect(source(file)).toContain(signer);
+    }
+  });
   it("uses the public Connect platform builder in the release workflow", () => {
     for (const [workflow, command] of [
       ["release-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],

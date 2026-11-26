@@ -46,15 +46,15 @@ describe("durable realtime event retention", () => {
     );
     await database
       .prepare(
-        `INSERT INTO realtime_event_cursors (workspace_id, next_sequence)
-         VALUES ('workspace-1', 12)`,
+        `INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence)
+         VALUES ('space', 'space-1', 12)`,
       )
       .run();
     const insert = database.prepare(
       `INSERT INTO realtime_events
-       (event_id, workspace_id, sequence, event_type, payload_json,
+       (event_id, stream_kind, stream_id, sequence, event_type, payload_json,
         idempotency_key, occurred_at)
-       VALUES (?, 'workspace-1', ?, 'work_request.created', '{}', ?, ?)`,
+       VALUES (?, 'space', 'space-1', ?, 'space.updated', '{}', ?, ?)`,
     );
     await insert.run("event-expired", 10, "idem-expired", "2026-09-24T23:59:59.999Z");
     await insert.run(
@@ -74,7 +74,7 @@ describe("durable realtime event retention", () => {
         .all()) as Array<{ event_id: string }>;
       const cursor = (await database
         .prepare(
-          "SELECT next_sequence FROM realtime_event_cursors WHERE workspace_id = 'workspace-1'",
+          "SELECT next_sequence FROM realtime_event_cursors WHERE stream_kind = 'space' AND stream_id = 'space-1'",
         )
         .get()) as { next_sequence: number };
 

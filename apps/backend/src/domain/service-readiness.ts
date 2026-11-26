@@ -12,13 +12,11 @@ import { type ServiceConnectionState } from "@syntila/worker-agent-protocol";
 export interface ServiceReadiness {
   readonly state: ServiceConnectionState;
   readonly readyForAssignments: boolean;
-  /** The authenticated runtime identity the state belongs to. */
-  readonly workspaceRuntimeId: string;
   /** The session the state belongs to; a replaced session never matches. */
   readonly sessionId: string;
   /** Increases each time the Service completes a synchronization. */
   readonly syncGeneration: number;
-  /** Whether Cloud has answered this session's `workspace.sync.request`. */
+  /** Whether Cloud has answered this session's `agent.sync.request`. */
   readonly syncAnswered: boolean;
   /** Whether this session has delivered a Worker inventory snapshot. */
   readonly inventoryReceived: boolean;
@@ -52,7 +50,6 @@ export type ReadinessDecision =
 /** A freshly authenticated session: connected, nothing synchronized yet. */
 export function authenticatedReadiness(input: {
   readonly sessionId: string;
-  readonly workspaceRuntimeId: string;
   /** Carried over so the generation never moves backwards across sessions. */
   readonly previousGeneration?: number;
   readonly now: string;
@@ -60,7 +57,6 @@ export function authenticatedReadiness(input: {
   return {
     state: "authenticated",
     readyForAssignments: false,
-    workspaceRuntimeId: input.workspaceRuntimeId,
     sessionId: input.sessionId,
     syncGeneration: input.previousGeneration ?? 0,
     syncAnswered: false,
@@ -107,7 +103,7 @@ export function synchronizingReadiness(
   };
 }
 
-/** Cloud sent `workspace.sync.result`; a ready claim is now credible. */
+/** Cloud sent `agent.sync.result`; a ready claim is now credible. */
 export function syncAnsweredReadiness(
   current: ServiceReadiness,
   now: string,
@@ -124,21 +120,17 @@ export function inventoryReceivedReadiness(
 
 /**
  * Applies a readiness report from the Service. A report is trusted only for
- * the session and runtime identity it was received on, never moves the sync
+ * the session it was received on, never moves the sync
  * generation backwards, and cannot claim `ready` before Cloud answered the
  * session's sync request.
  */
 export function applyServiceReadiness(
   current: ServiceReadiness | null,
   report: ServiceReadinessReport,
-  identity: { readonly sessionId: string; readonly workspaceRuntimeId: string },
+  identity: { readonly sessionId: string },
   now: string,
 ): ReadinessDecision {
-  if (
-    !current ||
-    current.sessionId !== identity.sessionId ||
-    current.workspaceRuntimeId !== identity.workspaceRuntimeId
-  ) {
+  if (!current || current.sessionId !== identity.sessionId) {
     return { outcome: "ignored_identity" };
   }
   if (report.syncGeneration < current.syncGeneration) {

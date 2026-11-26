@@ -35,7 +35,7 @@ function elapsed(trace, from, to, crossHost = false) {
       !Number.isFinite(end) ||
       !a.event.context.traceEpochId ||
       a.event.context.traceEpochId !== b.event.context.traceEpochId ||
-      a.event.workspaceRuntimeId !== b.event.workspaceRuntimeId
+      a.event.workerId !== b.event.workerId
     )
       return null;
     ms = end - start;
@@ -55,7 +55,7 @@ function elapsed(trace, from, to, crossHost = false) {
   return ms;
 }
 
-const SERVICE_COMPONENTS = ["service", "workspace", "workspace_service"];
+const SERVICE_COMPONENTS = ["service", "workspace", "connect_service"];
 const SERVICE_STAGES = [
   "service_received",
   "service_accepted",
@@ -83,18 +83,18 @@ function identityIssue(trace, events, sample) {
       SERVICE_COMPONENTS.includes(event.component),
   );
   const reference = local[0] ?? trace.marks.terminal_persisted?.event;
-  if (!reference?.attemptId || !reference.workspaceRuntimeId)
+  if (!reference?.attemptId || !reference.workerId)
     return "missing execution identity";
   if (
     local.some(
       (event) =>
         !event.context.traceEpochId ||
-        event.workspaceRuntimeId !== reference.workspaceRuntimeId ||
+        event.workerId !== reference.workerId ||
         event.attemptId !== reference.attemptId ||
         event.context.traceEpochId !== reference.context.traceEpochId,
     )
   )
-    return "inconsistent assignment attempt, runtime or process epoch";
+    return "inconsistent assignment attempt, Worker or process epoch";
   for (const stage of CLOUD_STAGES) {
     const event = trace.marks[stage]?.event;
     if (!event) continue;
@@ -110,7 +110,7 @@ function identityIssue(trace, events, sample) {
       event.assignmentId &&
       (event.assignmentId !== trace.assignmentIds[0] ||
         event.attemptId !== reference.attemptId ||
-        event.workspaceRuntimeId !== reference.workspaceRuntimeId)
+        event.workerId !== reference.workerId)
     )
       return "Cloud evidence identity differs from Service/terminal identity";
   }
@@ -122,7 +122,7 @@ function identityIssue(trace, events, sample) {
       event &&
       (event.assignmentId !== trace.assignmentIds[0] ||
         event.attemptId !== reference.attemptId ||
-        event.workspaceRuntimeId !== reference.workspaceRuntimeId ||
+        event.workerId !== reference.workerId ||
         event.context.traceEpochId !== reference.context.traceEpochId)
     )
       return "missing or inconsistent Service assignment identity";

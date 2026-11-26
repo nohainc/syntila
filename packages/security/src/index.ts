@@ -14,7 +14,6 @@ export const PERMISSIONS = [
   "spaces:manage",
   "run.start",
   "runs:control",
-  "workspace:manage",
   "profiles:admin",
   "profiles:release:manage",
   "audit:read",
@@ -239,19 +238,6 @@ export async function authorizeSpaceMembership(
     throw new AuthorizationError(permission, spaceId);
   }
   return membership;
-}
-
-export async function authorizeWorkspaceOwner(
-  db: SecurityQuery,
-  context: Pick<SecurityContext, "userId" | "user">,
-  workspaceId: string,
-  permission: Permission = "workspace:manage",
-): Promise<void> {
-  if (context.user.status !== "active") {
-    throw new AuthorizationError(permission, workspaceId);
-  }
-  const workspace = await db.row<{ id: string }>`SELECT id FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${context.userId} AND status <> 'revoked'`;
-  if (!workspace) throw new AuthorizationError(permission, workspaceId);
 }
 
 export async function authorizeSpaceOwner(

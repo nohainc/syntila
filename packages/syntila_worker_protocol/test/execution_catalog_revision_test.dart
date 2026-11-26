@@ -20,7 +20,7 @@ void main() {
         isNull);
     expect(
         negotiateProtocolVersion(
-            workspaceVersions: ['4.0', '4.1'], workerVersions: ['4.0', '4.1']),
+            connectVersions: ['4.0', '4.1'], engineVersions: ['4.0', '4.1']),
         '4.1');
   });
   test('rejects invalid pins, legacy pin injection and native arguments', () {

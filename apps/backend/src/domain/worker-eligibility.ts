@@ -118,8 +118,7 @@ function strings(value: unknown): string[] {
 
 /**
  * Whether the Agent of a Worker has a live session: one connected row whose
- * lease has not lapsed. This is the only offline signal; it never looks at a
- * Workspace.
+ * lease has not lapsed. This is the only offline signal.
  */
 export async function workerIsOnline(q: Query, workerId: string): Promise<boolean> {
   const row = await q.row<{ ok: number }>`SELECT 1 AS ok FROM worker_agent_sessions
@@ -131,7 +130,6 @@ export async function workerIsOnline(q: Query, workerId: string): Promise<boolea
 /**
  * The requester's right to execute in a Thread: an active member whose role
  * allows the workflow, and, for a non-owner, the Thread's access policy. The
- * same rules the Workspace path applies when it selects a target.
  */
 export async function requesterMayExecute(
   q: Query,

@@ -95,91 +95,25 @@ class AxUserWorkflowConfiguration {
 }
 
 abstract interface class AxWorkflowConfigurationDataSource {
-  Future<List<AxUserWorkflowConfiguration>> loadWorkflowConfigurations(
-      {String? workspaceId});
+  Future<List<AxUserWorkflowConfiguration>> loadWorkflowConfigurations();
   Future<AxUserWorkflowConfiguration> saveWorkflowConfiguration(
-      AxUserWorkflowConfiguration configuration,
-      {String? workspaceId});
+      AxUserWorkflowConfiguration configuration);
   Future<AxUserWorkflowConfiguration> resetWorkflowConfiguration(
-      String workflowId,
-      {String? workspaceId});
+      String workflowId);
 }
 
 /// Scope-level default workflow selection. This is deliberately separate from
 /// execution fields so changing a workflow's Worker/model/effort does not
 /// change which workflow a new request starts with.
 abstract interface class AxWorkflowDefaultDataSource {
-  Future<String> loadWorkflowDefault({String? workspaceId});
-  Future<String> saveWorkflowDefault(String workflowId, {String? workspaceId});
+  Future<String> loadWorkflowDefault();
+  Future<String> saveWorkflowDefault(String workflowId);
   Future<String> loadSpaceWorkflowDefault(String spaceId);
 }
 
 abstract interface class AxSpaceWorkflowConfigurationDataSource {
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
       String spaceId);
-}
-
-/// An owner-managed folder outside Work Root, published by the Space's
-/// Workspace. Cloud only knows its name and access status, never its path.
-class AxAdditionalFolder {
-  const AxAdditionalFolder({
-    required this.id,
-    required this.displayName,
-    required this.status,
-    this.attached = false,
-  });
-  final String id;
-  final String displayName;
-
-  /// `available`, `read_only`, `denied`, or `missing`.
-  final String status;
-  final bool attached;
-
-  bool get accessible => status == 'available' || status == 'read_only';
-
-  factory AxAdditionalFolder.fromJson(Map<String, dynamic> json) =>
-      AxAdditionalFolder(
-        id: json['id'] as String,
-        displayName: json['displayName'] as String,
-        status: json['status'] as String? ?? 'missing',
-        attached: json['attached'] == true,
-      );
-}
-
-/// Additional folders for one Space. Only the owner of both the Space and
-/// its Workspace is [eligible]; everyone else receives no folders.
-class AxSpaceAdditionalFolders {
-  const AxSpaceAdditionalFolders({
-    required this.eligible,
-    this.reason,
-    this.workspaceId,
-    this.folders = const [],
-  });
-  final bool eligible;
-  final String? reason;
-  final String? workspaceId;
-  final List<AxAdditionalFolder> folders;
-
-  Iterable<AxAdditionalFolder> get attached =>
-      folders.where((folder) => folder.attached);
-
-  factory AxSpaceAdditionalFolders.fromJson(Map<String, dynamic> json) =>
-      AxSpaceAdditionalFolders(
-        eligible: json['eligible'] == true,
-        reason: json['reason'] as String?,
-        workspaceId: json['workspaceId'] as String?,
-        folders: [
-          for (final value in (json['folders'] as List? ?? const []))
-            AxAdditionalFolder.fromJson(
-                Map<String, dynamic>.from(value as Map)),
-        ],
-      );
-}
-
-abstract interface class AxSpaceAdditionalFolderDataSource {
-  Future<AxSpaceAdditionalFolders> loadSpaceAdditionalFolders(String spaceId);
-  Future<AxSpaceAdditionalFolders> saveSpaceAdditionalFolders(
-      String spaceId, List<String> folderIds);
 }
 
 /// A folder a Connect installation allows, with the computer it is on. Only the

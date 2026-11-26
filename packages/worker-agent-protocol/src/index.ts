@@ -3,7 +3,7 @@ import type {
   ProviderFailureDetails,
 } from "@syntila/protocol";
 
-export * from "./workspace-runtime.js";
+export * from "./worker-agent.js";
 export * from "./desktop-auth-transport.js";
 export * from "./mcp-tool-call.js";
 export * from "./mcp-inventory.js";

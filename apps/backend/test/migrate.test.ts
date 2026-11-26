@@ -47,6 +47,31 @@ describe("migration files", () => {
 });
 
 describe("migrate", () => {
+  test("migration 0050 converts existing diagnostic stages", async () => {
+    const sql = await emptyDatabase();
+    const real = join(import.meta.dir, "..", "migrations");
+    const dir = mkdtempSync(join(tmpdir(), "syntila-migrations-"));
+    for (const name of readdirSync(real).filter((name) => /^\d{4}_.*\.sql$/.test(name) && name < "0050")) {
+      copyFileSync(join(real, name), join(dir, name));
+    }
+    await migrate(sql as any, dir);
+    await sql`INSERT INTO issue_reports (id, public_reference, request_id, attempt_key, component, error_code, failure_stage, fingerprint, status, diagnostic_state, created_at, updated_at)
+      VALUES ('report', 'report', 'request', 'attempt', 'workspace_service', 'error', 'workspace_disconnect', 'fingerprint', 'open', 'complete', now(), now())`;
+    await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, workspace_id, next_sequence)
+      VALUES ('user', 'user-1', NULL, 7), ('execution_workspace', NULL, 'old-1', 2)`;
+    await sql`INSERT INTO realtime_events (event_id, stream_kind, stream_id, workspace_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
+      VALUES ('retained', 'user', 'user-1', NULL, 7, 'message.created', '{}', 'retained-key', now()),
+             ('retired', 'execution_workspace', NULL, 'old-1', 2, 'old.event', '{}', 'retired-key', now())`;
+    await sql`INSERT INTO outbox (event_id) VALUES ('retained'), ('retired')`;
+    copyFileSync(join(real, "0050_remove_workspace_columns.sql"), join(dir, "0050_remove_workspace_columns.sql"));
+    await migrate(sql as any, dir);
+    const [report] = await sql`SELECT component, failure_stage FROM issue_reports WHERE id = 'report'`;
+    expect(report).toMatchObject({ component: "connect_service", failure_stage: "connect_disconnect" });
+    expect(await sql`SELECT event_id FROM realtime_events ORDER BY event_id`).toEqual([{ event_id: "retained" }]);
+    expect(await sql`SELECT event_id FROM outbox ORDER BY event_id`).toEqual([{ event_id: "retained" }]);
+    expect(await sql`SELECT stream_kind, stream_id, next_sequence::int AS next_sequence FROM realtime_event_cursors`)
+      .toEqual([{ stream_kind: "user", stream_id: "user-1", next_sequence: 7 }]);
+  });
   test("applies transactional and no-transaction migrations once, and detects edits", async () => {
     const sql = await emptyDatabase();
     const files = {
@@ -167,10 +192,10 @@ describe("schema lock", () => {
     const [{ pk }] = await sql`SELECT count(*)::int AS pk FROM pg_constraint WHERE conrelid = 'realtime_event_cursors'::regclass AND contype = 'p'`;
     expect(pk).toBe(1);
     await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence) VALUES ('space', 's1', 1)`;
-    await sql`INSERT INTO realtime_event_cursors (stream_kind, workspace_id, next_sequence) VALUES ('execution_workspace', 'w1', 1)`;
+    await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence) VALUES ('user', 'u1', 1)`;
     await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence) VALUES ('space', 's1', 9) ON CONFLICT DO NOTHING`;
-    const rows = await sql`SELECT stream_kind, stream_key, next_sequence::int AS n FROM realtime_event_cursors ORDER BY stream_kind`;
-    expect(rows.map((r: any) => [r.stream_kind, r.stream_key, r.n])).toEqual([["execution_workspace", "w1", 1], ["space", "s1", 1]]);
+    const rows = await sql`SELECT stream_kind, stream_id, next_sequence::int AS n FROM realtime_event_cursors ORDER BY stream_kind`;
+    expect(rows.map((r: any) => [r.stream_kind, r.stream_id, r.n])).toEqual([["space", "s1", 1], ["user", "u1", 1]]);
   });
 
   test("author and actor columns that hold a user id reference users", async () => {

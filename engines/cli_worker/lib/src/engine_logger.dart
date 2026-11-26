@@ -76,8 +76,6 @@ class EngineLogger {
       },
       requestId: _token(context['requestId']),
       assignmentId: _token(context['assignmentId']),
-      workspaceId: _token(context['workspaceId']),
-      workspaceRuntimeId: _token(context['workspaceRuntimeId']),
       workerId: _token(context['workerId']),
       workerTypeId: _token(context['workerTypeId']),
       runId: _token(context['runId']),

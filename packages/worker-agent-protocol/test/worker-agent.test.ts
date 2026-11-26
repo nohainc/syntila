@@ -3,15 +3,15 @@ import {
   ASSIGNMENT_STARTUP_STAGE_RANK,
   ASSIGNMENT_STARTUP_STAGES,
   DIAGNOSTIC_PROBE_ECHO_MAX_CHARS,
-  parseWorkspaceRuntimeMessage,
+  parseWorkerAgentMessage,
   SERVICE_PROBE_PAYLOAD_CAPABILITY,
-  WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  WORKER_AGENT_PROTOCOL_NAME,
+  WORKER_AGENT_PROTOCOL_VERSION,
 } from "../src/index.js";
 
 const base = {
-  protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-  protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+  protocol: WORKER_AGENT_PROTOCOL_NAME,
+  protocolVersion: WORKER_AGENT_PROTOCOL_VERSION,
   messageId: "message-1",
   timestamp: "2026-09-24T12:00:00.000Z",
   payload: { snapshot: { workerTypeId: "chatgpt" }, input: {} },
@@ -22,13 +22,11 @@ describe("Workspace Runtime protocol", () => {
     const wake = {
       ...base,
       type: "input.available",
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       payload: {},
     };
-    expect(parseWorkspaceRuntimeMessage(wake).type).toBe("input.available");
+    expect(parseWorkerAgentMessage(wake).type).toBe("input.available");
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...wake,
         payload: { contentBase64: "aGVsbG8=" },
       }),
@@ -37,20 +35,18 @@ describe("Workspace Runtime protocol", () => {
 
   it("uses Workspace lifecycle message names", () => {
     expect(
-      parseWorkspaceRuntimeMessage({ ...base, type: "workspace.hello" }).type,
-    ).toBe("workspace.hello");
+      parseWorkerAgentMessage({ ...base, type: "agent.hello" }).type,
+    ).toBe("agent.hello");
   });
 
-  it("requires both execution and runtime identity on assignments", () => {
+  it("requires correlation identity on assignments", () => {
     expect(() =>
-      parseWorkspaceRuntimeMessage({ ...base, type: "assignment.start" }),
-    ).toThrow(/executionWorkspaceId/);
+      parseWorkerAgentMessage({ ...base, type: "assignment.start" }),
+    ).toThrow(/workerId/);
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.start",
-        executionWorkspaceId: "workspace-a",
-        workspaceRuntimeId: "runtime-a",
         workerId: "worker-a",
         runId: "run-a",
         taskId: "task-a",
@@ -64,11 +60,9 @@ describe("Workspace Runtime protocol", () => {
 
   it("accepts bounded structured activity assignments", () => {
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.activity",
-        executionWorkspaceId: "workspace-a",
-        workspaceRuntimeId: "runtime-a",
         workerId: "worker-a",
         runId: "run-a",
         taskId: "task-a",
@@ -91,11 +85,9 @@ describe("Workspace Runtime protocol", () => {
       }).type,
     ).toBe("assignment.activity");
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.activity",
-        executionWorkspaceId: "workspace-a",
-        workspaceRuntimeId: "runtime-a",
         workerId: "worker-a",
         runId: "run-a",
         taskId: "task-a",
@@ -120,8 +112,6 @@ describe("Workspace Runtime protocol", () => {
 
   it("requires explicit Engine and provider startup evidence", () => {
     const correlation = {
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       workerId: "worker-a",
       runId: "run-a",
       taskId: "task-a",
@@ -130,7 +120,7 @@ describe("Workspace Runtime protocol", () => {
       idempotencyKey: "idem-a",
     };
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.start.ack",
         ...correlation,
@@ -142,7 +132,7 @@ describe("Workspace Runtime protocol", () => {
       }).type,
     ).toBe("assignment.start.ack");
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.start.ack",
         ...correlation,
@@ -157,11 +147,9 @@ describe("Workspace Runtime protocol", () => {
 
   it("validates assignment startup progress payloads", () => {
     const parse = (payload: unknown) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "assignment.startup",
-        executionWorkspaceId: "workspace-a",
-        workspaceRuntimeId: "runtime-a",
         workerId: "worker-a",
         runId: "run-a",
         taskId: "task-a",
@@ -199,17 +187,15 @@ describe("Workspace Runtime protocol", () => {
 
   it("validates Service readiness payloads", () => {
     const parse = (payload: unknown) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
-        type: "workspace.readiness",
-        executionWorkspaceId: "workspace-a",
-        workspaceRuntimeId: "runtime-a",
+        type: "agent.readiness",
         payload,
       });
     expect(
       parse({ state: "ready", readyForAssignments: true, syncGeneration: 3 })
         .type,
-    ).toBe("workspace.readiness");
+    ).toBe("agent.readiness");
     expect(
       parse({
         state: "draining",
@@ -217,7 +203,7 @@ describe("Workspace Runtime protocol", () => {
         syncGeneration: 3,
         reason: "shutdown",
       }).type,
-    ).toBe("workspace.readiness");
+    ).toBe("agent.readiness");
     // Only the ready state may accept assignments.
     expect(() =>
       parse({ state: "paused", readyForAssignments: true, syncGeneration: 1 }),
@@ -240,8 +226,6 @@ describe("Workspace Runtime protocol", () => {
 
   it("validates start permit request and grant payloads", () => {
     const correlation = {
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       workerId: "worker-a",
       runId: "run-a",
       taskId: "task-a",
@@ -250,7 +234,7 @@ describe("Workspace Runtime protocol", () => {
       idempotencyKey: "idem-a",
     };
     const parse = (type: string, payload: unknown) =>
-      parseWorkspaceRuntimeMessage({ ...base, type, ...correlation, payload });
+      parseWorkerAgentMessage({ ...base, type, ...correlation, payload });
     expect(parse("assignment.start.permit.request", {}).type).toBe(
       "assignment.start.permit.request",
     );
@@ -282,8 +266,6 @@ describe("Workspace Runtime protocol", () => {
     const assignment = {
       ...base,
       type: "assignment.start",
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       workerId: "worker-a",
       runId: "run-a",
       taskId: "task-a",
@@ -301,11 +283,11 @@ describe("Workspace Runtime protocol", () => {
         input: {},
       },
     };
-    expect(parseWorkspaceRuntimeMessage(assignment).type).toBe(
+    expect(parseWorkerAgentMessage(assignment).type).toBe(
       "assignment.start",
     );
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...assignment,
         payload: {
           snapshot: {
@@ -318,7 +300,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...assignment,
         payload: {
           snapshot: {
@@ -340,13 +322,13 @@ describe("Workspace Runtime protocol", () => {
       "checkout.archive",
       "checkout.finalize",
     ]) {
-      expect(() => parseWorkspaceRuntimeMessage({ ...base, type })).toThrow();
+      expect(() => parseWorkerAgentMessage({ ...base, type })).toThrow();
     }
   });
 
   it("accepts logical Thread readiness without a local path", () => {
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "thread.status",
         payload: {
@@ -360,7 +342,7 @@ describe("Workspace Runtime protocol", () => {
 
   it("accepts an optional bounded Workspace-wide parallelSlots total", () => {
     const parse = (payload: unknown) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload,
@@ -380,7 +362,7 @@ describe("Workspace Runtime protocol", () => {
 
   it("accepts only path-free Allowed Folder summaries", () => {
     const parse = (allowedFolders: unknown) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: { workers: [], allowedFolders, fullSnapshot: true },
@@ -424,14 +406,14 @@ describe("Workspace Runtime protocol", () => {
       lastSeenAt: "2026-09-24T12:00:00.000Z",
     };
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: { workers: [worker], fullSnapshot: true },
       }).type,
     ).toBe("worker.inventory");
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -441,7 +423,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -451,7 +433,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -461,7 +443,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -477,7 +459,7 @@ describe("Workspace Runtime protocol", () => {
       }).type,
     ).toBe("worker.inventory");
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -488,7 +470,7 @@ describe("Workspace Runtime protocol", () => {
     ).toThrow();
     for (const obsoleteField of ["providerToolPath"]) {
       expect(() =>
-        parseWorkspaceRuntimeMessage({
+        parseWorkerAgentMessage({
           ...base,
           type: "worker.inventory",
           payload: {
@@ -500,7 +482,7 @@ describe("Workspace Runtime protocol", () => {
     }
     for (const providerCliName of ["codex", "antigravity"]) {
       expect(() =>
-        parseWorkspaceRuntimeMessage({
+        parseWorkerAgentMessage({
           ...base,
           type: "worker.inventory",
           payload: {
@@ -511,7 +493,7 @@ describe("Workspace Runtime protocol", () => {
       ).toThrow();
     }
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "worker.inventory",
         payload: {
@@ -521,7 +503,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         protocolVersion: "5.0",
         type: "worker.inventory",
@@ -534,8 +516,6 @@ describe("Workspace Runtime protocol", () => {
     const assignment = {
       ...base,
       type: "assignment.start",
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       workerId: "worker-a",
       runId: "run-a",
       taskId: "task-a",
@@ -544,12 +524,12 @@ describe("Workspace Runtime protocol", () => {
       idempotencyKey: "idem-a",
       payload: { snapshot: { workerTypeId: "chatgpt" }, input: {} },
     };
-    expect(parseWorkspaceRuntimeMessage(assignment).type).toBe(
+    expect(parseWorkerAgentMessage(assignment).type).toBe(
       "assignment.start",
     );
     for (const providerCliName of ["codex", "antigravity"]) {
       expect(() =>
-        parseWorkspaceRuntimeMessage({
+        parseWorkerAgentMessage({
           ...assignment,
           payload: { snapshot: { workerTypeId: providerCliName }, input: {} },
         }),
@@ -559,8 +539,6 @@ describe("Workspace Runtime protocol", () => {
 
   it("accepts only canonical assignment error codes", () => {
     const identity = {
-      executionWorkspaceId: "workspace-a",
-      workspaceRuntimeId: "runtime-a",
       workerId: "worker-a",
       runId: "run-a",
       taskId: "task-a",
@@ -582,11 +560,11 @@ describe("Workspace Runtime protocol", () => {
         },
       },
     };
-    expect(parseWorkspaceRuntimeMessage(assignmentError).type).toBe(
+    expect(parseWorkerAgentMessage(assignmentError).type).toBe(
       "assignment.error",
     );
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...assignmentError,
         payload: {
           ...assignmentError.payload,
@@ -598,7 +576,7 @@ describe("Workspace Runtime protocol", () => {
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...assignmentError,
         payload: {
           ...assignmentError.payload,
@@ -621,11 +599,11 @@ describe("Workspace Runtime protocol", () => {
         },
       },
     };
-    expect(parseWorkspaceRuntimeMessage(withProvider).payload).toMatchObject(
+    expect(parseWorkerAgentMessage(withProvider).payload).toMatchObject(
       withProvider.payload,
     );
     expect(
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...assignmentError,
         payload: {
           ...assignmentError.payload,
@@ -635,7 +613,7 @@ describe("Workspace Runtime protocol", () => {
     ).toMatchObject({ providerFailureUnavailable: true });
     for (const invalid of [false, "true"]) {
       expect(() =>
-        parseWorkspaceRuntimeMessage({
+        parseWorkerAgentMessage({
           ...assignmentError,
           payload: {
             ...assignmentError.payload,
@@ -645,13 +623,13 @@ describe("Workspace Runtime protocol", () => {
       ).toThrow();
     }
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...withProvider,
         payload: { ...withProvider.payload, providerFailureUnavailable: true },
       }),
     ).toThrow();
     expect(() =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...withProvider,
         payload: {
           ...withProvider.payload,
@@ -666,11 +644,11 @@ describe("Workspace Runtime protocol", () => {
   });
 
   it("validates optional base64 echo on diagnostic.probe and diagnostic.probe.ack", () => {
-    expect(SERVICE_PROBE_PAYLOAD_CAPABILITY).toBe("workspace.probe_payload.v1");
+    expect(SERVICE_PROBE_PAYLOAD_CAPABILITY).toBe("agent.probe_payload.v1");
     expect(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS).toBe(65_536);
 
     const parseProbe = (payload: Record<string, unknown>) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "diagnostic.probe",
         payload: {
@@ -680,7 +658,7 @@ describe("Workspace Runtime protocol", () => {
         },
       });
     const parseAck = (payload: Record<string, unknown>) =>
-      parseWorkspaceRuntimeMessage({
+      parseWorkerAgentMessage({
         ...base,
         type: "diagnostic.probe.ack",
         payload: {

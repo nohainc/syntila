@@ -59,7 +59,7 @@ import {
   assignmentDeadlineViolation,
   classifyStepAssignmentOutcome,
   currentAssignmentDeadline,
-  isWorkspaceCapacityQueue,
+  isWorkerCapacityQueue,
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
@@ -133,7 +133,7 @@ export function nextWakeupMs(
   now = Date.now(),
 ): number {
   let wait = ASSIGNMENT_RECONCILIATION_INTERVAL_MS;
-  if (row && isWorkspaceCapacityQueue(row)) {
+  if (row && isWorkerCapacityQueue(row)) {
     wait = LONG_RUN_RECONCILIATION_INTERVAL_MS;
   }
   const runningSince = row?.runningAt ? Date.parse(row.runningAt) : NaN;
@@ -771,7 +771,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     };
 
     // Input Delivery v1: no step is dispatched until every file input is on
-    // the target Workspace. The assignment flow below is unchanged.
+    // the target Worker. The assignment flow below is unchanged.
     const inputs = await this.awaitWorkRequestInputs(params, step);
     if (inputs.outcome === "failed" || inputs.outcome === "cancelled") {
       const status = inputs.outcome === "cancelled" ? "cancelled" : "failed";
@@ -1347,9 +1347,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 workflowVersion: definition.version,
               }
             : null;
-          // Capacity waiting is durable and holds no Workspace execution slot.
+          // Capacity waiting is durable and holds no Worker execution slot.
           // It must not spend the provider's timeout or the recovery wake budget.
-          if (!deadlineInput || !isWorkspaceCapacityQueue(deadlineInput))
+          if (!deadlineInput || !isWorkerCapacityQueue(deadlineInput))
             boundedWakeups += 1;
           if (
             terminal &&

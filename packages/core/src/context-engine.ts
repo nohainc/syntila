@@ -54,7 +54,6 @@ export interface WorkflowExecutionContext {
   readonly environment: {
     readonly spaceId: string;
     readonly threadId: string;
-    readonly workspaceId: string | null;
     readonly spaceInstructions: string;
     readonly threadInstructions: string;
   } | null;

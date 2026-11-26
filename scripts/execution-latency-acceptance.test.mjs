@@ -28,7 +28,7 @@ function capture() {
           component,
           requestId,
           assignmentId: `asg-${requestId}`,
-          workspaceRuntimeId: "runtime",
+          workerId: `worker-${requestId}`,
           attemptId: `attempt-${requestId}`,
           timestamp: new Date(1791972000000 + offset + ms).toISOString(),
           context: {
@@ -175,13 +175,13 @@ describe("execution latency release gate", () => {
     );
     expect(() => assessLatency(events, web, {})).toThrow("commit");
   });
-  it("rejects mismatched epochs, runtimes, emitters and missing launch milestones", () => {
+  it("rejects mismatched epochs, Workers, emitters and missing launch milestones", () => {
     for (const change of [
       (event) => {
         event.context.traceEpochId = "restarted-process";
       },
       (event) => {
-        event.workspaceRuntimeId = "replaced-runtime";
+        event.workerId = "replaced-runtime";
       },
       (event) => {
         event.component = "cloud";
@@ -249,7 +249,7 @@ describe("execution latency release gate", () => {
       (events) => {
         events.find(
           (event) => event.context.traceStage === "cloud_ack_received",
-        ).workspaceRuntimeId = "stale";
+        ).workerId = "stale";
       },
       (events) => {
         const ack = events.find(

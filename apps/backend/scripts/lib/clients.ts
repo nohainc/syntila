@@ -184,8 +184,8 @@ export class FakeWorkspace {
   private async handshake() {
     const mark = this.frames.length;
     const after = (type: string) => waitFor(type, () => this.frames.slice(mark).find((f) => f.type === type));
-    this.send("workspace.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });
-    await after("workspace.hello.ack");
+    this.send("agent.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });
+    await after("agent.hello.ack");
     const now = new Date().toISOString();
     this.send("worker.inventory", {
       fullSnapshot: true,
@@ -199,9 +199,9 @@ export class FakeWorkspace {
         } } : {}),
       }],
     });
-    this.send("workspace.sync.request", {});
-    const sync = await after("workspace.sync.result");
-    this.send("workspace.readiness", { state: "ready", readyForAssignments: true, syncGeneration: sync.payload?.syncGeneration ?? 1 });
+    this.send("agent.sync.request", {});
+    const sync = await after("agent.sync.result");
+    this.send("agent.readiness", { state: "ready", readyForAssignments: true, syncGeneration: sync.payload?.syncGeneration ?? 1 });
     this.ready = true;
   }
 

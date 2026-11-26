@@ -10,7 +10,7 @@ import {
   synchronizingReadiness,
 } from "../../src/domain/service-readiness.js";
 
-const identity = { sessionId: "S1", workspaceRuntimeId: "RT" };
+const identity = { sessionId: "S1" };
 const t = (n: number) => `2026-10-14T10:00:${String(n).padStart(2, "0")}.000Z`;
 const fresh = () => authenticatedReadiness({ ...identity, now: t(0) });
 const synced = () =>
@@ -45,22 +45,14 @@ describe("Service readiness", () => {
     });
   });
 
-  it("ignores reports from another session, runtime or an older generation", () => {
+  it("ignores reports from another session or an older generation", () => {
     const current = applyServiceReadiness(synced(), ready, identity, t(3));
     if (current.outcome !== "applied") throw new Error("expected applied");
     expect(
       applyServiceReadiness(
         current.readiness,
         ready,
-        { sessionId: "S0", workspaceRuntimeId: "RT" },
-        t(4),
-      ).outcome,
-    ).toBe("ignored_identity");
-    expect(
-      applyServiceReadiness(
-        current.readiness,
-        ready,
-        { sessionId: "S1", workspaceRuntimeId: "OTHER" },
+        { sessionId: "S0" },
         t(4),
       ).outcome,
     ).toBe("ignored_identity");

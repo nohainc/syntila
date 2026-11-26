@@ -8,15 +8,15 @@ void main() {
         () {
       expect(
         negotiateProtocolVersion(
-          workspaceVersions: ['4.1', '4.2', '4.3', '4.4'],
-          workerVersions: ['4.1', '4.2', '4.3', '4.4'],
+          connectVersions: ['4.1', '4.2', '4.3', '4.4'],
+          engineVersions: ['4.1', '4.2', '4.3', '4.4'],
         ),
         '4.4',
       );
       expect(
         negotiateProtocolVersion(
-          workspaceVersions: ['4.1', '4.2', '4.3', '4.4'],
-          workerVersions: ['4.1', '4.2', '4.3'],
+          connectVersions: ['4.1', '4.2', '4.3', '4.4'],
+          engineVersions: ['4.1', '4.2', '4.3'],
         ),
         '4.3',
       );

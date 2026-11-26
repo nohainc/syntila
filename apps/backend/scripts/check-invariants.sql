@@ -14,7 +14,7 @@ UNION ALL SELECT 'realtime cursor ahead of its events', count(*)
   FROM realtime_event_cursors c
  WHERE c.next_sequence <= COALESCE((SELECT max(e.sequence) FROM realtime_events e
                                      WHERE e.stream_kind = c.stream_kind
-                                       AND COALESCE(e.stream_id, e.workspace_id) = c.stream_key), 0)
+                                       AND e.stream_id = c.stream_id), 0)
 -- A Thread's request queue has one item per position.
 UNION ALL SELECT 'request queue positions unique per Thread', count(*)
   FROM (SELECT 1 FROM thread_request_queue GROUP BY thread_id, position HAVING count(*) > 1) t

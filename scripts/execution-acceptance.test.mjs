@@ -7,7 +7,7 @@ describe("repeatable execution acceptance runner", () => {
   it("repeats each selected boundary and retains every result", async () => {
     const commands = [];
     const result = await runAcceptance(
-      { suites: ["cloud", "service"], repeat: 3 },
+      { suites: ["backend", "connect"], repeat: 3 },
       async (suite) => {
         commands.push(suite.command);
         return { exitCode: 0 };
@@ -16,12 +16,12 @@ describe("repeatable execution acceptance runner", () => {
     expect(result.boundaryTestsStatus).toBe("pass");
     expect(result.status).toBe("incomplete");
     expect(result.runs.map((r) => [r.suite, r.iteration])).toEqual([
-      ["cloud", 1],
-      ["service", 1],
-      ["cloud", 2],
-      ["service", 2],
-      ["cloud", 3],
-      ["service", 3],
+      ["backend", 1],
+      ["connect", 1],
+      ["backend", 2],
+      ["connect", 2],
+      ["backend", 3],
+      ["connect", 3],
     ]);
     expect(commands).toHaveLength(6);
     expect(result.liveEvidenceRequired).toHaveLength(3);
@@ -34,7 +34,7 @@ describe("repeatable execution acceptance runner", () => {
     ]) {
       let calls = 0;
       const result = await runAcceptance(
-        { suites: ["cloud"], repeat: 2 },
+        { suites: ["backend"], repeat: 2 },
         async () => (++calls === 1 ? failure : { exitCode: 0 }),
       );
       expect(result.status).toBe("fail");
@@ -47,7 +47,7 @@ describe("repeatable execution acceptance runner", () => {
       { repeat: 26 },
       { suites: [] },
       { suites: ["unknown"] },
-      { suites: ["cloud", "cloud"] },
+      { suites: ["backend", "backend"] },
     ])
       await expect(runAcceptance(options)).rejects.toThrow();
   });

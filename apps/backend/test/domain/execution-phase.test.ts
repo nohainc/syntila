@@ -30,7 +30,7 @@ describe("executionPhase", () => {
     expect(
       base({
         assignmentStatus: "created",
-        cloudQueueReason: "workspace_capacity",
+        cloudQueueReason: "worker_capacity",
       }),
     ).toMatchObject({
       executionPhase: "queued",
@@ -154,7 +154,7 @@ describe("failureCategory", () => {
             code: "timeout",
             details: {
               diagnostic: JSON.stringify({
-                component: "workspace_service",
+                component: "connect_service",
                 stage: "space_wait",
               }),
             },
@@ -176,7 +176,7 @@ describe("failureCategory", () => {
         dispatchedAt: T,
         acknowledgedAt: T,
       }),
-    ).toBe("workspace_start_failed");
+    ).toBe("worker_start_failed");
     expect(
       failed({
         errorCode: "model_not_supported",
@@ -217,7 +217,7 @@ describe("failureCategory", () => {
         details: {
           diagnostic: JSON.stringify({
             component: "cloud",
-            stage: "workspace_disconnect",
+            stage: "connect_disconnect",
           }),
         },
       },
@@ -237,7 +237,7 @@ describe("failureCategory", () => {
         details: {
           diagnostic: JSON.stringify({
             component: "service",
-            stage: "workspace_disconnect",
+            stage: "connect_disconnect",
           }),
         },
       },
@@ -253,7 +253,7 @@ describe("failureCategory", () => {
   });
   it("only exposes fixed messages", () => {
     const messages = Object.values(FAILURE_CATEGORY_MESSAGES);
-    expect(messages).toContain("Workspace Service is offline");
+    expect(messages).toContain("Connect is offline");
     const p = base({
       assignmentStatus: "failed",
       errorCode: "timeout",

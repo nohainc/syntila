@@ -9,11 +9,11 @@ Cloud computes `executionPhase` per step from the latest `worker_assignments` ro
 | Phase | Evidence | Label | Sub-line |
 | --- | --- | --- | --- |
 | submitted | no assignment | Submitted | Request received by Syntila |
-| waiting_for_service | status `created` | Queued | Waiting for the Workspace Service to be ready |
-| delivering | `dispatched` | Queued | Request delivered to Syntila Service |
-| delivered | `acknowledged`, no queue/permit evidence | Queued | Command received · Worker accepted request |
-| queued | `acknowledged` + permit required or startup stage waiting/queued | Queued | All parallel slots are busy; starting when one is free |
-| starting | start permit issued, or stage slot_reserved/engine_spawned/engine_initialized | Starting | Starting provider CLI |
+| waiting_for_service | status `created` | Queued | Waiting for Connect to be ready |
+| delivering | `dispatched` | Queued | Sending to your Worker |
+| delivered | `acknowledged`, no queue/permit evidence | Queued | Worker accepted the request |
+| queued | `acknowledged` + permit required or startup stage waiting/queued | Queued | All Worker slots are busy; starting when one is free |
+| starting | start permit issued, or stage slot_reserved/engine_spawned/engine_initialized | Starting | Starting your worker |
 | running | assignment status `running` only | Running | – |
 | completed / failed / cancelled | terminal assignment status | Completed / Failed / Cancelled | – |
 | uncertain | `revocation_pending` / `reconciling` | Checking | Checking whether execution is still active |
@@ -26,8 +26,8 @@ Running is shown only when the provider start was observed (`running_at`). A ter
 
 | Category | Message |
 | --- | --- |
-| service_unavailable | Workspace Service is offline |
-| sync_incomplete | Workspace is reconnecting |
+| service_unavailable | Connect is offline |
+| sync_incomplete | Connect is reconnecting |
 | worker_unavailable | Worker is not ready |
 | capacity_exceeded | No Worker slot became free in time. Retry when another request finishes |
 | profile_incompatible | Worker Profile is incompatible |
@@ -66,4 +66,4 @@ Deploy Cloud first (additive fields and the new event type; older apps ignore th
 
 ## Waiting for the Service to be ready
 
-When the Service is offline or still synchronizing, the Workflow parks the request ("Waiting for the Workspace Service to be ready"; no assignment exists yet) and re-dispatches every 15 s. A Service that reports ready also wakes these requests immediately (`wakeWorkspaceReadyWaiters`, called from the Gateway when readiness becomes ready), so the wait ends when the Service is ready instead of at the next poll. The poll stays as the durable fallback.
+When Connect is offline or still synchronizing, the Workflow parks the request and re-dispatches periodically. A ready Worker can also wake waiting requests; the poll remains a durable fallback.

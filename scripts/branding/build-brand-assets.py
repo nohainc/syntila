@@ -79,10 +79,10 @@ for size in [32, 64, 128, 192, 512]:
     assets[f'syntila_logo_dark_{size}.png'] = icons_dark[size]
 for name, data in assets.items():
     put(f'assets/branding/{name}', data)
-    for app in ['app', 'workspace', 'profile_lab']:
+    for app in ['app', 'profile_lab']:
         put(f'apps/{app}/assets/branding/{name}', data)
     put(f'apps/site/public/{name}', data)
-for app in ['workspace', 'profile_lab']:
+for app in ['connect_gui', 'profile_lab']:
     for size, data in icons.items():
         if size != 192:
             put(f'apps/{app}/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_{size}.png', data)

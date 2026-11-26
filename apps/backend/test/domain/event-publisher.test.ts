@@ -41,11 +41,11 @@ async function createHarness(options: { duplicate?: boolean } = {}) {
 }
 
 const baseEvent = {
-  type: "work_request.created",
-  workspaceId: "workspace-1",
+  type: "space.updated",
+  stream: { kind: "space" as const, id: "space-1" },
   spaceId: "space-1",
   recipientUserIds: ["user-1", "user-2"],
-  payload: { entityId: "message-1", summary: "hello" },
+  payload: { entityId: "space-1" },
 };
 
 describe("Cloud event publisher", () => {
@@ -60,7 +60,6 @@ describe("Cloud event publisher", () => {
     });
     expect(result.persisted).toBe(true);
     expect(result.event.stream).toEqual({ kind: "space", id: "space-1" });
-    expect(result.event.workspaceId).toBeUndefined();
     expect(harness.fanoutCount).toBe(1);
   });
   it("persists failure events with requester attribution", async () => {
@@ -101,7 +100,7 @@ describe("Cloud event publisher", () => {
       ...baseEvent,
       type: "assignment.activity",
       durable: false,
-      workspaceRuntimeId: "runtime-1",
+      threadId: "thread-1",
       runId: "run-1",
       taskId: "task-1",
       attemptId: "attempt-1",
@@ -131,10 +130,12 @@ describe("Cloud event publisher", () => {
       durable: true,
       eventId: "activity-1",
       idempotencyKey: "activity-1",
-      workspaceId: "workspace-1",
+      stream: { kind: "space", id: "space-1" },
+      spaceId: "space-1",
+      threadId: "thread-1",
+      runId: "run-1",
       attemptId: "attempt-1",
       assignmentId: "assignment-1",
-      workspaceRuntimeId: "runtime-1",
       payload: {
         entityId: "assignment-1",
         workerId: "chatgpt",
@@ -179,7 +180,6 @@ describe("Cloud event publisher", () => {
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
       type: "work_request.completed",
-      workspaceId: undefined,
       stream: { kind: "space", id: "space-1" },
       eventId: "event-existing",
       idempotencyKey: "message-1",
@@ -233,13 +233,13 @@ describe("Cloud event publisher", () => {
     expect(await h.insertCount()).toBe(2);
 
     await h.sqlite.exec(
-      `INSERT INTO realtime_events (event_id, workspace_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
-       VALUES ('event-retained', 'workspace-retained', 12, 'work_request.created', '{}', 'idem-retained', '2026-09-01T00:00:00.000Z')`,
+      `INSERT INTO realtime_events (event_id, stream_kind, stream_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
+       VALUES ('event-retained', 'space', 'space-retained', 12, 'space.updated', '{}', 'idem-retained', '2026-09-01T00:00:00.000Z')`,
     );
     const afterCursorLoss = await publisher.publish({
       ...baseEvent,
-      spaceId: undefined,
-      workspaceId: "workspace-retained",
+      stream: { kind: "space" as const, id: "space-retained" },
+      spaceId: "space-retained",
       eventId: "event-after-retained",
       idempotencyKey: "idem-after-retained",
     });
@@ -248,16 +248,16 @@ describe("Cloud event publisher", () => {
     await expect(
       publisher.publish({
         ...baseEvent,
-        spaceId: undefined,
-        workspaceId: "workspace-failed",
+        stream: { kind: "space" as const, id: "space-failed" },
+        spaceId: "space-failed",
         eventId: "event-after-retained",
         idempotencyKey: "idem-failed-global-event-id",
       }),
     ).rejects.toThrow();
     const afterRollback = await publisher.publish({
       ...baseEvent,
-      spaceId: undefined,
-      workspaceId: "workspace-failed",
+      stream: { kind: "space" as const, id: "space-failed" },
+      spaceId: "space-failed",
       eventId: "event-after-rollback",
       idempotencyKey: "idem-after-rollback",
     });

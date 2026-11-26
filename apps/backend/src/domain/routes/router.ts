@@ -140,8 +140,6 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   space_memberships_space_id_user_id_key: "You are already a member of this Space",
   idx_space_invitations_pending_email: "A pending invitation already exists for this user",
   idx_space_invitations_pending_user: "A pending invitation already exists for this user",
-  idx_workspace_invitations_pending_email: "An invitation is already pending",
-  workspace_invitations_no_active_grant: "This person already has access",
   plan_approvals_pkey: "This plan was already approved",
 };
 

@@ -17,26 +17,26 @@ import {
   ProviderFailureDetailsSchema,
 } from "@syntila/protocol";
 
-export const WORKSPACE_RUNTIME_PROTOCOL_NAME =
+export const WORKER_AGENT_PROTOCOL_NAME =
   "syntila.worker-agent-protocol" as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_VERSION = "5.1" as const;
+export const WORKER_AGENT_PROTOCOL_VERSION = "5.1" as const;
 export const PROVIDER_FAILURE_DETAILS_CAPABILITY = "assignment.provider_failure.v1" as const;
 export const PROVIDER_FAILURE_UNAVAILABLE_CAPABILITY = "assignment.provider_failure_unavailable.v1" as const;
-export const WORKSPACE_RUNTIME_PROTOCOL_SUPPORTED_VERSIONS = [
+export const WORKER_AGENT_PROTOCOL_SUPPORTED_VERSIONS = [
   "5.0",
   "5.1",
 ] as const;
 
-export const WORKSPACE_RUNTIME_MESSAGE_TYPES = [
-  "workspace.hello",
-  "workspace.hello.ack",
-  "workspace.heartbeat",
-  "workspace.heartbeat.ack",
-  "workspace.sync.request",
-  "workspace.sync.result",
-  "workspace.status",
-  "workspace.readiness",
-  "workspace.update",
+export const WORKER_AGENT_MESSAGE_TYPES = [
+  "agent.hello",
+  "agent.hello.ack",
+  "agent.heartbeat",
+  "agent.heartbeat.ack",
+  "agent.sync.request",
+  "agent.sync.result",
+  "agent.status",
+  "agent.readiness",
+  "agent.update",
   "worker.inventory",
   "thread.status",
   "assignment.start",
@@ -65,8 +65,8 @@ export const WORKSPACE_RUNTIME_MESSAGE_TYPES = [
   "input.available",
 ] as const;
 
-export type WorkspaceRuntimeMessageType =
-  (typeof WORKSPACE_RUNTIME_MESSAGE_TYPES)[number];
+export type WorkerAgentMessageType =
+  (typeof WORKER_AGENT_MESSAGE_TYPES)[number];
 
 /** Maximum characters of raw provider usage output carried in one message. */
 export const WORKER_USAGE_OUTPUT_MAX_CHARS = 64 * 1024;
@@ -92,55 +92,17 @@ export const SERVICE_CONNECTION_STATES = [
 
 export type ServiceConnectionState = (typeof SERVICE_CONNECTION_STATES)[number];
 
-/** Capability a Service advertises when it publishes `workspace.readiness`. */
-export const SERVICE_READINESS_CAPABILITY = "workspace.readiness.v1";
-
-/** Capability a Service advertises when it handles `mcp.tool_call.request`. */
-export const SERVICE_MCP_TOOL_CALL_CAPABILITY = "workspace.mcp_tool_call.v1";
-
-/** Capability a Service advertises when it answers `mcp.tool_call.status.request`. */
-export const SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY =
-  "workspace.mcp_tool_call_status.v1";
-
-/** Capability a Service advertises when it publishes `mcp.inventory`. */
-export const SERVICE_MCP_INVENTORY_CAPABILITY = "workspace.mcp_inventory.v1";
-
-/** Capability a Service advertises when it handles `mcp.action.request`. */
-export const SERVICE_MCP_ACTION_CAPABILITY = "workspace.mcp_action.v1";
+/** Capability a Service advertises when it publishes `agent.readiness`. */
+export const SERVICE_READINESS_CAPABILITY = "agent.readiness.v1";
 
 /**
- * Capability a Service advertises in `workspace.hello` when it echoes `echo`
+ * Capability a Service advertises in `agent.hello` when it echoes `echo`
  * in `diagnostic.probe` -> `diagnostic.probe.ack`.
  */
-export const SERVICE_PROBE_PAYLOAD_CAPABILITY = "workspace.probe_payload.v1";
+export const SERVICE_PROBE_PAYLOAD_CAPABILITY = "agent.probe_payload.v1";
 
 /** Maximum characters of base64 payload carried in a delivery probe `echo`. */
 export const DIAGNOSTIC_PROBE_ECHO_MAX_CHARS = 65_536;
-
-/**
- * Capability Cloud announces in `hello.ack` when `worker.inventory` may carry
- * `allowedFolders`. Older Cloud rejects the field, so Services wait for it.
- */
-export const ALLOWED_FOLDERS_CAPABILITY = "workspace.allowed_folders.v1";
-
-/**
- * Capability Cloud announces in `hello.ack` when `worker.inventory` entries may
- * carry the plugin `executor` object (ADR-027). Older Cloud rejects the field,
- * so Services wait for the announcement before reporting plugin Workers.
- */
-export const WORKER_PLUGINS_CAPABILITY = "workspace.worker_plugins.v1";
-
-/**
- * Capability Cloud announces in `hello.ack` when an idle WebSocket Service may
- * replace most heartbeats with `WORKSPACE_IDLE_PING_FRAME`. Cloud answers the
- * ping without running the Gateway, so an idle connection stays hibernated.
- * Older Cloud rejects the frame, so Services wait for the announcement.
- */
-export const IDLE_PING_CAPABILITY = "workspace.idle_ping.v1";
-
-/** Exact frames; the runtime matches the ping byte for byte. */
-export const WORKSPACE_IDLE_PING_FRAME = '{"type":"workspace.ping"}';
-export const WORKSPACE_IDLE_PONG_FRAME = '{"type":"workspace.pong"}';
 
 /**
  * What a Service reports about a plugin Worker. Cloud freezes the digests into
@@ -312,7 +274,7 @@ const workerActivityPayload = z
   .strict();
 
 /** Product-facing Worker Type IDs; legacy provider package IDs are not valid. */
-export const WorkspaceProductWorkerTypeIdSchema = nonEmptyString
+export const WorkerTypeIdSchema = nonEmptyString
   .max(128)
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/)
   .refine((id) => id !== "codex" && id !== "antigravity", {
@@ -440,10 +402,10 @@ export const DiscoveredModelCatalogSchema = z.union([
   DiscoveredModelCatalogV2Schema,
 ]);
 
-export const WorkspaceWorkerInventoryEntrySchema = z
+export const WorkerInventoryEntrySchema = z
   .object({
     workerId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/),
-    workerTypeId: WorkspaceProductWorkerTypeIdSchema,
+    workerTypeId: WorkerTypeIdSchema,
     activationState: z.enum(["enabled", "disabled"]),
     readinessState: z.enum([
       "not_probed",
@@ -495,7 +457,7 @@ export const WorkspaceWorkerInventoryEntrySchema = z
  * Path-free summary of an owner-managed Allowed Folder. The local absolute
  * path never crosses this boundary; execution maps the ID back locally.
  */
-export const WorkspaceAllowedFolderSchema = z
+export const WorkerAllowedFolderSchema = z
   .object({
     id: z.string().regex(/^folder-[a-f0-9]{16}$/),
     displayName: z
@@ -515,33 +477,31 @@ export const WorkspaceAllowedFolderSchema = z
   })
   .strict();
 
-export type WorkspaceAllowedFolder = z.infer<
-  typeof WorkspaceAllowedFolderSchema
+export type WorkerAllowedFolder = z.infer<
+  typeof WorkerAllowedFolderSchema
 >;
 
 export const WorkerInventoryPayloadSchema = z
   .object({
-    workers: z.array(WorkspaceWorkerInventoryEntrySchema).max(500),
+    workers: z.array(WorkerInventoryEntrySchema).max(500),
     // Workspace-wide parallel execution slots, shared by all Workers. Optional
     // so older Services remain valid; they report it per Worker only.
     parallelSlots: z.number().int().min(1).max(1024).optional(),
     // The complete Allowed Folders list. Optional so older Services remain
     // valid; omission keeps Cloud's last known list.
-    allowedFolders: z.array(WorkspaceAllowedFolderSchema).max(32).optional(),
+    allowedFolders: z.array(WorkerAllowedFolderSchema).max(32).optional(),
     fullSnapshot: z.boolean(),
   })
   .strict();
 
-export const workspaceRuntimeEnvelopeSchema = z
+export const workerAgentEnvelopeSchema = z
   .object({
-    protocol: z.literal(WORKSPACE_RUNTIME_PROTOCOL_NAME),
-    protocolVersion: z.enum(WORKSPACE_RUNTIME_PROTOCOL_SUPPORTED_VERSIONS),
+    protocol: z.literal(WORKER_AGENT_PROTOCOL_NAME),
+    protocolVersion: z.enum(WORKER_AGENT_PROTOCOL_SUPPORTED_VERSIONS),
     messageId: nonEmptyString,
     correlationId: nonEmptyString.optional(),
     timestamp,
-    type: z.enum(WORKSPACE_RUNTIME_MESSAGE_TYPES),
-    executionWorkspaceId: nonEmptyString.optional(),
-    workspaceRuntimeId: nonEmptyString.optional(),
+    type: z.enum(WORKER_AGENT_MESSAGE_TYPES),
     workerId: nonEmptyString.optional(),
     runId: nonEmptyString.optional(),
     taskId: nonEmptyString.optional(),
@@ -554,8 +514,6 @@ export const workspaceRuntimeEnvelopeSchema = z
   .superRefine((message, ctx) => {
     if (message.type.startsWith("assignment.")) {
       for (const field of [
-        "executionWorkspaceId",
-        "workspaceRuntimeId",
         "workerId",
         "runId",
         "taskId",
@@ -577,7 +535,7 @@ export const workspaceRuntimeEnvelopeSchema = z
         .object({
           snapshot: z
             .object({
-              workerTypeId: WorkspaceProductWorkerTypeIdSchema,
+              workerTypeId: WorkerTypeIdSchema,
               executionSelection: z
                 .object({
                   schemaVersion: z.literal(1),
@@ -585,7 +543,7 @@ export const workspaceRuntimeEnvelopeSchema = z
                     "provider_catalog",
                     "profile_catalog",
                   ]),
-                  workerTypeId: WorkspaceProductWorkerTypeIdSchema,
+                  workerTypeId: WorkerTypeIdSchema,
                   workerDisplayName: nonEmptyString.max(256),
                   profileReleaseVersion: z.number().int().positive(),
                   modelId: nonEmptyString.max(128).nullable(),
@@ -923,7 +881,7 @@ export const workspaceRuntimeEnvelopeSchema = z
         }
       }
     }
-    if (message.type === "workspace.readiness") {
+    if (message.type === "agent.readiness") {
       const payload = serviceReadinessPayload.safeParse(message.payload);
       if (!payload.success) {
         for (const issue of payload.error.issues) {
@@ -1039,14 +997,14 @@ export const workspaceRuntimeEnvelopeSchema = z
     }
   });
 
-export type WorkspaceRuntimeMessage = z.infer<
-  typeof workspaceRuntimeEnvelopeSchema
+export type WorkerAgentMessage = z.infer<
+  typeof workerAgentEnvelopeSchema
 >;
 
-export function parseWorkspaceRuntimeMessage(
+export function parseWorkerAgentMessage(
   input: unknown,
-): WorkspaceRuntimeMessage {
-  const message = workspaceRuntimeEnvelopeSchema.parse(input);
+): WorkerAgentMessage {
+  const message = workerAgentEnvelopeSchema.parse(input);
   if (message.type === "worker.inventory") {
     if (message.protocolVersion !== "5.1") {
       throw new Error("worker.inventory requires Workspace protocol 5.1");
@@ -1056,8 +1014,8 @@ export function parseWorkspaceRuntimeMessage(
   return message;
 }
 
-export function serializeWorkspaceRuntimeMessage(
-  input: WorkspaceRuntimeMessage,
+export function serializeWorkerAgentMessage(
+  input: WorkerAgentMessage,
 ): string {
-  return JSON.stringify(parseWorkspaceRuntimeMessage(input));
+  return JSON.stringify(parseWorkerAgentMessage(input));
 }

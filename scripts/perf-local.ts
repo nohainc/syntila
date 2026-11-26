@@ -6,12 +6,10 @@
  *   scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
  *
  * Scenarios:
- *   A "transport": Delivery probes against the developer account's live Workspace
- *                  (payloadBytes 0, 1024, 32768).
- *   C "workflows": sequential Chat requests on the developer’s real Workspace.
+ *   A "transport": retired; no Worker Agent delivery probe exists.
+ *   C "workflows": sequential requests on the developer’s Worker.
  *
- * Cleanup removes all synthetic spaces, workspaces, workflow instances, events,
- * and users created during the run without touching the developer account's data.
+ * Cleanup preserves active requests and only checks resources created by this run.
  * Never logs or prints tokens, keys, or message bodies.
  */
 import { execFileSync } from "node:child_process";
@@ -48,7 +46,7 @@ interface CliOptions {
 
 function parseCli(argv: string[]): CliOptions {
   const opts: CliOptions = {
-    probes: 50,
+    probes: 0,
     workflow: "chat",
     allowOffline: false,
     model: null,
@@ -193,287 +191,57 @@ async function verifyReadOnlyDiscovery(
     const response = await user.api("GET", "/api/session");
     const [row] = await sql<{ updated_at: Date | string }[]>`SELECT updated_at FROM users WHERE id = ${id}`;
     if (response.status !== 200 || !row || new Date(row.updated_at).toISOString() !== timestamp) {
-      throw new Error("Local backend updates user data during discovery. Restart it on the current build before running transport probes.");
+      throw new Error("Local backend updates user data during discovery. Restart it on the current build before running Worker discovery.");
     }
   } finally {
     await sql`DELETE FROM users WHERE id = ${id}`;
   }
 }
 
-/**
- * Discovers the developer account's user ID and Workspace ID without
- * hard-coding them or modifying the developer account's rows.
- */
+/** Discover an owned Worker without changing the developer account. */
 async function resolveDeveloperIdentity(
-  sql: SQL,
-  base: string,
-  mint: ReturnType<typeof tokenMinter>,
-  runId: string,
+  sql: SQL, base: string, mint: ReturnType<typeof tokenMinter>, runId: string,
   createdUserIds: Set<string>,
-): Promise<{
-  userId: string | null;
-  workspace: {
-    id: string;
-    name: string;
-    status: string;
-    activeTransport: string | null;
-  } | null;
-  token: string | null;
-}> {
-  const rows = await sql<{ id: string; email: string; display_name: string }[]>`
-    SELECT id, email, display_name FROM users WHERE LOWER(email) = LOWER(${DEV_EMAIL}) AND status = 'active' LIMIT 1
-  `;
-  const devRow = rows[0];
-  if (!devRow) return { userId: null, workspace: null, token: null };
-  if (!devRow.display_name) throw new Error("Developer account has no display name; cannot safely mint a matching token.");
+): Promise<{ userId: string | null; worker: { id: string; online: boolean; ready: boolean } | null; token: string | null }> {
+  const [row] = await sql<{ id: string; email: string; display_name: string }[]>`
+    SELECT id, email, display_name FROM users WHERE LOWER(email) = LOWER(${DEV_EMAIL}) AND status = 'active' LIMIT 1`;
+  if (!row) return { userId: null, worker: null, token: null };
+  if (!row.display_name) throw new Error("Developer account has no display name");
   await verifyReadOnlyDiscovery(sql, base, mint, runId, createdUserIds);
-  const token = await mint(devRow.id, {
-    email: devRow.email,
-    name: devRow.display_name,
-  });
-  const devUser = new User(base, token);
-  // Confirm user id through /api/session and find Workspace id through /api/workspaces.
-  const sessionRes = await devUser.api("GET", "/api/session");
-  if (sessionRes.status !== 200 || !sessionRes.body?.user?.id) {
-    throw new Error(`Failed to verify developer session via /api/session (HTTP ${sessionRes.status})`);
-  }
-  const confirmedUserId = String(sessionRes.body.user.id);
-  const wsRes = await devUser.api("GET", "/api/workspaces");
-  if (wsRes.status !== 200 || !Array.isArray(wsRes.body?.workspaces)) {
-    throw new Error(`Failed to list developer Workspaces via /api/workspaces (HTTP ${wsRes.status})`);
-  }
-  const workspaces = wsRes.body.workspaces as Array<Record<string, unknown>>;
-  const owned = workspaces.filter((w) => !w.shared);
-  const chosen =
-    owned.find((w) => w.activeTransport !== null) ??
-    owned.find((w) => w.status === "online") ??
-    owned[0] ??
-    null;
-  return {
-    userId: confirmedUserId,
-    workspace: chosen
-      ? {
-          id: String(chosen.id),
-          name: String(chosen.name ?? chosen.id),
-          status: String(chosen.status ?? "offline"),
-          activeTransport:
-            typeof chosen.activeTransport === "string" ? chosen.activeTransport : null,
-        }
-      : null,
-    token,
-  };
+  const token = await mint(row.id, { email: row.email, name: row.display_name });
+  const user = new User(base, token);
+  const session = await user.api("GET", "/api/session");
+  if (session.status !== 200 || session.body?.user?.id !== row.id) throw new Error("Failed to verify developer session");
+  const result = await user.api("GET", "/api/workers");
+  if (result.status !== 200 || !Array.isArray(result.body?.workers)) throw new Error(`Failed to list Workers (HTTP ${result.status})`);
+  const requested = process.env.SYNTILA_PERF_WORKER_ID;
+  const candidates = (result.body.workers as Array<Record<string, unknown>>).filter((w) =>
+    w.enabled === true && typeof w.id === "string" && (!requested || w.id === requested));
+  const selected = candidates.find((w) => w.online === true && w.ready === true) ?? candidates[0];
+  return { userId: row.id, token, worker: selected ? { id: String(selected.id), online: selected.online === true, ready: selected.ready === true } : null };
 }
 
-interface ProbeVariantReport {
-  payloadBytes: number;
-  probed: number;
-  acknowledged: number;
-  timeouts: number;
-  skippedReason?: string;
-  roundTripMs: StatSummary;
-}
-
-async function runScenarioA(
-  base: string,
-  sql: SQL,
-  mint: ReturnType<typeof tokenMinter>,
-  probesCount: number,
-  runId: string,
-  createdUserIds: Set<string>,
-): Promise<{
-  status: "completed" | "skipped";
-  warning?: string;
-  workspaceId: string | null;
-  transport: string | null;
-  variants: Record<string, ProbeVariantReport>;
+/** The removed transport probe has no Worker Agent equivalent. */
+async function runScenarioA(_base: string, _sql: SQL, _mint: ReturnType<typeof tokenMinter>, _count: number, _runId: string, _createdUserIds: Set<string>): Promise<{
+  status: "skipped"; warning: string; variants: Record<string, { roundTripMs: StatSummary }>;
 }> {
-  console.log(`\n== Scenario A: transport (${probesCount} delivery probes per payload size)`);
-  if (probesCount <= 0) {
-    console.log("  skipped (--probes 0)");
-    return { status: "skipped", warning: "probes=0", workspaceId: null, transport: null, variants: {} };
-  }
-  const dev = await resolveDeveloperIdentity(sql, base, mint, runId, createdUserIds);
-  if (!dev.userId || !dev.token) {
-    const warning = `Developer account (${DEV_EMAIL}) was not found in the local database; skipping transport probes.`;
-    console.warn(`  WARN: ${warning}`);
-    return { status: "skipped", warning, workspaceId: null, transport: null, variants: {} };
-  }
-  if (!dev.workspace) {
-    const warning = `Developer account (${DEV_EMAIL}) has no registered Workspace; skipping transport probes.`;
-    console.warn(`  WARN: ${warning}`);
-    return { status: "skipped", warning, workspaceId: null, transport: null, variants: {} };
-  }
-  if (!dev.workspace.activeTransport && dev.workspace.status !== "online") {
-    const warning = `Workspace "${dev.workspace.name}" (${dev.workspace.id}) is offline; skipping transport probes.`;
-    console.warn(`  WARN: ${warning}`);
-    return {
-      status: "skipped",
-      warning,
-      workspaceId: dev.workspace.id,
-      transport: null,
-      variants: {},
-    };
-  }
-
-  const devUser = new User(base, dev.token);
-  const wsId = dev.workspace.id;
-  // Quick liveness probe: if the first probe times out (504) or returns 503, the
-  // Service is offline or not reading its transport; warn and skip Scenario A
-  // instead of waiting 5s × 50 probes.
-  const firstProbe = await devUser.api(
-    "POST",
-    `/api/workspaces/${encodeURIComponent(wsId)}/delivery-probe?count=1`,
-  );
-  if (firstProbe.status === 503) {
-    const warning = `Workspace "${dev.workspace.name}" (${wsId}) is offline (HTTP 503); skipping transport probes.`;
-    console.warn(`  WARN: ${warning}`);
-    return { status: "skipped", warning, workspaceId: wsId, transport: null, variants: {} };
-  }
-  if (firstProbe.status === 504 || firstProbe.body?.outcome === "timeout") {
-    const warning = `Workspace "${dev.workspace.name}" (${wsId}, transport=${dev.workspace.activeTransport ?? "unknown"}) did not acknowledge the initial delivery probe (outcome=timeout); Service is unresponsive or predates delivery probes. Skipping remaining probes.`;
-    console.warn(`  WARN: ${warning}`);
-    return {
-      status: "skipped",
-      warning,
-      workspaceId: wsId,
-      transport: dev.workspace.activeTransport,
-      variants: {
-        probe_0b: {
-          payloadBytes: 0,
-          probed: 1,
-          acknowledged: 0,
-          timeouts: 1,
-          skippedReason: warning,
-          roundTripMs: roundStat(summarize([])),
-        },
-      },
-    };
-  }
-
-  if (firstProbe.status !== 200 || firstProbe.body?.outcome !== "acknowledged" ||
-      typeof firstProbe.body?.roundTripMs !== "number") {
-    throw new Error(`Initial delivery probe failed (HTTP ${firstProbe.status}, outcome ${String(firstProbe.body?.outcome ?? "unknown")})`);
-  }
-
-  const variants: Record<string, ProbeVariantReport> = {};
-  for (const payloadBytes of [0, 1024, 32768]) {
-    const key = `probe_${payloadBytes}b`;
-    const rtts: number[] = [];
-    let timeouts = 0;
-    let probed = 0;
-    let skippedReason: string | undefined;
-
-    // Seed with the already-executed first probe when payloadBytes === 0.
-    let remaining = probesCount;
-    if (payloadBytes === 0 && firstProbe.status === 200 && typeof firstProbe.body?.roundTripMs === "number") {
-      rtts.push(firstProbe.body.roundTripMs);
-      probed += 1;
-      remaining -= 1;
-    }
-
-    while (remaining > 0) {
-      const batch = Math.min(20, remaining);
-      const q = new URLSearchParams({ count: String(batch) });
-      if (payloadBytes > 0) q.set("payloadBytes", String(payloadBytes));
-      const res = await devUser.api(
-        "POST",
-        `/api/workspaces/${encodeURIComponent(wsId)}/delivery-probe?${q.toString()}`,
-      );
-      if (res.status === 409 && payloadBytes > 0) {
-        skippedReason =
-          res.body?.error ??
-          "Connected Workspace Service does not advertise workspace.probe_payload.v1";
-        console.warn(`  WARN [${key}]: ${skippedReason} (skipping ${payloadBytes}B probes)`);
-        break;
-      }
-      if (res.status === 503) {
-        skippedReason = "Workspace went offline during probe batch";
-        console.warn(`  WARN [${key}]: ${skippedReason}`);
-        break;
-      }
-      if (res.status !== 200 && res.status !== 504) {
-        throw new Error(`Delivery probe failed (HTTP ${res.status})`);
-      }
-      if (batch === 1) {
-        probed += 1;
-        if (res.body?.outcome === "acknowledged" && typeof res.body?.roundTripMs === "number") {
-          rtts.push(res.body.roundTripMs);
-        } else if (res.body?.outcome === "timeout" || res.status === 504) {
-          timeouts += 1;
-        } else {
-          throw new Error(`Delivery probe failed (outcome ${String(res.body?.outcome ?? "unknown")})`);
-        }
-      } else {
-        const list = Array.isArray(res.body?.results) ? res.body.results : [];
-        if (list.length !== batch) throw new Error("Delivery probe returned an incomplete batch");
-        probed += list.length;
-        for (const item of list) {
-          if (item?.outcome === "acknowledged" && typeof item.roundTripMs === "number") {
-            rtts.push(item.roundTripMs);
-          } else if (item?.outcome === "timeout") {
-            timeouts += 1;
-          } else {
-            throw new Error(`Delivery probe failed (outcome ${String(item?.outcome ?? "unknown")})`);
-          }
-        }
-      }
-      remaining -= batch;
-      // If an entire batch timed out, avoid stalling for minutes on remaining batches.
-      if (rtts.length === 0 && timeouts > 0) {
-        skippedReason = "All probes in batch timed out; aborting remaining batches";
-        console.warn(`  WARN [${key}]: ${skippedReason}`);
-        break;
-      }
-    }
-
-    const summary = roundStat(summarize(rtts));
-    variants[key] = {
-      payloadBytes,
-      probed,
-      acknowledged: rtts.length,
-      timeouts,
-      ...(skippedReason ? { skippedReason } : {}),
-      roundTripMs: summary,
-    };
-    if (!skippedReason || rtts.length > 0) {
-      console.log(
-        formatStatLine(
-          `delivery-probe (payloadBytes=${payloadBytes})`,
-          summary,
-          `timeouts=${timeouts}/${probed}`,
-        ),
-      );
-    }
-  }
-
-  return {
-    status: "completed",
-    workspaceId: wsId,
-    transport: dev.workspace.activeTransport ?? "websocket",
-    variants,
-  };
+  const warning = "Transport probe retired; no Worker Agent delivery probe is implemented";
+  console.warn(`  SKIP: ${warning}`);
+  return { status: "skipped", warning, variants: {} };
 }
 
 async function runScenarioC(
   base: string, sql: SQL, mint: ReturnType<typeof tokenMinter>, runId: string,
   chatsCount: number, workflow: "chat" | "work", allowOffline: boolean, model: string | null, createdUserIds: Set<string>, createdSpaceIds: Set<string>,
 ) {
-  console.log(`\n== Scenario C: real Workspace ${workflow} workflow (${chatsCount} sequential requests)`);
+  console.log(`\n== Scenario C: real Worker ${workflow} workflow (${chatsCount} sequential requests)`);
   if (chatsCount === 0) return { requests: 0, errors: 0, totalMs: roundStat(summarize([])) };
   const dev = await resolveDeveloperIdentity(sql, base, mint, `${runId}-workflow`, createdUserIds);
-  if (!dev.token || !dev.workspace) {
-    throw new Error(`A registered Workspace for ${DEV_EMAIL} is required for the real workflow benchmark`);
+  if (!dev.token || !dev.worker) throw new Error(`An enabled Worker for ${DEV_EMAIL} is required`);
+  if ((!dev.worker.online || !dev.worker.ready) && !allowOffline) {
+    throw new Error("The selected Worker is offline or not ready (or use --allow-offline for a readiness test)");
   }
-  if (!dev.workspace.activeTransport && dev.workspace.status !== "online") {
-    if (!allowOffline) throw new Error(`A connected Workspace for ${DEV_EMAIL} is required (or use --allow-offline for a controlled readiness test)`);
-    console.log(`  Workspace ${dev.workspace.id} is offline; start it within 180 seconds to measure recovery.`);
-  }
-  const [worker] = await sql<{ worker_id: string }[]>`
-    SELECT worker_id FROM workspace_worker_inventory
-     WHERE workspace_id = ${dev.workspace.id} AND activation_state = 'enabled' AND readiness_state = 'ready'
-       AND (${process.env.SYNTILA_PERF_WORKER_ID ?? null}::text IS NULL OR worker_id = ${process.env.SYNTILA_PERF_WORKER_ID ?? null})
-     ORDER BY CASE WHEN worker_type_id = 'chatgpt' THEN 0 ELSE 1 END, worker_id LIMIT 1`;
-  if (!worker) throw new Error("No ready Worker found on the real Workspace; check SYNTILA_PERF_WORKER_ID");
+  const workerId = dev.worker.id;
   const user = new User(base, dev.token);
   const { spaceId, threadId } = await user.spaceWithThread(`perf-${runId}-real-workflow`);
   createdSpaceIds.add(spaceId);
@@ -481,15 +249,11 @@ async function runScenarioC(
   const admission: number[] = [], serviceWait: number[] = [], delivery: number[] = [], startup: number[] = [];
   let errors = 0;
   try {
-    const pick = await user.api("PUT", `/api/spaces/${spaceId}/workflow-workspace`, {
-      workspaceId: dev.workspace.id, confirmReset: true,
-    });
-    if (pick.status !== 200) throw new Error(`select real workspace: HTTP ${pick.status} ${JSON.stringify(pick.body)}`);
     for (let i = 0; i < chatsCount; i++) {
       const start = performance.now();
       const submit = await user.api("POST", `/api/threads/${threadId}/work-requests`, {
         workflowId: workflow === "work" ? "direct" : "chat", objective: "Reply with the single word: pong. Do not use tools or modify any files.",
-        executionSelection: { workerId: worker.worker_id, ...(model ? { model } : {}) },
+        workerId, ...(model ? { model } : {}),
       });
       if (submit.status >= 300 || !submit.body?.workRequest?.id) {
         console.error(`  request ${i + 1} rejected: HTTP ${submit.status} ${JSON.stringify(submit.body)}`);
@@ -533,7 +297,7 @@ async function runScenarioC(
       startPermitToRunningMs: roundStat(summarize(startup)),
     };
     for (const [name, stat] of Object.entries(intervals)) console.log(formatStatLine(name, stat));
-    return { requests: chatsCount, errors, totalMs, intervals, workflow, workspaceId: dev.workspace.id };
+    return { requests: chatsCount, errors, totalMs, intervals, workflow, workerId };
   } finally {
     // Delete only after no request is active; retain timed-out runs for inspection.
     const [active] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM work_requests WHERE thread_id = ${threadId} AND status NOT IN ('completed', 'failed', 'cancelled')`;
@@ -549,10 +313,6 @@ async function runScenarioC(
 }
 
 interface CleanupReport {
-  spacesDeletedViaApi: number;
-  spacesDeletedInDb: number;
-  workspacesRemoved: number;
-  usersRemoved: number;
   remainingPerfRows: number;
 }
 
@@ -560,7 +320,7 @@ interface CleanupReport {
  * observations. Include requests without an assignment so stalled work is not
  * silently excluded. Multiple attempts are reported separately. */
 async function runScenarioD(sql: SQL, limit: number) {
-  console.log(`\n== Scenario D: real requests of the developer Workspace (last ${limit}, read-only)`);
+  console.log(`\n== Scenario D: real requests of the developer Worker (last ${limit}, read-only)`);
   const rows = (await sql`
     WITH recent AS (
       SELECT w.id, w.created_at
@@ -620,146 +380,18 @@ async function runScenarioD(sql: SQL, limit: number) {
 }
 
 async function cleanupRun(
-  sql: SQL,
-  base: string,
-  mint: ReturnType<typeof tokenMinter>,
-  runId: string,
-  createdUserIds: Set<string>,
-  createdSpaceIds: Set<string>,
-  createdWorkspaceIds: Set<string>,
+  sql: SQL, _base: string, _mint: ReturnType<typeof tokenMinter>, runId: string,
+  createdUserIds: Set<string>, createdSpaceIds: Set<string>,
 ): Promise<CleanupReport> {
-  console.log(`\n== Cleanup (run perf-${runId})`);
-  let spacesDeletedViaApi = 0;
-
-  // Let in-flight background workflow/realtime tasks settle before cleanup.
-  await sleep(150);
-
-  // Recover resources created before a request failed, but only for this run.
-  const perfPattern = `perf-${runId}-%`;
-
-  // Find all synthetic user IDs, space IDs, workspace IDs, thread IDs, work request IDs, and run IDs.
-  const perfUsers = await sql<{ id: string }[]>`
-    SELECT id FROM users WHERE id LIKE ${perfPattern} OR email LIKE ${perfPattern}
-  `;
-  for (const u of perfUsers) createdUserIds.add(u.id);
-
-  const perfSpaces = await sql<{ id: string }[]>`
-    SELECT id FROM spaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}
-  `;
-  for (const s of perfSpaces) createdSpaceIds.add(s.id);
-
-  const perfWorkspaces = await sql<{ id: string }[]>`
-    SELECT id FROM execution_workspaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}
-  `;
-  for (const w of perfWorkspaces) createdWorkspaceIds.add(w.id);
-
-  const userList = [...createdUserIds];
-  const spaceList = [...createdSpaceIds];
-  const wsList = [...createdWorkspaceIds];
-
-  let spacesDeletedInDb = 0;
-  let workspacesRemoved = 0;
-  let usersRemoved = 0;
-
-  // Capture workflow instances while the Space and run records still exist.
-  // Deleting Spaces first cascades away the links needed to identify them.
-  if (spaceList.length > 0) {
-    await sql`
-      DELETE FROM workflow_instances
-      WHERE params::jsonb ->> 'spaceId' IN ${sql(spaceList)}
-         OR id IN (
-           SELECT COALESCE(r.workflow_instance_id, 'workflow-' || r.work_request_id)
-           FROM runs r WHERE r.space_id IN ${sql(spaceList)}
-         )
-    `;
-  }
-
-  for (const spaceId of createdSpaceIds) {
-    const [row] = await sql<{ owner_user_id: string }[]>`
-      SELECT owner_user_id FROM spaces WHERE id = ${spaceId}
-    `;
-    if (row && userList.includes(row.owner_user_id)) {
-      const owner = new User(base, await mint(row.owner_user_id));
-      const res = await owner.api("DELETE", `/api/spaces/${spaceId}`).catch(() => null);
-      if (res && res.status < 300) spacesDeletedViaApi++;
-    }
-  }
-
-  if (wsList.length > 0) {
-    await sql`DELETE FROM account_execution_waiters WHERE requester_user_id IN ${sql(userList.length ? userList : ["__none__"])}`;
-    await sql`DELETE FROM worker_activity_history WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM worker_assignments WHERE execution_workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM work_request_inputs WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM thread_runtime_leases WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM thread_execution_policies WHERE primary_workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM work_requests WHERE primary_workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM workspace_space_grants WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`
-      DELETE FROM worker_scheduling
-      WHERE worker_id IN (SELECT worker_id FROM workspace_worker_inventory WHERE workspace_id IN ${sql(wsList)})
-    `;
-    await sql`DELETE FROM workspace_worker_inventory WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM workspace_installations WHERE workspace_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM durable_object_storage WHERE namespace = 'WorkspaceGateway' AND object_name IN ${sql(wsList)}`;
-    await sql`DELETE FROM durable_object_alarms WHERE namespace = 'WorkspaceGateway' AND object_name IN ${sql(wsList)}`;
-  }
-
-  if (spaceList.length > 0) {
-    await sql`
-      DELETE FROM durable_object_storage
-      WHERE (namespace = 'RealtimeGateway' AND (object_name IN ${sql(spaceList)} OR object_name IN ${sql(spaceList.map((id) => `space:${id}`))}))
-         OR (namespace = 'ThreadExecutionCoordinator' AND object_name IN (SELECT id FROM threads WHERE space_id IN ${sql(spaceList)}))
-    `;
-    await sql`DELETE FROM realtime_events WHERE space_id IN ${sql(spaceList)} OR stream_id IN ${sql(spaceList)}`;
-    await sql`DELETE FROM realtime_event_cursors WHERE stream_key IN ${sql(spaceList)} OR stream_id IN ${sql(spaceList)}`;
-    const delSpaces = await sql`DELETE FROM spaces WHERE id IN ${sql(spaceList)} RETURNING id`;
-    spacesDeletedInDb = delSpaces.length;
-  }
-
-  if (wsList.length > 0) {
-    await sql`DELETE FROM realtime_events WHERE workspace_id IN ${sql(wsList)} OR stream_id IN ${sql(wsList)}`;
-    await sql`DELETE FROM realtime_event_cursors WHERE stream_key IN ${sql(wsList)} OR workspace_id IN ${sql(wsList)}`;
-    const delWs = await sql`DELETE FROM execution_workspaces WHERE id IN ${sql(wsList)} RETURNING id`;
-    workspacesRemoved = delWs.length;
-  }
-
-  if (userList.length > 0) {
-    await sql`DELETE FROM mutation_receipts WHERE user_id IN ${sql(userList)}`;
-    await sql`DELETE FROM auth_audit_events WHERE user_id IN ${sql(userList)}`;
-    await sql`DELETE FROM email_outbox WHERE message::text LIKE ${`%perf-${runId}-%@syntila.invalid%`}`;
-    await sql`DELETE FROM realtime_events WHERE stream_id IN ${sql(userList)}`;
-    await sql`DELETE FROM realtime_event_cursors WHERE stream_key IN ${sql(userList)} OR stream_id IN ${sql(userList)}`;
-    await sql`DELETE FROM conversation_user_messages WHERE author_user_id IN ${sql(userList)}`;
-    await sql`DELETE FROM work_requests WHERE requested_by_user_id IN ${sql(userList)}`;
-    await sql`DELETE FROM spaces WHERE owner_user_id IN ${sql(userList)}`;
-    const delUsers = await sql`DELETE FROM users WHERE id IN ${sql(userList)} RETURNING id`;
-    usersRemoved = delUsers.length;
-  }
-
-  const [remRow] = await sql<{ remaining: number | bigint }[]>`
-    SELECT (
-      (SELECT count(*) FROM users WHERE id LIKE ${perfPattern} OR email LIKE ${perfPattern}) +
-      (SELECT count(*) FROM spaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}) +
-      (SELECT count(*) FROM execution_workspaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}) +
-      (SELECT count(*) FROM discussion_messages WHERE author_user_id LIKE ${perfPattern} OR body LIKE ${perfPattern}) +
-      (SELECT count(*) FROM work_requests WHERE requested_by_user_id LIKE ${perfPattern}) +
-      (SELECT count(*) FROM worker_assignments WHERE requested_by_user_id LIKE ${perfPattern}) +
-      (SELECT count(*) FROM workflow_instances WHERE params::jsonb ->> 'spaceId' IN ${sql(spaceList.length ? spaceList : ["__none__"])})
-    ) AS remaining
-  `;
-  const remainingPerfRows = Number(remRow?.remaining ?? 0);
-
-  console.log(
-    `  cleaned: ${spacesDeletedViaApi} space(s) via API (+${spacesDeletedInDb} in DB), ${workspacesRemoved} synthetic workspace(s), ${usersRemoved} synthetic user(s); remaining rows for this run: ${remainingPerfRows}`,
-  );
-
-  return {
-    spacesDeletedViaApi,
-    spacesDeletedInDb,
-    workspacesRemoved,
-    usersRemoved,
-    remainingPerfRows,
-  };
+  // Never delete a Space here: the workflow path deletes it only after terminal
+  // completion, and intentionally preserves a timed-out request for inspection.
+  const userIds = [...createdUserIds];
+  const spaceIds = [...createdSpaceIds];
+  const [users] = userIds.length ? await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM users WHERE id IN ${sql(userIds)}` : [{ count: 0 }];
+  const [spaces] = spaceIds.length ? await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM spaces WHERE id IN ${sql(spaceIds)}` : [{ count: 0 }];
+  const remainingPerfRows = (users?.count ?? 0) + (spaces?.count ?? 0);
+  console.log(`\n== Cleanup (run perf-${runId}): ${remainingPerfRows} tracked resource(s) remain`);
+  return { remainingPerfRows };
 }
 
 interface ThresholdViolation {
@@ -822,7 +454,6 @@ async function main() {
   const runId = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
   const createdUserIds = new Set<string>();
   const createdSpaceIds = new Set<string>();
-  const createdWorkspaceIds = new Set<string>();
 
   const commit = getGitCommit();
   const gitDirty = isGitDirty();
@@ -870,7 +501,6 @@ async function main() {
         runId,
         createdUserIds,
         createdSpaceIds,
-        createdWorkspaceIds,
       );
     } finally {
       await sql.close();
@@ -896,7 +526,7 @@ async function main() {
   if (opts.checkThresholds) {
     console.log(`\n== Thresholds (${opts.thresholdsPath})`);
     thresholdResult = checkThresholds(opts.thresholdsPath, observedP95, [
-      ...(opts.probes === 0 ? ["transport."] : []),
+      "transport.",
       ...(opts.chats === 0 ? ["workflows."] : []),
     ]);
     console.log(`  ${thresholdResult.violations.length ? "FAIL" : "PASS"}: ${thresholdResult.checked} checked, ${thresholdResult.skipped} deliberately skipped`);

@@ -50,8 +50,6 @@ export const ExecutionEventEnvelopeSchema = z
     eventType: executionEventType,
     category: executionEventCategory,
     delivery: executionEventDelivery,
-    workspaceId: identifier,
-    workspaceRuntimeId: identifier,
     threadId: identifier,
     workRequestId: identifier,
     runId: identifier,

@@ -142,8 +142,8 @@ jobs:
           SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $bundle = Join-Path $PWD 'dist/connect/windows/release'
-          ./scripts/sign-workspace-windows.ps1 -Bundle $bundle
-          ./scripts/sign-workspace-windows.ps1 -Bundle $bundle -VerifyOnly
+          ./scripts/sign-connect-windows.ps1 -Bundle $bundle
+          ./scripts/sign-connect-windows.ps1 -Bundle $bundle -VerifyOnly
           $archive = "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip"
           Compress-Archive -Path "$bundle/*" -DestinationPath $archive -Force
       - name: Build Inno Setup installer

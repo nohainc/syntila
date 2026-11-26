@@ -2,7 +2,7 @@
 
 A native SwiftUI operator application for macOS 14+. Search users by name,
 email, or exact ID; inspect account metadata and lifetime Space membership,
-owned Workspace, message, work request, and failed request counts; suspend/re-enable
+owned Worker, message, work request, and failed request counts; suspend/re-enable
 accounts; request a password recovery email.
 
 ## Build and run
@@ -48,7 +48,7 @@ Lock changes active to suspended, deletes browser sessions, revokes desktop
 human sessions and writes an `auth_audit_events` record attributed to the local
 OS operator name. Unlock changes suspended to active. Deactivated accounts
 cannot be re-enabled with this tool. Existing authorization rejects suspended
-users. Running work and Workspace runtime credentials are not cancelled/revoked.
+users. Running work and Worker credentials are not cancelled/revoked.
 
 Password recovery calls the selected Cloud's existing
 `/api/auth/request-password-reset` endpoint, redirecting to its `/login` page.
@@ -61,13 +61,13 @@ and rate limits still apply. Recovery is disabled for suspended/deactivated user
 SQL and persistence remain in the Cloud operator bridge at
 `apps/cloud/scripts/account-manager.mjs`; the native app receives read models
 and command results. This tooling uses existing Cloudflare operator access and
-is separate from the human product API and Workspace runtime. It adds no public
+is separate from the human product API and Worker runtime. It adds no public
 API, database schema, credential table, migration, or compatibility layer.
 Messages counts only thread discussion messages authored by the selected user.
 Chat/Work request prompts are counted under Work requests, not Messages. Last
 message (UTC) shows the latest discussion message send timestamp, or None when no
 such messages exist. Edits and worker responses do not count as new messages.
-Statistics appear in this order: Workspaces, Spaces, Messages, Work requests,
+Statistics appear in this order: Workers, Spaces, Messages, Work requests,
 Failed requests. No new migration is introduced.
 Statistics are existing product activity counts, not token/cost billing estimates.
 Account metadata is held in memory, not cached on disk by this application.
@@ -85,7 +85,7 @@ with a provider-linked subscription cannot be changed here, even when a prior
 manual override left them Free: the backend rejects both grant and revoke and
 the app disables those actions. Use the payment provider to manage billing.
 When plan status cannot be loaded, the app disables plan changes until refresh.
-Removing a manual grant pauses Workspace
+Removing a manual grant pauses Worker
 sharing for people the user shared with (see ADR-022). Requires migration
 `0094_account_plans.sql` in the selected database.
 
@@ -141,4 +141,4 @@ The Messages count and Last message timestamp now exclude Chat/Work request
 prompts and use only the selected user's thread discussion messages. The focused
 regression fixture includes a newer request prompt and a later edit, ensuring
 neither inflates the count or advances Last message. The native statistics row
-now follows Workspaces, Spaces, Messages, Work requests, Failed requests.
+now follows Workers, Spaces, Messages, Work requests, Failed requests.

@@ -13,6 +13,7 @@ void main() {
         baseUrl: 'https://cloud.test/api',
         client: MockClient((request) async {
           expect(request.headers['authorization'], 'Bearer session');
+          expect(request.url.queryParameters, isEmpty);
           methods.add(request.method);
           if (request.method == 'GET') {
             return http.Response(

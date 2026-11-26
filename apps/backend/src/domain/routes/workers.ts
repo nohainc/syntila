@@ -14,21 +14,8 @@ import type { SecurityEnv } from "./handlers.js";
 import { loadSpacePermissions } from "./space-permissions.js";
 import { parseModelAccess, type WorkerSpaceModelAccess } from "../worker-eligibility.js";
 
-/**
- * Worker Instances (ADR-032, phase P1): a durable, user-owned Worker with its
- * own Actor, separate from Workspaces. Owner-only: another person's Worker is
- * answered 404, never 403, so ids reveal nothing. Behind the `worker_identity`
- * flag; with the flag off the routes do not exist.
- *
- * `enabled` is configured here. `online` and `ready` are observed and read-only;
- * On the legacy path they are derived from the Workspace the Worker was
- * adopted from (`legacy_worker_mapping`):
- *  - ready: the inventory row's readiness state is `ready`;
- *  - online: that Workspace has an open session row with a recent heartbeat.
- *    The session row is audit history written every few minutes, so this is an
- *    approximation. On the Worker path online comes from the Agent lease,
- *    matching admission. Agent readiness is not yet reported to the server.
- */
+/** Worker Instances are durable, user-owned Actors. Enabled is configured;
+ * online and readiness are observed from the current Worker session. */
 const columns = () => `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
   c.display_name AS "workerTypeName", w.name, w.description, w.enabled,
   w.default_model AS "defaultModel", w.visibility_json AS "visibilityJson",

@@ -6,10 +6,10 @@
 
 Syntila needs one human authentication boundary across the web application and
 Cloud APIs. Authentication establishes who is acting; Syntila's domain policy
-decides which Spaces, Workspaces, Threads, and Profiles that person may
+decides which Spaces, Workers, Threads, and Profiles that person may
 use.
 
-Human sessions, Workspace runtime credentials, and provider CLI credentials
+Human sessions, Worker credentials, and provider CLI credentials
 serve different purposes and must remain separate.
 
 ## Decision
@@ -25,14 +25,13 @@ cookies. Cloud maps the authenticated identity to a Syntila User and remains
 the authority for authorization.
 
 Syntila authorization is based on current domain rules: Space membership
-and roles, Workspace ownership, explicit Space-to-Workspace Grants,
+and roles, Worker ownership and sharing,
 Thread policy, step-up authentication, and Profile administration and
 release policy. Better Auth Organizations, if enabled for an identity-provider
 integration, do not define Syntila resource access.
 
-Syntila Workspace uses a human management session separately from its scoped
-runtime credential, as detailed in
-ADR-013. Provider authentication
+Connect uses a Worker-scoped credential and session independently of a human
+management session, as detailed in ADR-034. Provider authentication
 is performed by locally installed provider CLI software. Provider credentials
 remain local and are not stored as Cloud product records.
 
@@ -44,7 +43,8 @@ authentication and authorization do not depend on Access identity headers.
 Requests acting for a person use the Better Auth session and resolve to a
 Syntila User before authorization. Runtime and CI paths use explicitly scoped
 credentials and are not treated as human sessions. Credentials are not
-interchangeable.
+interchangeable. Backend bearer tokens accept human and internal principals;
+Worker sessions authenticate through their dedicated gateway boundary.
 
 Never store API keys or provider credentials in plaintext application tables.
 
@@ -52,7 +52,7 @@ Never store API keys or provider credentials in plaintext application tables.
 
 - Human sign-in has one documented owner.
 - Syntila retains precise control over resource authorization.
-- Workspace runtime identity and provider CLI identity cannot be confused with
+- Worker identity and provider CLI identity cannot be confused with
   the human session.
 - Session cookies, CSRF, redirect, identity mapping, and same-origin behavior
   require deployment validation.

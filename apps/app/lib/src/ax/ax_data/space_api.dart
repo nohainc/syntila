@@ -23,7 +23,6 @@ mixin _SpaceApi on _AxApiClientCore {
     required String name,
     String? description,
     String? instructions,
-    String? workspaceId,
   }) async {
     // One key per attempt to create: a lost response retried once cannot
     // make a second Space.
@@ -42,7 +41,6 @@ mixin _SpaceApi on _AxApiClientCore {
             'description': description.trim(),
           if (instructions != null && instructions.trim().isNotEmpty)
             'settings': {'instructions': instructions.trim()},
-          if (workspaceId != null) 'workspaceId': workspaceId,
         }),
       ),
     );

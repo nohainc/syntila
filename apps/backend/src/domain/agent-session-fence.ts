@@ -19,7 +19,7 @@ export interface AgentSessionFence {
  * statement as the write, never an earlier SELECT. The shared row lock is
  * retained until the write transaction commits, so a concurrent session
  * replacement is ordered with the Agent's write. Empty without a fence
- * (legacy Workspace traffic).
+ * (Worker Agent traffic).
  */
 export function agentFenceSql(q: Query, fence?: AgentSessionFence | null): unknown {
   if (!fence) return q.raw("");

@@ -147,13 +147,11 @@ export class RateLimiter {
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
- * Machine traffic from connected Workspaces (event streams, heartbeats,
- * transport) has its own protocol-level flow control and is not limited here.
+ * Non-API endpoints and the realtime upgrade use their own flow control.
  */
 export function isRateLimitExempt(pathname: string): boolean {
   return (
     !pathname.startsWith("/api/") ||
-    pathname.startsWith("/api/workspace-runtime/") ||
     pathname === "/api/realtime"
   );
 }

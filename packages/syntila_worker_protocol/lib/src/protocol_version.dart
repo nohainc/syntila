@@ -25,11 +25,11 @@ const supportedLocalWorkerProtocolVersions = {
 
 /// Selects the newest protocol version supported by both sides.
 String? negotiateProtocolVersion({
-  required Iterable<String> workspaceVersions,
-  required Iterable<String> workerVersions,
+  required Iterable<String> connectVersions,
+  required Iterable<String> engineVersions,
 }) {
-  final worker = workerVersions.toSet();
-  final common = workspaceVersions
+  final worker = engineVersions.toSet();
+  final common = connectVersions
       .where(supportedLocalWorkerProtocolVersions.contains)
       .where(worker.contains)
       .toList()

@@ -14,12 +14,22 @@ const ev = (component, traceStage, timestamp, extra = {}, context = {}) => ({
   component,
   stage: "trace",
   timestamp,
-  workspaceRuntimeId: "rt1",
-  context: { traceStage, ...context },
+  context: { traceStage, ...(component === "service" ? { traceEpochId: "epoch-1" } : {}), ...context },
+  ...(component === "service" ? { workerId: "worker-1" } : {}),
   ...extra,
 });
 
 describe("latency baseline", () => {
+  it.each([
+    [{ workerId: "other-worker" }, {}],
+    [{}, { traceEpochId: "other-epoch" }],
+  ])("does not borrow clock offsets across Worker processes (%j, %j)", (identity, context) => {
+    const events = [
+      ev("service", "service_received", "2026-10-14T10:00:00.000Z", { requestId: "r1", assignmentId: "a1" }, { clockOffsetMs: 5000 }),
+      ev("service", "service_accepted", "2026-10-14T10:00:01.000Z", { requestId: "r1", assignmentId: "a1", ...identity }, context),
+    ];
+    expect(buildTraces(events)[0].uncorrected).toBe(true);
+  });
   it("reports provider and result delivery stages in order", () => {
     const events = [
       ev("service", "provider_started", "2026-10-14T10:00:00.000Z", { requestId: "r1", assignmentId: "a1" }, { clockOffsetMs: 0 }),
