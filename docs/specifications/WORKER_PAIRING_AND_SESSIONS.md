@@ -66,25 +66,11 @@ Moving a Worker to another computer is an explicit transfer (ADR-034 decision 6)
 - `expireLapsedSessions` (run by the outbox sweep, every 5 minutes) closes sessions whose lease lapsed (`lease_expired`). Presence ("online") uses the lease; the write fence uses `disconnected_at`, so a connected Agent is never rejected because of a late renewal.
 - A replaced session can stay open for up to a renewal interval. It can write nothing in that time: its writes are fenced.
 
-## Compatibility adapter on the Workspace gateway
+## Worker gateway
 
-A Worker Agent connects to `/api/workspace-gateway/connect` with `workerId` and `workerSessionId` query parameters and `Authorization: Bearer <sessionToken>`, instead of `workspaceRuntimeId` and a runtime credential. The gateway authenticates the session, requires that the Worker was adopted from the gateway's own Workspace, and uses the Worker principal and its session fence as the Agent's identity. The Workspace's active runtime id is borrowed as a correlation id only; no runtime identity row is created for the Agent. Fences and audit use the Worker's identity, not the Workspace's.
+Connect opens `/api/worker-agent/gateway` for the paired Worker and its current session using the bearer session token. The gateway authenticates the Worker and checks its session fence on relevant writes. Hello, heartbeat, synchronization and assignment messages travel over the unified messaging transport; see [ADR-038](../decisions/ADR-038-unified-realtime-transport.md).
 
-Limits until P5 retires the Workspace gateway:
-
-- One Agent per Workspace gateway at a time (the gateway holds one connection per Workspace; a second connection replaces the first).
-- WebSocket only (no HTTP long-poll).
-- An Agent may send only its own contract: hello, heartbeat, sync, readiness, `assignment.*` and `thread.status`. Workspace-wide messages (inventory, usage, MCP) are refused.
-
-With `worker_target_dispatch` off, the public WebSocket route authenticates an Agent's bearer session and routes
-the request to its mapped Workspace. With the flag on it routes to the Worker
-gateway instead; that gateway authenticates the session before accepting it.
-The Dart Agent consumes the server's
-`{nonce: ...}` and `{session: ...}` response envelopes. The real Agent/backend
-pairing and hello/reconciliation path is exercised by
-`apps/backend/test/domain/worker-agent-live.test.ts` with local PostgreSQL and
-the Dart SDK (it skips when Dart is unavailable). This test uses the compatibility path and an unconfigured
-Engine; it does not establish standalone Worker dispatch or provider execution.
+`apps/backend/test/domain/worker-agent-live.test.ts` exercises pairing and reconciliation between the real Connect runtime and backend with local PostgreSQL and Dart. Its unconfigured Engine does not establish provider execution or installed-device acceptance.
 
 ## Audit (`worker_audit_log`)
 
