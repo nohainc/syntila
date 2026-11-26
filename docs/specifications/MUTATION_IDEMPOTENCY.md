@@ -57,7 +57,7 @@ The fresh v8 schema baseline now includes `mutation_receipts`. Existing deployed
 schemas require the same table before the updated Cloud routes are deployed.
 The production schema preflight checks its columns and canonical definition so
 deployments cannot silently omit the receipt storage required by AX requests.
-This change introduces no Workspace Runtime or Local Worker Protocol change.
+This change introduces no Worker Agent or Local Worker Protocol change.
 Cloud must be updated before AX relies on retained-key retries; an older Cloud
 that ignores the header does not provide this guarantee.
 

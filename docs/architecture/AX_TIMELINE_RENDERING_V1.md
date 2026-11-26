@@ -68,7 +68,7 @@ Threads retains the existing controller lifecycle and saved view state.
 
 The scroll surface keeps the existing test and accessibility keys, pagination
 callbacks, retry actions, activity-specific listeners, and data/cache APIs.
-This is a client rendering change only; no Cloud, Workspace, Engine, or wire
+This is a client rendering change only; no Cloud, Connect, Engine, or wire
 protocol contract changes are required.
 
 ## Verification

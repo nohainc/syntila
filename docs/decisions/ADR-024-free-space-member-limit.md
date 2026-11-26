@@ -9,8 +9,8 @@ subscription-based member cap. The **Space owner's effective plan** decides
 (same expiry and `past_due` grace rules as ADR-022), never the inviter's or the
 recipient's plan, so a Free person can join a larger Plus-owned Space. Each
 Space is counted on its own. There are no plan limits on Spaces or Threads
-themselves. Workspace sharing, personal Workspace and execution concurrency
-policies are unchanged. Membership never grants access to a shared Workspace.
+themselves. Worker sharing and execution concurrency policies are unchanged.
+Membership never grants access to another person's Worker without an explicit grant.
 
 ## Counting
 - **Members:** every `space_memberships` row (owner, collaborators, viewers).
