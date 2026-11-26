@@ -19,10 +19,18 @@ remote_env='set -a; . /etc/syntila/backend.env; set +a; export PGPASSWORD="$(cat
 
 case "$cmd" in
   status)
-    say "Applied on production"
-    ssh -t "$PROD_VPS" "sudo -u postgres psql -XAtq -d syntila -c \"SELECT version FROM schema_migrations ORDER BY version\" | tail -5; echo '(last 5)'"
-    say "In this checkout but not applied"
-    pending=$(pending_migrations || true); echo "${pending:-none}"
+    say "Applied on production (asks for the sudo password)"
+    # ssh -t keeps the password prompt on the terminal; stdout is captured.
+    applied=$(ssh -t "$PROD_VPS" 'sudo -u postgres psql -XAtq -d syntila -c "SELECT version FROM schema_migrations ORDER BY version"' 2>/dev/null \
+      | tr -d '\r' | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort || true)
+    if [ -z "$applied" ]; then
+      echo "Could not read schema_migrations."
+    else
+      printf '%s\n' "$applied" | tail -5; echo "(last 5 of $(printf '%s\n' "$applied" | wc -l | tr -d ' '))"
+      say "In this checkout but not applied"
+      pending=$(ls "$ROOT/apps/backend/migrations" | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort | comm -23 - <(printf '%s\n' "$applied"))
+      echo "${pending:-none}"
+    fi
     ;;
   apply)
     require bun
