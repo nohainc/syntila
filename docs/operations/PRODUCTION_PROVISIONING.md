@@ -19,3 +19,28 @@ Production readiness also requires the device, real-provider, and security evide
 | `SYNTILA_AUTH_GOOGLE_CLIENT_ID`, `SYNTILA_AUTH_GOOGLE_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials. |
 
 Optional settings: `PROD_VPS`, `PROD_STAGE`, `PROD_API_URL`, `PROD_APP_URL`, `SYNTILA_API_URL`.
+
+## First-release rehearsal
+
+Run on the dev machine (the Mac) from a clean `main` equal to `origin/main`. Commands are exactly these.
+
+1. **Prerequisites on the VPS** (asks for the sudo password; prints no secrets):
+   `ssh -t syntila@46.225.103.109 'psql --version; systemctl is-active postgresql caddy syntila-backend syntila-monitor.timer; sudo grep -c . /etc/syntila/backend.env; sudo grep SYNTILA_PROFILE_SIGNING_KEY_ID /etc/syntila/backend.env'`
+   PostgreSQL must be 16 or newer. The printed key id must be the one in the GitHub variable `SYNTILA_PROFILE_TRUST_ROOTS` (or `SYNTILA_RELEASE_TRUST_KEYS_JSON`; `gh variable list`), otherwise Connect refuses every Profile.
+2. **State:** `scripts/prod-status.sh`, then `scripts/prod-migrate-db.sh status` (the migration list needs the sudo password; run it in a terminal).
+3. **Plan, then release:** `scripts/prod-deploy-all.sh --site --dry-run`, then `scripts/prod-deploy-all.sh --site`. Note the deployed commit from the first line of each script's output.
+4. **Smoke test** (a clean sign-up; tick each item):
+   - [ ] Sign up with GitHub; sign out; sign up with Google (a second account).
+   - [ ] Create a Space and a Thread.
+   - [ ] Add a Worker and copy the pairing code.
+   - [ ] On Windows, install the Connect release (see [Connect onboarding](CONNECT_ONBOARDING.md)) and pair with the code; the Worker shows "ready".
+   - [ ] Chat: send a message and get an answer.
+   - [ ] Work with a Space folder (`syntila-connect folders add PATH`) and an attached file.
+   - [ ] Start a long request and cancel it; the request ends as cancelled.
+   - [ ] With Connect online run `scripts/prod-deploy-backend.sh --yes`; Connect reconnects without a restart (`syntila-connect status`) and the next Chat works.
+5. **Resilience:** on the VPS (the phase 5 installer put the script there):
+   `ssh -t syntila@46.225.103.109 'sudo bash /usr/local/lib/syntila/run-resilience-test.sh'`
+   It restarts the backend and PostgreSQL several times with a temporary signing key and removes the key afterwards.
+6. **Defects:** fix each one in the scripts or these docs as a small commit, then repeat the failed step.
+
+Reset instead of repair while the app is not live: `scripts/prod-reset-db.sh --i-understand-this-deletes-all-data`.
