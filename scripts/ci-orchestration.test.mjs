@@ -89,52 +89,6 @@ describe("CI acceptance orchestration", () => {
     );
   });
 
-  it("aggregation rejects failed and skipped domains", () => {
-    const workflow = source(".github/workflows/ci.yml");
-    const gateSection = workflow.slice(workflow.indexOf("  ci-passed:"));
-    const dependencies = gateSection
-      .match(/needs:\s*\[([\s\S]*?)\]/)[1]
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean);
-    expect(dependencies.sort()).toEqual(
-      [
-        "changes",
-        "static",
-        "cloud",
-        "dart-packages",
-        "app",
-        "connect",
-        "connect-gui",
-        "profile-lab",
-        "engine",
-        "site",
-      ].sort(),
-    );
-    const gate = workflow.match(
-      /if ! echo "\$NEEDS" \| (jq -e '[^']+') > \/dev\/null/,
-    )[1];
-    for (const [result, expectedStatus] of [
-      ["success", 0],
-      ["skipped", 0],
-      ["failure", 1],
-      ["cancelled", 1],
-    ]) {
-      const run = spawnSync("sh", ["-c", `echo "$NEEDS" | ${gate}`], {
-        env: {
-          ...process.env,
-          NEEDS: JSON.stringify({ domain: { result } }),
-        },
-      });
-      expect(run.status, run.stderr.toString()).toBe(expectedStatus);
-    }
-    expect(workflow).toContain(
-      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
-    );
-    expect(workflow).not.toContain("windows-latest");
-    expect(workflow).not.toContain("pnpm check\n");
-  });
-
   it.each(["profile-lab"])(
     "%s prepared build reuses preparation; default release cleans",
     (name) => {
@@ -215,60 +169,4 @@ describe("CI acceptance orchestration", () => {
       }
     },
   );
-
-  it("public site production deployment is manual-only with self-contained validation", () => {
-    const workflow = source(".github/workflows/deploy-site.yml");
-    const checkAction = source(".github/actions/check-site/action.yml");
-    expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).not.toMatch(/^\s*pull_request:/m);
-    expect(workflow).not.toMatch(/^\s*push:/m);
-    expect(workflow).not.toContain('workflows: ["CI"]');
-    expect(workflow).not.toContain("workflow_run:");
-
-    // Ensures site builds and all validations are present
-    expect(checkAction).toContain("./node_modules/.bin/astro check");
-    expect(checkAction).toContain("./node_modules/.bin/astro build");
-    expect(checkAction).toContain("node scripts/check-performance.mjs");
-    expect(checkAction).toContain("node scripts/check-accessibility.mjs");
-    expect(checkAction).toContain("node scripts/check-responsive.mjs");
-    expect(checkAction).toContain("node scripts/check-analytics-privacy.mjs");
-    expect(checkAction).toContain("node scripts/check-security.mjs");
-    expect(checkAction).toContain("node scripts/check-content.mjs");
-    expect(checkAction).toContain("node scripts/check-release.mjs");
-    expect(checkAction).toContain("./node_modules/.bin/vitest run test");
-    expect(checkAction).toContain("Verify static routes");
-    expect(workflow).toContain(
-      "../../node_modules/.bin/wrangler deploy --config wrangler.production.jsonc",
-    );
-  });
-});
-
-describe("production OAuth secret continuity", () => {
-  it("resolves existing repository secret names in both deployment paths", () => {
-    for (const path of [
-      ".github/workflows/deploy-cloud.yml",
-      ".github/workflows/sync-production-oauth.yml",
-    ]) {
-      for (const suffix of [
-        "GITHUB_CLIENT_ID",
-        "GITHUB_CLIENT_SECRET",
-        "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET",
-      ]) {
-        expect(source(path)).toContain(
-          `secrets.SYNTILA_AUTH_${suffix} || secrets.CONCLAVE_AUTH_${suffix}`,
-        );
-      }
-    }
-  });
-  it("syncs only OAuth credentials without rotating the session encryption secret", () => {
-    const workflow = source(".github/workflows/sync-production-oauth.yml");
-    expect(workflow).toContain(
-      "secret bulk oauth-secrets.json --name syntila-app",
-    );
-    expect(workflow).not.toContain("secrets.BETTER_AUTH_SECRET");
-    expect(workflow).toContain("mode: 0o600");
-    expect(workflow).toContain("if: always()");
-    expect(workflow).toContain("rm -f oauth-secrets.json");
-  });
 });

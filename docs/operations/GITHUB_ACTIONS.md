@@ -1,19 +1,12 @@
 # GitHub Actions
 
-Syntila uses the workflows below. Everything that gates a merge, a deploy, or a release goes through one aggregate check, `CI passed`.
+Syntila uses the manual (`workflow_dispatch`) workflow below for Windows releases (all other checks and deployments run locally on macOS).
 
 | Workflow | Runs when | Purpose |
 | --- | --- | --- |
-| `ci.yml` | Pull requests, pushes to `main`, manual runs | Static guard, then only the domains a change touches. `CI passed` is the required check. |
-| `deploy-cloud.yml` | Manual, from `main` only | Deploys the Cloud Worker to syntila.app. Requires passing CI for the commit. Environment `production`. |
-| `deploy-site.yml` | Site pull requests, site pushes to `main`, manual | Preview Worker per pull request, deleted when it closes. Production site on `main`. |
-| `release-macos.yml` | Manual | Builds, signs, notarizes, and retains the macOS Workspace archive. With Publish selected, requires passing CI, publishes signed metadata and a GitHub Release archive, then updates the first-party Homebrew Cask. |
-| `release-linux.yml` | Manual | Build and optionally publish Linux Workspace packages to APT. |
-| `release-windows.yml` | Manual | Build and optionally publish the signed Windows Workspace release. |
-| `promote-workspace-release.yml` | Manual | Collect published platform artifacts for a combined GitHub Release. |
-| `sync-production-oauth.yml` | Manual | Sync production OAuth configuration. |
+| `release-windows.yml` | Manual | Build and optionally publish the signed Windows Connect release. |
 
-Shared setup lives in `.github/actions/` (`setup-workspace`, `setup-flutter`, `check-site`). Helper scripts live in `scripts/ci/`. Repository protection is defined in `scripts/github/apply-repo-settings.sh`.
+Shared setup lives in `.github/actions/` (`setup-flutter`). Helper scripts live in `scripts/ci/`. Repository protection is defined in `scripts/github/apply-repo-settings.sh`.
 
 ## Rules for changing workflows
 
