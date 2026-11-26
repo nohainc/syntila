@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import 'package:syntila_connect/syntila_connect.dart';
-import 'package:syntila_connect/src/server_api.dart';
 import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 import 'package:test/test.dart';
 

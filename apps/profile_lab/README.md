@@ -153,4 +153,4 @@ Local builds use `--dart-define=SYNTILA_PROFILE_LAB_ENVIRONMENT=local`, show an
 orange "LOCAL DEVELOPMENT BUILD" banner, ignore saved Cloud overrides, and make
 the Cloud connection dialog read-only. `pnpm profile-lab:run:local` runs the
 same local configuration from source. Start the local stack with
-`pnpm app:run:local` first.
+`pnpm start:local` first.

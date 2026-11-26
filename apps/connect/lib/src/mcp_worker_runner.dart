@@ -77,11 +77,12 @@ class McpWorkerRunner {
     final id = pin['id'] as String,
         version = pin['version'] as String,
         digest = pin['manifestDigest'] as String;
-    if (!await allowList.isApproved(id, version, digest))
+    if (!await allowList.isApproved(id, version, digest)) {
       throw const ExternalWorkerException(
         'mcp_worker_not_approved',
         'MCP Worker is not approved.',
       );
+    }
     final value = (await _read())[_key(id, version, digest)];
     if (value is! Map ||
         value.isEmpty ||
