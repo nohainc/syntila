@@ -67,6 +67,8 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Build metadata is invalid.' >&2; exit 1; }
           installer="Syntila-Connect-$version-windows-x64-Setup.exe"
           portable="Syntila-Connect-$version-windows-x64-portable.zip"
+          # PowerShell writes CRLF line endings; normalize so the published file works with sha256sum.
+          sed -i 's/\r$//' release/SHA256SUMS
           # Require exactly the expected entries, so checksum verification covers both assets.
           expected="$(printf '%s\n' "$installer" "$portable" | sort)"
           actual="$(awk '{print $2}' release/SHA256SUMS | sort)"
