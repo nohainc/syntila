@@ -25,7 +25,7 @@ Implement one physical realtime gateway and one versioned envelope for human and
 
 - RPC through unauthenticated `actorId` fields.
 - An every-Worker room subscription with access to all User/Space content.
-- Host-level routing or required host/Workspace IDs.
+- Host-level routing or required host IDs.
 - Treating a WebSocket send as confirmed execution or client UI application.
 - Active-active cross-region writes.
 
@@ -305,10 +305,10 @@ Do not call server enqueue time “UI rendered latency.” Optional client telem
 
 ## 12. Implementation boundaries and code map
 
-- Shared protocol: `packages/protocol/src/realtime-events.ts` and Worker runtime protocol package (new common envelopes, old adapters).
-- Unified gateway: replace/refactor `apps/backend/src/domain/realtime-gateway.ts`, `workspace-gateway.ts`, `src/runtime.ts` and `src/platform/durable-objects.ts`.
-- Durable publisher/outbox: `apps/backend/src/domain/event-publisher.ts`, `realtime-retention.ts`, new migrations and outbox worker.
-- Executor: `assignment-dispatcher.ts`, `assignment-transitions.ts`, workflow/task runner; add Worker ID mapping and fencing.
+- Shared protocol: `packages/protocol/src/realtime-events.ts` and `packages/worker-agent-protocol`.
+- Gateways: `apps/backend/src/domain/realtime-gateway.ts` and `worker-gateway.ts` use unified messaging.
+- Durable publisher/outbox: `apps/backend/src/domain/event-publisher.ts`, `realtime-retention.ts` and `outbox-dispatcher.ts`.
+- Executor: `assignment-dispatcher.ts`, `assignment-transitions.ts`, workflow/task runner and Worker session fencing.
 - Clients: `apps/app/lib/src/realtime/realtime_cursors.dart`; Worker Agent transport/reconnect and journal.
 - Tests: `apps/backend/test/domain/realtime-stream-delivery.test.ts`, `realtime-gateway.test.ts`, runtime integration, Agent command delivery; add real two-process Postgres suites and network fault tests.
 

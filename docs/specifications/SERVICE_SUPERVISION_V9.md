@@ -1,56 +1,13 @@
-# Syntila Service supervision — V9 Phase 3
+# Connect supervision
 
-> **Current architecture:** Workers run under Syntila Connect ([ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution.md)). Connect supervises the generic CLI Worker Engine as a child process.
-
-**Status:** Phase 3 implementation contract
+Connect runs one Agent per Worker. Each Agent has a separate credential, journal and lock and supervises the generic CLI Worker Engine as a child process. The provider CLI or approved MCP package runs through the Engine. See [ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md) and [ADR-041](../decisions/ADR-041-mcp-workers-on-worker-agents.md).
 
 ## Local assignment lifecycle
 
-The Workspace Service records operational phases independently from Cloud's
-durable assignment outcome:
+Connect records an assignment in its journal before acknowledgement. Journal transitions are forward-only: `received → accepted → starting → running → terminal → acknowledged`. Replayed delivery reconciles with the recorded attempt and never starts a second Engine for it. Terminal state is recorded before delivery and remains available for retry until acknowledged.
 
-`received → validated → admitted → queued → launching → executing → terminated`
+## Process ownership and recovery
 
-The journal remains the durable local source for terminal evidence. Structured
-diagnostics record the operational phases so a missing provider event cannot
-leave the assignment apparently active forever.
+Connect fences local use of a Worker's data directory with a lock. After a crash, an attempt that may already have started is not launched again; Connect reports a retryable failure and Cloud can create a new attempt. Orphaned processes are handled by the Engine supervisor. Session fencing separately prevents an old session from committing a late result. Cancellation and failure paths must settle local execution and retain terminal evidence for reconciliation.
 
-## Process ownership
-
-Every supervised Engine process has a local JSON ownership record containing:
-
-- schema and record identity;
-- assignment, attempt, requested execution, and Worker identity;
-- Engine PID, executable, start identity, and start time;
-- Engine state and provider state;
-- state and working-directory identities;
-- execution deadline.
-
-Recovery validates the executable, private state directory, command line, and
-process start identity before signaling a PID. A PID alone is never treated as
-ownership proof. Malformed or reused records are removed without signaling the
-process they reference.
-
-## Failure and capacity rules
-
-- A journal entry is written before Engine launch is requested.
-- Duplicate assignment admission is rejected while a local execution or
-  ownership record exists.
-- Queue cancellation completes without starting an Engine and without
-  releasing a slot that was never acquired.
-- Engine stream closure before a terminal frame is a provider-neutral process
-  failure with local exit evidence, not an inferred timeout.
-- Engine startup, process exit, cancellation, timeout, protocol failure, and
-  terminal delivery failure all pass through the same cleanup path.
-- Slot release is in the supervisor's `finally` path, including initialization
-  exceptions and process-start failures.
-- Terminal journal evidence is retained when Cloud is disconnected and is
-  retried during synchronization after reconnect.
-
-## Restart behavior
-
-The Workspace installation lock is acquired before journal recovery. Existing
-non-terminal journal entries become outcome-unknown and are not executed again;
-orphaned Engine ownership records are then validated and reaped. A later Cloud
-delivery can reconcile the journal evidence, but Service restart never guesses
-that an interrupted provider succeeded.
+Platform service behavior, process cleanup and credential stores require device evidence. Automated tests do not establish installed-release behavior on every operating system.

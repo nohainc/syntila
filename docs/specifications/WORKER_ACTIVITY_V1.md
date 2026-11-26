@@ -128,17 +128,7 @@ explicitly not applicable. Arbitrary transforms, scripts, prompts, model
 content, terminal output, environment values, and credentials are rejected by
 Profile validation.
 
-Existing percentage progress mappings remain temporarily for older Workspace
-binaries. They are compatibility output only and are not the V9 activity
-qualification signal.
-
-Existing `progress` frames remain available for milestone consumers. Activity
-frames are the authoritative repeated-event stream for live timelines. The
-Workspace relay forwards activity as `assignment.activity` over the existing
-runtime transport. Its bounded queue coalesces replaceable model/status
-updates, applies backpressure to important lifecycle events, and records
-forwarding failures as Workspace diagnostics without converting a lost
-cosmetic event into Worker failure.
+Existing `progress` frames remain available for milestone consumers. Connect forwards normalized activity as `assignment.activity`; the assignment result or error remains the authoritative completion record.
 
 ## Integration evidence and diagnostics
 
@@ -150,14 +140,6 @@ adapter implementation, so the test exercises Profile discovery, process
 supervision, JSONL normalization, activity emission, and terminal reconciliation
 at the same boundary used by packaged Workers.
 
-The Workspace diagnostics export includes a bounded, prompt-free timeline of
-Worker diagnostic records and assignment journal states. Its activity
-observability summary reports missing terminal events, activity forwarding
-failures, stale `running` assignments, the stale-running threshold, and the
-maximum observed stale duration. These counters identify whether an incident
-originated in provider event generation, local execution, transport forwarding,
-or assignment projection without exposing provider output or credentials.
-
 The Engine records a `missing_terminal_event` diagnostic whenever a JSONL
 execution exits without a mapped terminal success, failure, or provider-error
 event. A terminal result remains authoritative; the diagnostic explains why a
@@ -166,8 +148,7 @@ events are handled by event identity and monotonic stream/activity sequences.
 
 ## Cloud delivery and recovery
 
-Cloud validates the runtime origin against the current assignment, Workspace
-runtime, Worker, run, task and attempt before publishing an activity. The
+Cloud validates the Worker session fence and assignment identity before publishing an activity. The
 payload is normalized and size-limited; provider JSON, terminal output,
 reasoning and arbitrary tool output are not stored.
 
@@ -177,8 +158,7 @@ assignment-scoped history projection. `model.status` and `message.updated`
 remain ephemeral. The event identity is derived from assignment, attempt and
 source event identity, so retries are idempotent.
 
-Realtime clients acknowledge durable stream positions through their existing
-cursor hello. On subscription or reconnect, the realtime Gateway replays
+Realtime clients report their applied durable stream positions when subscribing. On subscription or reconnect, the realtime Gateway replays
 events after the acknowledged sequence, suppresses duplicates, and emits a
 gap signal when retained history cannot fill a sequence gap. The assignment
 result/error remains the authoritative completion record; activity is

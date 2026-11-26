@@ -1,83 +1,19 @@
 # Durable Work Execution
 
-Syntila Cloud uses Cloudflare Workflows to coordinate long-running Work
-Requests. Workflow checkpoints support retries, waits, and recovery. D1 and R2
-remain the application system of record; Workflow state is execution
-coordination state and does not replace persisted domain records.
+Syntila Cloud coordinates Work Requests in the Bun backend using PostgreSQL for shared state. A Work Request records its accepted Workflow and execution snapshot, run, tasks and Worker assignments. Cloud validates transitions; realtime delivery is a notification mechanism and is not the source of truth. See [Architecture](../../ARCHITECTURE.md) and [Work v1](WORK_V1_CONTRACT.md).
 
 ## Lifecycle
 
-A Work Request is created for a Thread under the frozen [Work v1
-contract](WORK_V1_CONTRACT.md). Cloud records the request, workflow snapshot,
-run, task, and assignment state. The Workflow advances the request through its
-configured steps and waits for Workspace execution, evidence, approvals, or
-other required outcomes before completing it.
-
-The assignment transition and deadline contract is defined by the
-[authoritative execution lifecycle — V9 Phase 2](EXECUTION_LIFECYCLE_V9.md).
-Dispatch and admission do not establish `running`; Cloud waits for the
-explicit startup acknowledgement before marking the task running.
-
-The Workspace Service supervision and process ownership contract is defined by
-[Syntila Service supervision — V9 Phase 3](SERVICE_SUPERVISION_V9.md).
-
-Cloud command delivery, terminal acknowledgements, WebSocket/long-poll
-fallback, capacity claims, and activity retention are defined by the
-[Cloud execution delivery — V9 Phase 5](CLOUD_DELIVERY_V9.md) contract.
-
-Each checkpoint carries the small validated state needed by the next stage.
-Workflow replay must not depend on module-level mutable state, wall-clock
-values, or an in-memory task cursor. Side effects occur inside named durable
-steps, with bounded retry and timeout policies.
+A request selects a Worker. Cloud checks current authorization, readiness and capabilities at admission and dispatch, and persists commands before notifying the Worker. Connect journals an assignment before acknowledging it. An admission acknowledgement is not evidence that the provider process has started; the assignment lifecycle records the later start and terminal outcome. See [ADR-033](../decisions/ADR-033-durable-events-outbox-and-command-inbox.md) and [ADR-035](../decisions/ADR-035-worker-targeted-execution.md).
 
 ## Terminal reconciliation
 
-Assignment lifecycle is authoritative independently of Worker activity events.
-Workspace journals the assignment before execution, records a terminal result
-before sending it, and retains that result until Cloud acknowledges the
-terminal delivery. Terminal messages are correlation-checked and idempotent;
-replayed results cannot reopen or rewrite a terminal assignment. A Workspace
-restart reclassifies in-flight local records as outcome-unknown and reports a
-normalized failure during the next synchronization.
-
-Cloud recovery closes active assignments whose execution deadline, Workspace
-lease, or disconnected-runtime grace period has elapsed. Recovery runs every
-five minutes while the heavier retention work remains daily.
-Recovery also cancels active assignments owned by cancelled Work Requests,
-releasing their scheduling capacity without waiting for an execution deadline.
-When Workspace confirms a cancellation stopped the process tree, Cloud records
-the assignment cancellation before acknowledging the cancellation API call;
-it does not depend on a separate terminal transport message to release capacity.
-Workspace sync also includes a bounded recent terminal window, allowing a reconnect to
-reconcile a locally pending journal entry even when the terminal
-acknowledgement itself was lost. The recovery path updates the assignment and
-workflow task together, allowing the durable Workflow to retry or fail the
-Work Request through its normal state machine. Activity events remain
-observational and may be missing without keeping an assignment in `running`.
+Connect records terminal state before delivery and resends an unacknowledged terminal result after reconnect. Cloud validates the current Worker session fence and assignment identity and applies terminal transitions idempotently. If a crash leaves an attempt that may have started, Connect does not launch a second Engine for that attempt; it reports a retryable failure so Cloud can decide on a new attempt. See [ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md).
 
 ## Identity and recovery
 
-Workflow instances use deterministic identifiers derived from validated
-idempotency data. Repeated creation resolves to the existing persisted Work
-Request and instance rather than creating duplicate active work. External event
-payloads are validated at the API boundary and again before they affect
-Workflow state.
-
-Cloud domain rows remain authoritative for ownership, authorization, and Work
-status. On recovery, Cloud correlates Workflow state with persisted Work
-records and execution results. A missing execution service or inconsistent
-state must fail visibly; a checkpoint alone cannot establish successful Work.
+Work Request idempotency prevents a lost response from creating duplicate work. Durable events and their outbox rows commit with domain changes; a dispatcher recovers pending notifications after a process failure. Clients replay retained events or refresh authoritative state after a gap. Session fencing prevents an older Connect session from committing a late result. See [Event Streams](EVENT_STREAMS.md).
 
 ## Execution boundary
 
-The Cloudflare Workflow invokes the configured execution service for work that
-requires it. That service coordinates the current Worker catalog, assignment
-state, persistence, and Workspace runtime bridge. Provider CLI execution
-occurs in Syntila Workspace through the generic CLI Worker Engine and a
-verified Tool Profile. Cloud does not execute a provider CLI.
-
-The runtime boundary and message ownership are defined by the [Protocol
-Boundaries contract](../architecture/PROTOCOL_BOUNDARIES.md). User-visible
-Workflow behavior is defined by the [Work v1 contract](WORK_V1_CONTRACT.md).
-Queues or additional coordination services require a concrete need beyond the
-current Workflow and Workspace runtime model.
+Connect supervises the generic CLI Worker Engine on the Worker's computer; the Engine invokes a provider CLI or approved MCP package. Cloud does not execute provider CLIs or store their credentials. Request files and inter-Step handoffs use R2 and artifact identifiers, while local paths remain on the computer. Stateful work also requires a fenced Thread lease. See [ADR-037](../decisions/ADR-037-files-and-artifacts.md) and [ADR-040](../decisions/ADR-040-stateful-workflows-on-worker-agents.md).
