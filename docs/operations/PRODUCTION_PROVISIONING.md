@@ -20,6 +20,17 @@ Production readiness also requires the device, real-provider, and security evide
 
 Optional settings: `PROD_VPS`, `PROD_STAGE`, `PROD_API_URL`, `PROD_APP_URL`, `SYNTILA_API_URL`.
 
+## Profile signing identity
+
+Connect must trust the public half of the backend signing key. For an existing base64-encoded 32-byte Ed25519 seed, save the public GitHub trust-root JSON to a local file, then run:
+
+```sh
+node scripts/profile-signing-env.mjs /path/to/seed.base64 /path/to/public-trust-roots.json KEY_ID --verify-only
+node scripts/profile-signing-env.mjs /path/to/seed.base64 /path/to/public-trust-roots.json KEY_ID --output /path/to/new-private-env
+```
+
+The script checks the public key before writing a new owner-only file and refuses to overwrite an existing file. It accepts the flat `SYNTILA_PROFILE_TRUST_ROOTS` mapping or the `syntila` publisher mapping in `SYNTILA_RELEASE_TRUST_KEYS_JSON`. The output contains the private key: transfer it securely, add its two assignments to the protected `/etc/syntila/backend.env` on the VPS, and securely remove temporary copies. Preserve existing configuration and restrict access to the file. Restart `syntila-backend` after updating it. Verify Profile delivery with a released Connect client. A new signing key requires distributing its public root in Connect builds before using it.
+
 ## First-release rehearsal
 
 Run on the dev machine (the Mac) from a clean `main` equal to `origin/main`. Commands are exactly these.
