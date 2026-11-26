@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared settings and helpers for the prod-*.sh scripts. Source it; do not run it.
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$PATH:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Production backend host (override with the environment).
@@ -9,33 +9,83 @@ PROD_STAGE="${PROD_STAGE:-phase3-stage}"          # staging directory in the VPS
 PROD_API_URL="${PROD_API_URL:-https://api.syntila.app}"
 PROD_APP_URL="${PROD_APP_URL:-https://syntila.app}"
 
-YES=0; SKIP_TESTS=0
-parse_flags() { # --yes: no confirmation prompt; --skip-tests: skip the pre-deploy test run
+# Secrets and settings kept outside the repository: the shell environment, or
+# this gitignored file (see docs/operations/PRODUCTION_PROVISIONING.md).
+PROD_ENV_FILE="${PROD_ENV_FILE:-$HOME/.config/syntila/prod.env}"
+if [ -f "$PROD_ENV_FILE" ]; then set -a; . "$PROD_ENV_FILE"; set +a; fi
+
+YES=0; SKIP_TESTS=0; DRY_RUN=0; ALLOW_DIRTY=0
+parse_flags() { # shared flags; scripts with extra flags list them in $PROD_EXTRA_FLAGS
   for arg in "$@"; do
     case "$arg" in
       --yes|-y) YES=1 ;;
       --skip-tests) SKIP_TESTS=1 ;;
-      *) echo "Unknown option: $arg" >&2; exit 2 ;;
+      --dry-run) DRY_RUN=1 ;;
+      --allow-dirty) ALLOW_DIRTY=1 ;;
+      *) case " ${PROD_EXTRA_FLAGS:-} " in *" $arg "*) ;; *) echo "Unknown option: $arg" >&2; exit 2;; esac ;;
     esac
   done
 }
 
 say() { printf '\n== %s\n' "$*"; }
+die() { echo "$*" >&2; exit 1; }
 
 require() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1" >&2; exit 1; }; }
 
+# run <command...>: a command that changes production. With --dry-run it is
+# only printed. Everything else (tests, builds, read-only checks) runs always.
+run() {
+  if [ "$DRY_RUN" = 1 ]; then printf '[dry-run] would run: %s\n' "$*"; return 0; fi
+  "$@"
+}
+
 confirm() { # confirm "what will happen"
+  [ "$DRY_RUN" = 1 ] && { printf '[dry-run] would ask: %s\n' "$1"; return 0; }
   [ "$YES" = 1 ] && return 0
   printf '\n%s\nContinue? [y/N] ' "$1"
   read -r answer
   [ "$answer" = y ] || [ "$answer" = Y ] || { echo "Cancelled."; exit 1; }
 }
 
-git_state() { # production deploys should come from a known commit
+git_state() {
   local dirty; dirty=$(git -C "$ROOT" status --short | wc -l | tr -d ' ')
   echo "commit $(git -C "$ROOT" rev-parse --short HEAD), $dirty uncommitted change(s)"
-  [ "$dirty" = 0 ] || echo "warning: the working tree is not clean; the build includes uncommitted changes" >&2
 }
+
+# Deploys come from main, clean, equal to origin/main. --allow-dirty overrides
+# (emergencies); --dry-run only warns.
+require_clean_main() {
+  local problems=() branch
+  branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)
+  [ "$branch" = main ] || problems+=("branch is '$branch', not main")
+  [ -z "$(git -C "$ROOT" status --short)" ] || problems+=("working tree has uncommitted changes")
+  if git -C "$ROOT" fetch -q origin main 2>/dev/null; then
+    [ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse origin/main)" ] || problems+=("HEAD is not origin/main")
+  else
+    problems+=("could not fetch origin/main")
+  fi
+  [ ${#problems[@]} -eq 0 ] && return 0
+  printf 'Not deployable: %s\n' "${problems[@]}" >&2
+  if [ "$ALLOW_DIRTY" = 1 ]; then echo "warning: continuing because of --allow-dirty" >&2; return 0; fi
+  if [ "$DRY_RUN" = 1 ]; then echo "warning: ignored in --dry-run" >&2; return 0; fi
+  die "Refusing to deploy. Merge and push to main, or use --allow-dirty for an emergency."
+}
+
+# require_secrets NAME...: stops with the list of names that are not set.
+require_secrets() {
+  local missing=() n
+  for n in "$@"; do [ -n "${!n:-}" ] || missing+=("$n"); done
+  [ ${#missing[@]} -eq 0 ] || die "Missing secrets: ${missing[*]}
+Set them in the shell or in $PROD_ENV_FILE (see docs/operations/PRODUCTION_PROVISIONING.md)."
+}
+
+# Secrets the web app deploy needs (names only; values never printed).
+WEB_SECRETS=(CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID BETTER_AUTH_SECRET
+  SYNTILA_AUTH_GITHUB_CLIENT_ID SYNTILA_AUTH_GITHUB_CLIENT_SECRET
+  SYNTILA_AUTH_GOOGLE_CLIENT_ID SYNTILA_AUTH_GOOGLE_CLIENT_SECRET)
+
+# Run a command on the VPS that only reads state.
+vps_read() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$PROD_VPS" "$@"; }
 
 run_tests() { # the quick gate: typecheck + backend suite + schema.lock
   [ "$SKIP_TESTS" = 1 ] && { echo "(tests skipped)"; return 0; }
@@ -50,10 +100,10 @@ build_backend() { say "Build backend"; ( cd "$ROOT/apps/backend" && bash scripts
 # Copies the built backend, migrations and VPS files to the staging directory.
 stage_backend() {
   say "Upload to $PROD_VPS:$PROD_STAGE"
-  ssh "$PROD_VPS" "mkdir -p $PROD_STAGE/backend $PROD_STAGE/vps"
-  rsync -a --delete "$ROOT/apps/backend/dist/" "$PROD_VPS:$PROD_STAGE/backend/dist/"
-  rsync -a --delete "$ROOT/apps/backend/migrations/" "$PROD_VPS:$PROD_STAGE/backend/migrations/"
-  rsync -a --delete "$ROOT/infra/vps/" "$PROD_VPS:$PROD_STAGE/vps/"
+  run ssh "$PROD_VPS" "mkdir -p $PROD_STAGE/backend $PROD_STAGE/vps"
+  run rsync -a --delete "$ROOT/apps/backend/dist/" "$PROD_VPS:$PROD_STAGE/backend/dist/"
+  run rsync -a --delete "$ROOT/apps/backend/migrations/" "$PROD_VPS:$PROD_STAGE/backend/migrations/"
+  run rsync -a --delete "$ROOT/infra/vps/" "$PROD_VPS:$PROD_STAGE/vps/"
 }
 
 # Migrations in the build that the production database has not applied yet.
@@ -70,4 +120,10 @@ pending_migrations() {
   printf '%s\n' "$applied" | sort > /tmp/prod-applied.$$
   ls "$ROOT/apps/backend/migrations" | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort | comm -23 - /tmp/prod-applied.$$
   rm -f /tmp/prod-applied.$$
+}
+
+# Pending auth (D1) migrations as printed by wrangler.
+d1_pending() {
+  ( cd "$ROOT" && pnpm exec wrangler d1 migrations list "${SYNTILA_PRODUCTION_D1_NAME:-syntila-auth}" --remote \
+      --config "${SYNTILA_WRANGLER_CONFIG:-$ROOT/infra/cloudflare/app.wrangler.jsonc}" 2>&1 )
 }

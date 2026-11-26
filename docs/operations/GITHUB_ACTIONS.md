@@ -15,16 +15,8 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 
 The build requires production profile trust roots and uses the `connect-windows-release` environment. Environment protection rules may require approval for either workflow.
 
-Shared setup lives in `.github/actions/` (`setup-flutter`). Helper scripts live in `scripts/ci/`. Repository protection is defined in `scripts/github/apply-repo-settings.sh`.
+Shared setup lives in `.github/actions/` (`setup-flutter`, which uses `scripts/ci/setup-flutter-linux-arm64.sh` on Linux ARM64). Production deploys do not run on GitHub; they use the `scripts/prod-*.sh` scripts on the dev machine.
 
 ## Rules for changing workflows
 
-Every action is pinned to a commit SHA with its version in a comment. Dependabot proposes updates weekly. Changes to `.github/`, `scripts/ci/`, `scripts/github/`, `scripts/release/`, and `infra/` require the code owner's review.
-
-Production secrets are only available to jobs in the `production`, `production-site`, `workspace-release`, `workspace-linux-release`, and `workspace-windows-release` environments. Pull requests from forks never receive secrets. Forks need approval before any workflow runs.
-
-Path filters are computed in `scripts/ci/detect-changes.sh`. A change to shared tooling (`.github/`, `scripts/`, root configs, lockfile) runs every CI domain, so the filters cannot skip tests they are responsible for.
-
-## Applying repository settings
-
-Run `scripts/github/apply-repo-settings.sh` as a repository admin. It is a dry run until you pass `--apply`, and it is safe to run again. The settings it applies are described in the script header.
+Every action is pinned to a commit SHA with its version in a comment. Dependabot proposes updates weekly. Changes to `.github/` and `infra/` require the code owner's review.

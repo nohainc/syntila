@@ -8,7 +8,7 @@
 # changes that the running release ignores).
 #
 #   scripts/prod-migrate-db.sh status          applied and pending migrations, schema drift check
-#   scripts/prod-migrate-db.sh apply [--yes]   apply the pending migrations of this checkout
+#   scripts/prod-migrate-db.sh apply [--yes] [--dry-run] [--allow-dirty]   apply the pending migrations of this checkout
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
 cmd="${1:-status}"; shift || true
@@ -32,9 +32,10 @@ case "$cmd" in
     case "$pending" in unknown*) echo "$pending" >&2; echo "Refusing to apply blind; run \"status\" on the VPS first." >&2; exit 1;; esac
     confirm "Apply these migrations to PRODUCTION now:
 $pending"
+    require_clean_main
     stage_backend
     say "Migrate on the VPS (asks for the sudo password)"
-    ssh -t "$PROD_VPS" "set -e
+    run ssh -t "$PROD_VPS" "set -e
       sudo -u syntila bash -c '$remote_env; /home/syntila/.bun/bin/bun \$HOME/$PROD_STAGE/backend/dist/migrate.js'
       sudo -u syntila bash -c '$remote_env; /home/syntila/.bun/bin/bun \$HOME/$PROD_STAGE/backend/dist/migrate.js --verify'"
     ;;

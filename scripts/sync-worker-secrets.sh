@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Syncs the Better Auth and OAuth secrets to the production Worker.
 #
-# Fails closed: every secret must be present in GitHub Actions, and every
+# Fails closed: every secret must be present in the environment, and every
 # secret must be listed on the Worker after the sync. Run from apps/cloud.
 #
 # Usage: sync-worker-secrets.sh <wrangler-config>
@@ -21,7 +21,7 @@ for name in "${names[@]}"; do
   [[ -n "${!name:-}" ]] || missing+=("$name")
 done
 if (( ${#missing[@]} > 0 )); then
-  echo "Missing GitHub Actions secrets: ${missing[*]}" >&2
+  echo "Missing secrets (set them in the shell or ~/.config/syntila/prod.env): ${missing[*]}" >&2
   exit 1
 fi
 

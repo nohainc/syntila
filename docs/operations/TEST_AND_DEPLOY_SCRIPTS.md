@@ -58,15 +58,21 @@ preserves it if a request times out.
 Common to every deploy script:
 
 - Asks `Continue? [y/N]` before touching production. `--yes` skips the question; `--skip-tests` skips the pre-deploy tests.
-- Prints the commit and warns when the working tree has uncommitted changes (the build still includes them).
+- Refuses to deploy unless the branch is `main`, the tree is clean and `HEAD` equals `origin/main`; `--allow-dirty` overrides this for emergencies.
+- `--dry-run` runs the local gates, builds and read-only checks and only prints the steps that change production (uploads, ssh deploys, D1 apply, secret sync, `wrangler deploy`). It never asks questions.
+- Secrets come from the shell environment or the gitignored `~/.config/syntila/prod.env` (names in [Production provisioning](PRODUCTION_PROVISIONING.md#release-secrets)); a missing name stops the script before anything runs.
 - Settings can be overridden with the environment: `PROD_VPS` (default `syntila@46.225.103.109`), `PROD_STAGE` (`phase3-stage`), `PROD_API_URL` (`https://api.syntila.app`), `PROD_APP_URL` (`https://syntila.app`).
 
 | Command | What it does |
 | --- | --- |
 | `scripts/prod-deploy-backend.sh` | Quick tests, build (`apps/backend/scripts/build.sh`), rsync of `dist/`, `migrations/` and `infra/vps/` to `~/phase3-stage/` on the VPS, then `ssh -t ... sudo bash ~/phase3-stage/vps/deploy-backend.sh` (asks for the sudo password), then a public `/health/ready` check. |
-| `scripts/prod-deploy-web-app.sh` | Builds Flutter web (`apps/app`, `SYNTILA_API_URL` default `/api`) and runs `scripts/deploy-api.sh`: deploys the auth Worker and web app (`syntila-app`) and checks `syntila.app/health` and `api.syntila.app/health/ready`. |
+| `scripts/prod-deploy-web-app.sh` | Secrets present → gates (cloud `types:check` and tests, `flutter analyze`, `flutter test`) → `flutter build web` (`SYNTILA_API_URL` default `/api`) → bundle secret check → `pnpm production:preflight` → `pnpm email:config-check` → auth D1 migrations (`scripts/migrate-production-d1.sh`: list, confirm, apply) → `scripts/sync-worker-secrets.sh` → `wrangler deploy` → public checks (`/health` 200, `/api/session` 401, page 200). A failing step stops the script before anything is deployed. |
 | `scripts/prod-deploy-frontend.sh` | Public site (`apps/site`, Astro): `check`, `test`, `build`, `check:release`, then `wrangler deploy --config wrangler.production.jsonc`. |
-| `scripts/prod-deploy-all.sh [--site]` | Backend, then web app; with `--site` also the public site. Flags are passed on to each script. |
+| `scripts/prod-deploy-all.sh [--site]` | Backend, then web app (with D1 migrations); with `--site` also the public site. Flags are passed on. Stops at the first failure and says which parts are deployed. |
+| `scripts/prod-status.sh` | Read-only: API, app and site status, applied and pending backend migrations, pending D1 migrations (needs `CLOUDFLARE_API_TOKEN`), current and previous releases on the VPS, `systemctl is-active` for the service and the monitor timer. |
+| `scripts/prod-rollback-backend.sh [release]` | Lists `/opt/syntila/releases`, points `current` at the chosen release (default: the previous one), restarts and checks readiness. Does not undo migrations. |
+| `scripts/prod-reset-db.sh --i-understand-this-deletes-all-data` | Deletes all production data and rebuilds an empty schema through the migrations (replaces restore; there are no backups). Asks you to type the API host name. Disabled by `APP_IS_LIVE=1` inside the script; remove it when the app goes live. |
+| `scripts/test-prod-scripts.sh` | Runs every `prod-*.sh --dry-run` in a throwaway repo against stub `ssh`, `rsync`, `curl`, `pnpm`, `flutter`, `node`, `bun` and `wrangler`; asserts step order and that a failing gate stops the run. |
 | `scripts/prod-migrate-db.sh status` | Read-only: the last applied migrations on production and the ones in this checkout that are not applied. |
 | `scripts/prod-migrate-db.sh apply` | Builds, shows the pending migrations, asks, uploads and applies them without a release. |
 
@@ -89,9 +95,9 @@ With the backend deploy, normally. Code and schema ship together, the code rollb
 - Backend change with a migration: `scripts/test-all.sh`, then `scripts/prod-migrate-db.sh status`, then `scripts/prod-deploy-backend.sh`.
 - App or Worker change only: `scripts/prod-deploy-web-app.sh`.
 - Everything: `scripts/prod-deploy-all.sh --site`.
-- Something went wrong after a deploy: the backend rolls back by itself when it does not become ready; for a later problem, point `/opt/syntila/current` at a previous release in `/opt/syntila/releases` and restart `syntila-backend`.
+- Something went wrong after a deploy: the backend rolls back by itself when it does not become ready; for a later problem run `scripts/prod-rollback-backend.sh`. Check state with `scripts/prod-status.sh`.
 
 ## Notes
 
-- The scripts have only been syntax-checked (`bash -n`), not run against production. Start with `scripts/prod-migrate-db.sh status` (read-only) and run the first real deploy while watching it.
+- `scripts/test-prod-scripts.sh` and `bash -n` cover the scripts without production; `prod-status.sh` and `prod-migrate-db.sh status` are the read-only checks against production. Run the first real deploy while watching it.
 - Related: `docs/deployment/VPS_BACKEND.md`, `docs/deployment/VPS_OPERATIONS.md`, `docs/deployment/CLOUDFLARE.md`.
