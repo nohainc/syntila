@@ -254,7 +254,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
                                         isOwner: widget.space.role == 'owner'),
                                   ),
                                 // Same label column and type scale as the
-                                // Workspace and Additional folders rows.
+                                // Worker and Additional folders rows.
                                 Row(
                                   key: const ValueKey(
                                       'space-show-ai-history-setting'),

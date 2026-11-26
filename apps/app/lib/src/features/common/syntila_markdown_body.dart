@@ -131,7 +131,7 @@ ParsedCodeLink _extractPathAndLine(String input, {String? editorScheme}) {
 
 /// Extracts a local code or file location from a link destination, supporting
 /// `file://` URIs, editor URIs (`vscode://file/...`, `cursor://file/...`),
-/// and relative/workspace file paths with optional `#L10-L20` or `:10` line numbers.
+/// and relative file paths with optional `#L10-L20` or `:10` line numbers.
 ParsedCodeLink? parseCodeOrFileLink(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   final trimmed = raw.trim();

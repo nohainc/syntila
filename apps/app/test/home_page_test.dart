@@ -3165,7 +3165,6 @@ void main() {
         'worker.problem',
         'worker.credential.problem',
         'worker.install.failed',
-        'workspace.offline',
       ]) {
         final event = {
           'type': eventType,
@@ -3180,9 +3179,7 @@ void main() {
         var workspacesOpened = false;
         final rawItem = AxHomeAttentionItem(
           id: notification!.id,
-          kind: eventType.contains('workspace')
-              ? AxHomeAttentionType.workerOffline
-              : AxHomeAttentionType.workerProblem,
+          kind: AxHomeAttentionType.workerProblem,
           title: notification.title,
           subtitle: notification.message,
           isUnread: true,

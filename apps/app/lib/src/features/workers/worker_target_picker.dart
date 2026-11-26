@@ -68,7 +68,7 @@ Map<String, String> workerPickerLabels(List<WorkerInstance> workers) {
 
 /// The Thread composer's Worker control: the Workers the server says can run
 /// this Workflow, plus the owner's other Workers shown disabled with the
-/// reason. No Workspace appears anywhere.
+/// reason. Only Workers appear.
 class WorkerTargetPicker extends StatefulWidget {
   const WorkerTargetPicker({
     super.key,

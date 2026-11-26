@@ -279,7 +279,7 @@ class _WorkComposer extends StatelessWidget {
   final Map<String, dynamic> executionSelection;
   final ValueChanged<Map<String, dynamic>> onExecutionSelectionChanged;
 
-  /// Workspace-free Worker control (ADR-035). When set it replaces the Worker,
+  /// Worker control (ADR-035). When set it replaces the Worker,
   /// model and effort selector, and the selection is a Worker ID.
   final Widget Function(String workflowId, String? selectedId,
       ValueChanged<String?> onChanged, bool enabled)? workerTargetPicker;

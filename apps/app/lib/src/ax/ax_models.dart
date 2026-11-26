@@ -1759,7 +1759,6 @@ class AxHomeAttentionItem {
     this.spaceId,
     this.threadId,
     this.workerId,
-    this.workspaceId,
     this.timestamp,
     this.timestampDisplay,
     this.primaryAction,
@@ -1787,7 +1786,6 @@ class AxHomeAttentionItem {
   final String? spaceId;
   final String? threadId;
   final String? workerId;
-  final String? workspaceId;
   final DateTime? timestamp;
   final String? timestampDisplay;
   final AxHomeAttentionAction? primaryAction;
@@ -1844,7 +1842,6 @@ class AxHomeAttentionItem {
         spaceId: (json['spaceId'])?.toString(),
         threadId: (json['threadId'])?.toString(),
         workerId: json['workerId']?.toString(),
-        workspaceId: json['workspaceId']?.toString(),
         timestamp: json['createdAt'] != null
             ? DateTime.tryParse(json['createdAt'].toString())
             : (json['timestamp'] != null
@@ -1876,7 +1873,6 @@ class AxHomeAttentionItem {
         if (spaceId != null) 'spaceId': spaceId,
         if (threadId != null) 'threadId': threadId,
         if (workerId != null) 'workerId': workerId,
-        if (workspaceId != null) 'workspaceId': workspaceId,
         if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
         if (timestampDisplay != null) 'timestampDisplay': timestampDisplay,
         if (categoryLabel != null) 'categoryLabel': categoryLabel,
@@ -2685,7 +2681,7 @@ typedef AxAiUpdate = AxAiCapabilityUpdate;
 
 class AxAiCapabilityUpdateService {
   /// Resolves the set of worker profile and provider identifiers accessible to the user:
-  /// 1. Directly owned/connected workspace workers (`workerTypeId`, `profileDefinitionId`, `providerToolName`)
+  /// 1. Directly owned/connected workers (`workerTypeId`, `profileDefinitionId`, `providerToolName`)
   /// 2. Shared space workers in thread configurations (`workConfig['worker']`, `workConfig['workerTypeId']`, `ws.lead`)
   /// 3. Shared space worker grants and settings (`space.settings['sharedWorkers']`, `space.settings['workerGrants']`)
   static Set<String> resolveAccessibleWorkerProfileIds({

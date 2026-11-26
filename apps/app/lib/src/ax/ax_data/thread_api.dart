@@ -545,7 +545,7 @@ mixin _ThreadApi on _AxApiClientCore
       ];
 
   /// Starts uploading the accepted request's files in the background and
-  /// follows their delivery to the Workspace.
+  /// follows their delivery to the Worker's computer.
   void _startInputDelivery(
       Object? workRequest, List<Map<String, dynamic>> attachments) {
     if (workRequest is! Map) return;
@@ -792,7 +792,7 @@ mixin _ThreadApi on _AxApiClientCore
     if (response.statusCode < 200 || response.statusCode >= 300) {
       // The Cloud validator returns structured eligibility issues for 422.
       // Preserve those messages so the Work composer can tell the user what
-      // needs to be fixed (for example, selecting a Workspace or restoring a
+      // needs to be fixed (for example, selecting a Worker or restoring a
       // Worker grant) instead of reducing the response to a status code.
       if (decoded is Map && decoded['issues'] is List) {
         final messages = (decoded['issues'] as List)

@@ -207,7 +207,7 @@ class AxConversationTurn {
   final String workerTypeId;
   final String workerDisplayName;
 
-  /// Person whose Workspace ran this turn, when Cloud recorded it.
+  /// Person whose Worker ran this turn, when Cloud recorded it.
   final String? workerOwnerName;
   final String profileId;
   final int profileVersion;

@@ -54,7 +54,7 @@ class AxDeliveredInputState {
 }
 
 /// Uploads a Work Request's files in parallel after the request is accepted,
-/// restarting a failed file from scratch, and follows the Workspace's
+/// restarting a failed file from scratch, and follows the Worker's
 /// download of each file until all are delivered. Progress is per request
 /// and read by the request card, so the composer stays free while files move.
 class AxInputDelivery extends ChangeNotifier {

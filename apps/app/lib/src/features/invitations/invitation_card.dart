@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// One pending invitation (Space or Workspace), shared by the Inbox and Home
+/// One pending invitation (Space), shared by the Inbox and Home
 /// so both show the same information and controls. Not itself tappable.
 class AxInvitationCard extends StatelessWidget {
   const AxInvitationCard({

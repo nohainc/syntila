@@ -420,7 +420,7 @@ class AttachmentDownloadScope extends InheritedWidget {
 }
 
 /// Base64 JPEG preview budget for Worker output images; Cloud and the
-/// Workspace enforce the same value.
+/// Connect enforce the same value.
 const maxResponseImagePreviewChars = 48000;
 
 /// Images a Worker attached to its answer, shown inline below the text.
@@ -554,7 +554,7 @@ class _ResponseImageState extends State<ResponseImage> {
   static final _cache = <String, Future<Uint8List>>{};
   Future<Uint8List>? _bytes;
 
-  /// Inline size: the Workspace's small JPEG preview, when present. The
+  /// Inline size: the Worker's small JPEG preview, when present. The
   /// original is then loaded only to zoom or download.
   Uint8List? _preview;
   bool _previewDecoded = false;

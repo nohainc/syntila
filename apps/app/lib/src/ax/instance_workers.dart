@@ -4,7 +4,7 @@ import 'ax_models.dart';
 
 /// The composer's Workers under the Worker-first architecture: exactly the
 /// owner's Worker Instances (what the Workers page lists), not the legacy
-/// Workspace inventory. Model and effort options are the ones the paired
+/// Worker inventory. Model and effort options are the ones the paired
 /// Worker reported (`executionOptions`), falling back to the inventory row a
 /// Worker Instance was adopted from. The selection id is the Worker Instance id.
 List<AxWorker> workersFromInstances(

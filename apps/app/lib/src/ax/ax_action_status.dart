@@ -38,7 +38,7 @@ extension AxActionStatusLabel on AxActionStatus {
       };
 }
 
-/// Space and Workspace invitation statuses from Cloud.
+/// Space invitation statuses from Cloud.
 AxActionStatus axInvitationStatus(String status) => switch (status) {
       'pending' => AxActionStatus.accepted,
       'accepted' || 'declined' => AxActionStatus.responded,

@@ -22,8 +22,8 @@ class SpacePage extends StatelessWidget {
     this.onOpenPeople,
   });
 
-  /// Space-scoped workflow preferences; used for the Workspace selector. When
-  /// omitted one is created from [dataSource] if it supports Workspace choice.
+  /// Space-scoped workflow preferences; used for the Worker selector. When
+  /// omitted one is created from [dataSource] if it supports Worker choice.
   final AxWorkflowConfigurations? workflowConfigurations;
   final AxSpace space;
   final AxDataSource dataSource;

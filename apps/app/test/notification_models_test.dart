@@ -97,14 +97,13 @@ void main() {
       'maps operational attention events to prioritized normalized destinations',
       () {
     final events = <Map<String, dynamic>>[
-      {'type': 'workspace.offline'},
       {
         'type': 'worker.credential.expired',
-        'payload': {'workspaceId': 'workspace-1', 'workerId': 'worker-1'},
+        'payload': {'workerId': 'worker-1'},
       },
       {
         'type': 'worker.install.failed',
-        'payload': {'workspace_id': 'workspace-2', 'worker_id': 'worker-2'},
+        'payload': {'worker_id': 'worker-2'},
       },
       {'type': 'space.invitation.received'},
     ];
@@ -114,27 +113,21 @@ void main() {
         .toList();
 
     expect(notifications.map((item) => item.title), [
-      'Worker offline',
       'Worker connection expired',
       'Worker connection failed',
       'Invitation received',
     ]);
+    expect(notifications[0].priority, AxNotificationPriority.high);
     expect(notifications[0].target, AxNotificationTarget.workers);
-    expect(notifications[0].kind, AxNotificationKind.workerOffline);
+    expect(notifications[0].kind, AxNotificationKind.workerCredentialProblem);
+    expect(notifications[0].workerId, 'worker-1');
 
-    expect(notifications[1].priority, AxNotificationPriority.high);
     expect(notifications[1].target, AxNotificationTarget.workers);
-    expect(notifications[1].kind, AxNotificationKind.workerCredentialProblem);
-    expect(notifications[1].workspaceId, 'workspace-1');
-    expect(notifications[1].workerId, 'worker-1');
+    expect(notifications[1].kind, AxNotificationKind.workerInstallFailed);
+    expect(notifications[1].workerId, 'worker-2');
 
-    expect(notifications[2].target, AxNotificationTarget.workers);
-    expect(notifications[2].kind, AxNotificationKind.workerInstallFailed);
-    expect(notifications[2].workspaceId, 'workspace-2');
-    expect(notifications[2].workerId, 'worker-2');
-
-    expect(notifications[3].target, AxNotificationTarget.space);
-    expect(notifications[3].kind, AxNotificationKind.spaceInvitationReceived);
+    expect(notifications[2].target, AxNotificationTarget.space);
+    expect(notifications[2].kind, AxNotificationKind.spaceInvitationReceived);
   });
 
   test('failed Work Requests notify on their Thread', () {

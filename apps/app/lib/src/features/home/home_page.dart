@@ -1270,7 +1270,6 @@ class AxHomeAttentionProjector {
         spaceId: raw.spaceId,
         threadId: raw.threadId,
         workerId: raw.workerId,
-        workspaceId: raw.workspaceId,
         timestamp: raw.timestamp ?? raw.createdAt,
         timestampDisplay: raw.timestampDisplay,
         categoryLabel: raw.categoryLabel,

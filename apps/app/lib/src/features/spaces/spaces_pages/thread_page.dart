@@ -1185,7 +1185,7 @@ class _ThreadPageState extends State<ThreadPage>
   static const bool _useWorkerTargetPicker = false;
 
   /// Workers UX (P6): the composer picks a Worker by ID from the server's
-  /// eligible list; no Workspace is shown. Null while the flag is off.
+  /// eligible list; no extra Worker is shown. Null while the flag is off.
   Widget Function(String, String?, ValueChanged<String?>, bool)?
       _workerTargetPickerBuilder() {
     // Reverted: the composer keeps the original Worker / model / effort
@@ -1757,7 +1757,7 @@ class _ThreadPageState extends State<ThreadPage>
               .where((worker) => !own.any((o) => o.id == worker.id))
               .toList()
           : const <AxWorker>[];
-      // A personal Space has no Space Workspace; its Chat runs on the
+      // A personal Space has no Space Worker; its Chat runs on the
       // viewer's own Workers and on Workers shared with them in person.
       _ownChatWorkers = widget.space.isDirect
           ? [...own.where((worker) => !worker.shared), ...personShared]

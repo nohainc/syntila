@@ -12,7 +12,7 @@ import 'realtime_messaging.dart';
 
 /// The browser socket for `syntila.messaging/1` (ADR-038). The protocol itself
 /// lives in [RealtimeMessaging]; this class owns the socket, the reconnects and
-/// the subscriptions. Runs and legacy execution-workspace scopes have no stream
+/// the subscriptions. Runs and legacy execution scopes have no stream
 /// of their own: their events arrive on the Space and Thread streams.
 class _BrowserRealtimeClient implements RealtimeClient {
   final _events = StreamController<Map<String, dynamic>>.broadcast();

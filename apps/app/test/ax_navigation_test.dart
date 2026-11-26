@@ -72,11 +72,6 @@ void main() {
     expect(AxNavigation.fromUri(Uri.parse('/workers')),
         const AxNavigation.workers());
     expect(const AxNavigation.workers().toUri().path, '/workers');
-    // Old Workspace links redirect to the Workers page.
-    expect(AxNavigation.fromUri(Uri.parse('/workspaces')),
-        const AxNavigation.workers());
-    expect(AxNavigation.fromUri(Uri.parse('/workspaces/abc')),
-        const AxNavigation.workers(workerId: 'abc'));
     expect(const AxNavigation.workers(workerId: 'abc').toUri().path,
         '/workers/abc');
   });

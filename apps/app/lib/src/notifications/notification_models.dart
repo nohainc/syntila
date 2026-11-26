@@ -13,7 +13,7 @@ enum AxNotificationKind {
   workerCredentialProblem,
   workerInstallFailed,
 
-  // Workspace
+  // Worker
   workerOffline,
 
   // Space
@@ -63,9 +63,6 @@ bool isMeaningfulRealtimeNotification(String type) => {
       'worker.credential.expired',
       'worker.install.failed',
       'worker.install_failed',
-      'workspace.offline',
-      'workspace.stale',
-      'workspace.invitation.received',
       'space.invitation.received',
       'invitation.received',
     }.contains(type);
@@ -81,7 +78,6 @@ class AxNotification {
     this.spaceId,
     this.threadId,
     this.runId,
-    this.workspaceId,
     this.workerId,
     this.target,
     this.read = false,
@@ -96,7 +92,6 @@ class AxNotification {
   final String? spaceId;
   final String? threadId;
   final String? runId;
-  final String? workspaceId;
   final String? workerId;
   final AxNotificationTarget? target;
   final bool read;
@@ -120,7 +115,6 @@ class AxNotification {
       spaceId: spaceId,
       threadId: threadId,
       runId: runId,
-      workspaceId: workspaceId,
       workerId: workerId,
       target: target,
       read: read,
@@ -137,7 +131,6 @@ class AxNotification {
         spaceId: spaceId,
         threadId: threadId,
         runId: runId,
-        workspaceId: workspaceId,
         workerId: workerId,
         target: target,
         read: true,
@@ -184,14 +177,11 @@ AxNotification? notificationFromRealtimeEvent(
     'worker.problem' ||
     'worker.error' =>
       AxNotificationKind.workerCredentialProblem,
-    'workspace.offline' ||
-    'workspace.stale' =>
-      AxNotificationKind.workerOffline,
+    // Backend emits no offline/stale kinds; keep the kind for the UI list.
     'worker.install.failed' ||
     'worker.install_failed' =>
       AxNotificationKind.workerInstallFailed,
     'space.invitation.received' ||
-    'workspace.invitation.received' ||
     'invitation.received' =>
       AxNotificationKind.spaceInvitationReceived,
     _ => null,
@@ -216,10 +206,6 @@ AxNotification? notificationFromRealtimeEvent(
       _optionalString(event['thread_id']) ??
       _optionalString(payloadMap['threadId']) ??
       _optionalString(payloadMap['thread_id']);
-  final workspaceId = _optionalString(event['workspaceId']) ??
-      _optionalString(event['workspace_id']) ??
-      _optionalString(payloadMap['workspaceId']) ??
-      _optionalString(payloadMap['workspace_id']);
   final workerId = _optionalString(event['workerId']) ??
       _optionalString(event['worker_id']) ??
       _optionalString(payloadMap['workerId']) ??
@@ -241,7 +227,7 @@ AxNotification? notificationFromRealtimeEvent(
           : 'work-request:$workRequestId') ??
       _optionalString(event['eventId']) ??
       _optionalString(event['id']) ??
-      '$type:${threadId ?? runId ?? spaceId ?? 'workspace'}:${timestamp.microsecondsSinceEpoch}';
+      '$type:${threadId ?? runId ?? spaceId ?? 'notification'}:${timestamp.microsecondsSinceEpoch}';
   final target = switch (kind) {
     AxNotificationKind.threadNeedsInput ||
     AxNotificationKind.threadCompleted ||
@@ -309,7 +295,6 @@ AxNotification? notificationFromRealtimeEvent(
     spaceId: spaceId,
     threadId: threadId,
     runId: runId,
-    workspaceId: workspaceId,
     workerId: workerId,
     target: target,
   );

@@ -148,12 +148,11 @@ class AxNavigation {
         return AxNavigation.spaceMembers(parts[1]);
       }
     }
-    if (parts.length == 1 &&
-        (parts[0] == 'workers' || parts[0] == 'workspaces')) {
+    if (parts.length == 1 && parts[0] == 'workers') {
       return const AxNavigation.workers();
     }
     if (parts.length == 2 &&
-        (parts[0] == 'workers' || parts[0] == 'workspaces') &&
+        parts[0] == 'workers' &&
         parts[1] != 'workers' &&
         parts[1] != 'accounts') {
       return AxNavigation.workers(workerId: parts[1]);
