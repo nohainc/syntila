@@ -5,7 +5,7 @@ Defines what Syntila's MCP client (in the Engine) does and refuses.
 
 ## 1. Roles and transports
 
-- Host: Workspace Service (policy, consent, credentials). Client: Engine
+- Host: Connect (local policy, consent, credentials). Client: Engine
   (`mcp_host.dart`), one client session per server connection.
 - Transports: `stdio` (local, Engine-launched, digest-pinned) and Streamable
   HTTP (remote, HTTPS required outside local test allowances). A separate endpoint allowlist and OAuth are not implemented. No other transport in v1.
@@ -119,20 +119,7 @@ are not callable until consented.
 - Arguments and results pass through the redactor before logging; neither is
   stored in diagnostics by default.
 
-The Engine's `--mcp-tool-call` mode is used by the Workspace handler for
-admitted direct workflow calls. Cloud creates a durable claim before dispatch;
-the Workspace resolves local consent and pins and maintains a persistent fence.
-Uncertain outcomes are not replayed. The `chat:v2` workflow supplies recorded
-output to the next step as labelled untrusted data. Power-loss durability and
-Cloud-to-Workspace remote acceptance remain unverified; see the baseline
-inventory. Labels do not enforce permissions or prevent prompt injection.
-
-The internal tool-call request v1 contains `schemaVersion`, `taskId`,
-`dispatchKey`, `serverId`, `tool`, `toolDefinitionHash`, `arguments`, and
-`timeoutMs`. Its key must equal `mcp-tool-v1:<taskId>`; arguments are bounded
-to 64 KiB of UTF-8 encoded JSON. TypeScript and Workspace validators reject
-unknown fields and mismatched keys. The Workspace deep-copies and freezes arguments before
-admission. The Workspace advertises `workspace.mcp_tool_call.v1`; the payload alone does not authorize execution.
+The Engine retains an internal `--mcp-tool-call` mode and request schema for local testing. Direct workflow tool calls and attaching MCP tool servers to official Workers on Connect are deferred; do not treat the internal payload or a capability name as a deployed Cloud management or execution API. MCP Workers receive whole assignments through the generic Engine as described in [ADR-041](../decisions/ADR-041-mcp-workers-on-worker-agents.md). Tool output is untrusted and labels do not prevent prompt injection.
 
 ## 6. Error mapping
 
