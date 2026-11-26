@@ -62,6 +62,11 @@ jobs:
       - name: Run Connect CLI tests
         shell: pwsh
         run: |
+          # The Engine tests run the Engine from source, which needs its own packages resolved.
+          Push-Location engines/cli_worker
+          dart pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
           Push-Location apps/connect
           dart pub get
           dart test

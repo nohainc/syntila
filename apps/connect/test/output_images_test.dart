@@ -26,8 +26,9 @@ void main() {
     expect(linked, [image.path]);
     expect(await collectOutputImages(const [], linked), [image.path]);
     final text = withoutImageLinks(reply, linked);
-    expect(text, isNot(contains(image.path)));
-    expect(text, contains(secret.path));
+    // The reply holds file: URIs (backslashes become slashes on Windows).
+    expect(text, isNot(contains(Uri.file(image.path).toString())));
+    expect(text, contains(Uri.file(secret.path).toString()));
   });
 
   test('collects every saved file, skipping empty ones', () async {
