@@ -434,13 +434,7 @@ At compact desktop widths (below 1000 points), the Worker catalog stacks above t
 
 ### First-run acceptance and UI migration
 
-For a deployed v8 database that predates starter templates, run
-`node scripts/provision-profile-starter-templates.mjs`, then apply its generated
-SQL file with Wrangler D1 to the intended database. It extracts only the current
-baseline table and `INSERT OR IGNORE` seeds; existing templates, Drafts, releases,
-and user data are preserved. Do not replay/reset the baseline on an existing database.
-
-Only Workers, Workspaces, and Activity are primary areas (`LabArea`). Workers owns Overview, Draft & Test, and Releases. The workbench is `DraftTestWorkbench`, with `ProfileDraftEditor` as its editor pane; obsolete Profiles/Tests/evidence pages, their navigation aliases, the duplicate Draft selector, and the global telemetry/status strip are removed without compatibility shims. Existing local Draft and evidence storage paths, identities, formats, and Cloud APIs remain unchanged by this UI cleanup. The starter-template table remains part of the fresh-start v8 Cloud baseline; existing development databases must provision/reseed the current baseline when adopting that earlier data-model change.
+Only Workers, Workspaces, and Activity are primary areas (`LabArea`). Workers owns Overview, Draft & Test, and Releases. The workbench is `DraftTestWorkbench`, with `ProfileDraftEditor` as its editor pane; obsolete Profiles/Tests/evidence pages, their navigation aliases, the duplicate Draft selector, and the global telemetry/status strip are removed without compatibility shims. Existing local Draft and evidence storage paths, identities, formats, and Cloud APIs remain unchanged by this UI cleanup.
 
 `worker_first_run_acceptance_test.dart` covers sign-in, catalog selection, absent Profile, one-click initial Draft, dynamic `codex`/`agy` discovery, the actual eleven-stage ladder through the bundled Engine, persisted matching local evidence, local save, and Cloud Draft sync for both Workers with ready and missing signers. Ready-signer cases continue through qualification submission, Testing publication, and release history. Browser approval and Cloud persistence are controlled boundary fixtures. Provider executables use the existing v1 payload contracts with isolated home/PATH/environment; they do not call vendor services. The no-template path verifies a blank Draft inherits catalog identity and remains unqualified. A cold-start check reopens the same persisted Draft and matching evidence without recreating or translating them. Catalog Stable is always explicitly labeled as catalog stage and cannot establish a Stable release pointer. Signing/production rollout and real vendor acceptance remain separate release gates.
 

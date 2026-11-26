@@ -13,7 +13,6 @@ Historical `direct:v1` remains Direct. Tests cover these independent contracts:
 | Generic Connect execution policies and fail-closed Profile admission | [Connect agent matrix](../../apps/connect/test/agent_matrix_test.dart) |
 | Actual Codex argv, explicit approval policy, sandbox policy in normal/compatibility layouts and fresh/resumed sessions | [Profile interpreter](../../packages/tool-profile/test/interpreter.test.ts) |
 | Durable Chat reuse, cross-Thread and Chat/Work session isolation | [Session keys](../../apps/backend/test/domain/work-session-key.test.ts) |
-| Canonical starter synchronization and preservation of existing templates/releases | [Starter provisioning](../../scripts/provision-profile-starter-templates.test.mjs) |
 | Snapshot/version history names and unchanged Markdown through Cloud read models | [Storage/read contract](../../apps/backend/test/domain/markdown-storage-contract.test.ts) |
 | Current dynamic Workflow menu, separate Chat/Work bindings, Markdown rendering and historical labels | [AX widget acceptance](../../apps/app/test/spaces_pages_test.dart) |
 | Snapshot name precedence and compatibility with older read models | [AX history model](../../apps/app/test/work_request_history_test.dart) |

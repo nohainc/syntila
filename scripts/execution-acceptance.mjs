@@ -5,17 +5,32 @@ import { writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 export const SUITES = {
   backend: {
     cwd: fileURLToPath(new URL("../apps/backend/", import.meta.url)),
     command: "bun",
-    args: ["scripts/test.ts", ...["assignment-lifecycle-races", "assignment-revocation", "assignment-start-permit", "assignment-recovery", "service-readiness", "workflow-terminal-wait"].map((name) => `test/domain/${name}.test.ts`)],
+    args: [
+      "scripts/test.ts",
+      ...[
+        "assignment-lifecycle-races",
+        "assignment-revocation",
+        "assignment-start-permit",
+        "assignment-recovery",
+        "worker-instances",
+        "workflow-terminal-wait",
+      ].map((name) => `test/domain/${name}.test.ts`),
+    ],
   },
   connect: {
     cwd: fileURLToPath(new URL("../apps/connect/", import.meta.url)),
     command: "dart",
-    args: ["test", "--concurrency=1", "test/agent_matrix_test.dart", "test/journal_test.dart", "test/mcp_worker_runner_test.dart"],
+    args: [
+      "test",
+      "--concurrency=1",
+      "test/agent_matrix_test.dart",
+      "test/journal_test.dart",
+      "test/mcp_worker_runner_test.dart",
+    ],
   },
   engine: {
     cwd: fileURLToPath(

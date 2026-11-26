@@ -6,8 +6,6 @@ import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
-import 'package:syntila_app/src/ax/sync/ax_entity_store.dart';
-import 'package:syntila_app/src/ax/sync/ax_realtime_sync.dart';
 
 void main() {
   late AxSyncEngine engine;
@@ -239,12 +237,12 @@ void main() {
     engine.invalidate(query.key);
     expect(states, hasLength(3));
   });
-  test('targeted realtime and prefix invalidation', () async {
+  test('targeted and prefix invalidation', () async {
     await seed();
     final other =
         AxQuery<int>(key: AxQueryKey(['space', 'P2']), load: () async => 2);
     await engine.ensure(other);
-    AxRealtimeSync(engine).invalidate([query.key, query.key]);
+    engine.invalidate(query.key);
     expect(engine.peek(query).isStale, isTrue);
     expect(engine.peek(other).isStale, isFalse);
     engine.invalidate(AxQueryKey(['space']), prefix: true);
@@ -383,22 +381,5 @@ void main() {
         () => engine.peek(AxQuery<int>(
             key: query.key, load: query.load, staleTime: Duration.zero)),
         throwsStateError);
-  });
-  test('normalized collections retain unrelated data and immutable IDs', () {
-    final store = AxEntityStore<({String id, int value})>(idOf: (v) => v.id);
-    store.replaceCollection('P1', [(id: 'W1', value: 1), (id: 'W1', value: 2)]);
-    store.replaceCollection('P2', [(id: 'W2', value: 3)]);
-    store.replaceCollection('P2', []);
-    expect(store.ids('P1'), ['W1']);
-    expect(store.values('P1').single.value, 2);
-    expect(store.peek('W2')?.value, 3);
-    expect(() => store.ids('P1').add('W3'), throwsUnsupportedError);
-    expect(() => store.entities.clear(), throwsUnsupportedError);
-    store.upsert([(id: 'W1', value: 4)]);
-    expect(store.values('P1').single.value, 4);
-    store.remove('W1');
-    expect(store.ids('P1'), isEmpty);
-    store.clear();
-    expect(store.entities, isEmpty);
   });
 }

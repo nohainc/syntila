@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve, relative, extname } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const migrationsDirectory = resolve(root, "apps/cloud/migrations-v8");
+const migrationsDirectory = resolve(root, "apps/cloud/migrations");
 const cloudSource = resolve(root, "apps/cloud/src");
 
 async function filesUnder(directory) {
@@ -119,7 +119,7 @@ for (const path of sources) {
         continue;
       }
       errors.push(
-        `${relative(root, path)}:${lineAt(source, literal.offset + match.index)} references unknown v8 table '${table}'`,
+        `${relative(root, path)}:${lineAt(source, literal.offset + match.index)} references unknown auth table '${table}'`,
       );
     }
   }
@@ -130,6 +130,6 @@ if (errors.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Cloud SQL table references match the v8 schema (${knownTables.size} tables).`,
+    `Cloud SQL table references match the auth schema (${knownTables.size} tables).`,
   );
 }
