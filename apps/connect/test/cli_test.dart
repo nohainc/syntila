@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:syntila_connect/syntila_connect.dart';
 import 'package:test/test.dart';
 
@@ -128,7 +129,12 @@ void main() {
         '${sandbox.path}/home/.config/systemd/user/syntila-worker-${worker.id}.service',
       );
       expect(unit.existsSync(), isTrue);
-      expect(unit.readAsStringSync(), contains('Syntila/Workers/${worker.id}'));
+      expect(
+        unit.readAsStringSync(),
+        contains(
+          p.join('Syntila', 'Workers', worker.id).replaceAll('\\', '\\\\'),
+        ),
+      );
       expect(
         runner.calls.map((c) => c.join(' ')),
         isNot(
@@ -395,14 +401,30 @@ void main() {
       final readOnlyDir = await Directory(
         '${sandbox.path}/home/ro-work',
       ).create();
-      await Process.run('chmod', ['555', readOnlyDir.path]);
+      if (Platform.isWindows) {
+        await Process.run('icacls', [
+          readOnlyDir.path,
+          '/deny',
+          '*S-1-1-0:(W)',
+        ]);
+      } else {
+        await Process.run('chmod', ['555', readOnlyDir.path]);
+      }
       try {
         expect(
           await noWorkerCli.run(['folders', 'work-root', readOnlyDir.path]),
           1,
         );
       } finally {
-        await Process.run('chmod', ['755', readOnlyDir.path]);
+        if (Platform.isWindows) {
+          await Process.run('icacls', [
+            readOnlyDir.path,
+            '/remove:d',
+            '*S-1-1-0',
+          ]);
+        } else {
+          await Process.run('chmod', ['755', readOnlyDir.path]);
+        }
       }
     },
   );

@@ -18,9 +18,9 @@ void main() {
     final image = File(p.join(brain.path, 'lake.jpg'))..writeAsBytesSync([1]);
     final secret = File(p.join(root.path, 'secret.png'))..writeAsBytesSync([1]);
     final reply =
-        'Here it is:\n\n![Lake](file://${image.path})\n\n'
-        'File: [lake.jpg](file://${image.path})\n'
-        '![Other](file://${secret.path})';
+        'Here it is:\n\n![Lake](${Uri.file(image.path)})\n\n'
+        'File: [lake.jpg](${Uri.file(image.path)})\n'
+        '![Other](${Uri.file(secret.path)})';
 
     final linked = linkedImages(reply, [p.join(root.path, 'brain')]);
     expect(linked, [image.path]);
@@ -62,8 +62,9 @@ void main() {
       findFfmpeg({'PATH': bin.path}),
       anyOf(isNull, isNot(startsWith(bin.path))),
     );
-    File(p.join(bin.path, 'ffmpeg')).writeAsStringSync('');
-    expect(findFfmpeg({'PATH': bin.path}), p.join(bin.path, 'ffmpeg'));
+    final ffmpegName = Platform.isWindows ? 'ffmpeg.exe' : 'ffmpeg';
+    File(p.join(bin.path, ffmpegName)).writeAsStringSync('');
+    expect(findFfmpeg({'PATH': bin.path}), p.join(bin.path, ffmpegName));
     final video = File(p.join(root.path, 'clip.mp4'))..writeAsBytesSync([1]);
     expect(isOutputVideo(video.path), isTrue);
     // A tool that cannot run gives no poster, never an error.

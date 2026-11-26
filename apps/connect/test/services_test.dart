@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:syntila_connect/syntila_connect.dart';
 import 'package:test/test.dart';
 
@@ -60,7 +61,7 @@ void main() {
         final s = spec();
         await manager.install(s);
         final plist = File(
-          '${home.path}/Library/LaunchAgents/${s.launchdLabel}.plist',
+          p.join(home.path, 'Library', 'LaunchAgents', '${s.launchdLabel}.plist'),
         );
         expect(plist.existsSync(), isTrue);
         expect(

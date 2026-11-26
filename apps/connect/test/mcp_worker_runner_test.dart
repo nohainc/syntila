@@ -30,10 +30,20 @@ void main() {
       final engine = '$repo/engines/cli_worker/bin/syntila_cli_worker.dart';
       final engineBinary = await _ensureEngineBinary(repo);
       final worker = '$repo/examples/mcp/echo_worker/echo_worker.dart';
-      final source = writeExternalWorkerPackage(
-        root,
-        body: '#!/bin/sh\nexec "${Platform.resolvedExecutable}" "$worker"\n',
-      );
+      final String source;
+      if (Platform.isWindows) {
+        final workerBinary = await _ensureEchoWorkerBinary(repo, worker);
+        source = writeExternalWorkerPackage(
+          root,
+          binary: await File(workerBinary).readAsBytes(),
+          command: 'bin/run.exe',
+        );
+      } else {
+        source = writeExternalWorkerPackage(
+          root,
+          body: '#!/bin/sh\nexec "${Platform.resolvedExecutable}" "$worker"\n',
+        );
+      }
       final store = ExternalWorkerStore(
         root: Directory('${root.path}/store'),
         platform: 'linux-x64',
@@ -178,6 +188,29 @@ Future<String> _ensureEngineBinary(String repo) async {
     if (result.exitCode != 0) {
       throw StateError(
         'compile syntila_cli_worker.dart failed: ${result.stdout}${result.stderr}',
+      );
+    }
+  }
+  return output;
+}
+
+Future<String> _ensureEchoWorkerBinary(String repo, String workerSource) async {
+  final cache = Directory('${Directory.current.path}/.dart_tool/mcp-test-bin')
+    ..createSync(recursive: true);
+  final output = '${cache.path}/echo_worker.exe';
+  final file = File(output);
+  final sourceModified = File(workerSource).lastModifiedSync();
+  if (!file.existsSync() || !file.lastModifiedSync().isAfter(sourceModified)) {
+    final result = await Process.run(Platform.resolvedExecutable, [
+      'compile',
+      'exe',
+      workerSource,
+      '-o',
+      output,
+    ], workingDirectory: repo);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'compile echo_worker.dart failed: ${result.stdout}${result.stderr}',
       );
     }
   }

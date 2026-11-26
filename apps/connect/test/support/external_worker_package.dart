@@ -11,14 +11,16 @@ String writeExternalWorkerPackage(
   String id = 'acme-reviewer',
   String version = '1.4.2',
   String body = '#!/bin/sh\necho hi\n',
+  List<int>? binary,
+  String command = 'bin/run',
   String workRoot = 'write',
   String name = 'pkg',
   void Function(Map<String, Object?> manifest)? edit,
 }) {
   final dir = Directory('${temp.path}/$name-$id-$version')
     ..createSync(recursive: true);
-  final bytes = utf8.encode(body);
-  File('${dir.path}/bin/run')
+  final bytes = binary ?? utf8.encode(body);
+  File('${dir.path}/$command')
     ..createSync(recursive: true)
     ..writeAsBytesSync(bytes);
   final manifest = <String, Object?>{
@@ -32,7 +34,7 @@ String writeExternalWorkerPackage(
     'protocol': {'min': '1.0', 'max': '1.0'},
     'artifacts': {
       'linux-x64': {
-        'command': 'bin/run',
+        'command': command,
         'args': <String>[],
         'sha256': sha256.convert(bytes).toString(),
         'size': bytes.length,

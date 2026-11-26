@@ -36,6 +36,7 @@ esac
       await store.delete();
       expect(await file.exists(), isFalse);
     },
+    skip: Platform.isWindows ? 'POSIX shell required for fake security tool' : false,
   );
 
   test('retains the legacy credential when secure storage fails', () async {
@@ -48,5 +49,5 @@ esac
       throwsStateError,
     );
     expect(await file.exists(), isTrue);
-  });
+  }, skip: Platform.isWindows ? 'POSIX /usr/bin/false required' : false);
 }

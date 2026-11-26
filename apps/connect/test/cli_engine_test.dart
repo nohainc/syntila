@@ -148,12 +148,12 @@ void main() {
         ),
       );
       final outcome = await run.outcome.timeout(const Duration(seconds: 40));
-      expect(await (run as EngineStartEvidence).providerStarted, isTrue);
       expect(
         outcome.kind,
         TerminalKind.completed,
         reason: '${outcome.payload}',
       );
+      expect(await (run as EngineStartEvidence).providerStarted, isTrue);
       // A writable step is told where to save images for the user.
       final text = (outcome.payload['output'] as Map)['text'] as String;
       expect(text, startsWith('fixture echo: hello'));

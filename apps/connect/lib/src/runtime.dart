@@ -421,6 +421,7 @@ class AgentRuntime {
   SessionGrant? _profileSession;
 
   final Set<String> _admitting = {};
+  final Set<String> _pendingCancels = {};
   final Set<String> _executing = {};
   final Set<Future<void>> _inFlight = {};
   final Map<String, Completer<bool>> _permits = {};
@@ -750,6 +751,16 @@ class AgentRuntime {
         command: message,
         correlation: correlation,
       );
+      if (_pendingCancels.remove(id)) {
+        await journal.recordCancelIntent(id);
+        await journal.record(id, LocalStatus.accepted);
+        await _point('before-ack', id);
+        _ack(correlation, true);
+        await _settle(journal.find(id)!, TerminalKind.cancelled, {
+          'reason': 'Cancelled before Worker launch',
+        });
+        return;
+      }
       await journal.record(id, LocalStatus.accepted);
       await _point('before-ack', id);
       _ack(correlation, true);
@@ -849,6 +860,11 @@ class AgentRuntime {
     final id = correlation['assignmentId'] as String;
     final entry = journal.find(id);
     if (entry == null) {
+      if (_admitting.contains(id)) {
+        _pendingCancels.add(id);
+        _send('assignment.cancel.ack', correlation, {'cancelled': true});
+        return;
+      }
       // Cancelled before the command ever arrived (for example while this
       // Worker was offline): record it so the command can never run.
       await journal.record(

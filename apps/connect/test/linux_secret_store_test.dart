@@ -40,6 +40,7 @@ esac
       expect(await pending.load(), isNull);
       await store.delete();
     },
+    skip: Platform.isWindows ? 'POSIX shell required for fake secret-tool' : false,
   );
 
   test('preserves the file when Secret Service fails', () async {
@@ -59,5 +60,5 @@ esac
       throwsStateError,
     );
     expect(await file.exists(), isTrue);
-  });
+  }, skip: Platform.isWindows ? 'POSIX shell required for fake secret-tool' : false);
 }

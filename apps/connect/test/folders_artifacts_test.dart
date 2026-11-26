@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:syntila_connect/syntila_connect.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
@@ -58,7 +59,7 @@ void main() {
     );
     await root.setRoot(work.path);
     final dir = await root.spaceDirectory('space-1');
-    expect(dir.path, endsWith('/spaces/space-1'));
+    expect(dir.path, endsWith(p.join('spaces', 'space-1')));
     await expectLater(
       root.spaceDirectory('../escape'),
       throwsA(isA<FolderRejectedException>()),
@@ -187,7 +188,7 @@ void launcherTests() {
       final run = await launcher(inner).launch(request([]));
       expect((await run.outcome).kind, TerminalKind.completed);
       final output = inner.last!['outputDirectory'] as String;
-      expect(output, contains('spaces/space-1'));
+      expect(output, contains(p.join('spaces', 'space-1')));
       expect(await folders.isAllowed(output, write: true), isTrue);
     },
   );

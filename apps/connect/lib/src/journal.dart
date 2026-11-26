@@ -403,7 +403,14 @@ class AgentJournal {
 
   /// Drops the file handle without any further write, as a killed process would.
   Future<void> abandon() async {
-    await _handle?.close();
+    try {
+      await _handle?.close();
+    } on FileSystemException {
+      // On Windows, closing while a write/flush is in flight throws; wait for
+      // the serialized queue to finish before closing the handle.
+      await _queue.then<void>((_) {}, onError: (Object _) {});
+      await _handle?.close();
+    }
     _handle = null;
   }
 }
