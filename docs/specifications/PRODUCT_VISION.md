@@ -13,10 +13,10 @@ Threads. People discuss intent, start constrained Workflows, observe
 execution, review changes and evidence, and decide what happens next. Syntila
 keeps ownership of shared state and validates each transition.
 
-Syntila Cloud coordinates shared product state. Syntila Workspace provides
-the local execution environment. Logical Workers run through a generic CLI
-Worker Engine and approved Tool Profiles, with provider CLI credentials staying
-on the user's machine.
+Syntila Cloud coordinates shared product state. Syntila Connect provides
+the local execution environment on a user's computer. Workers run through a
+generic CLI Worker Engine and signed Worker Profiles, with provider CLI
+credentials staying on the user's machine.
 
 ## Quality philosophy
 

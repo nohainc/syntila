@@ -1,7 +1,13 @@
 # Realtime protocol `syntila.realtime.v1`
 
+> **Note:** Human clients now use `syntila.messaging/1` (see
+> [UNIFIED_MESSAGING_PROTOCOL_V1.md](../specifications/UNIFIED_MESSAGING_PROTOCOL_V1.md))
+> and Connect Workers use `syntila.worker-agent-protocol` over
+> `/api/worker-agent/gateway`. This document records the initial VPS realtime
+> frame design.
+
 Endpoint: `wss://<backend>/v1/realtime`. Auth: `Authorization: Bearer <token>`
-(native clients, Workspace Services) or `?ticket=<ticket>` from
+(native clients, Connect Workers) or `?ticket=<ticket>` from
 `POST /v1/realtime/tickets` (browsers). Optional subprotocol
 `syntila.realtime.v1`. Text frames, one JSON object each, `t` = frame type.
 Requests may carry an `id`; the reply (`ack`, `sync` or `error`) echoes it.

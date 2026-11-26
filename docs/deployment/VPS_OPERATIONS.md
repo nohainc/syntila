@@ -66,5 +66,5 @@ which is expected.
 
 **Client behaviour on restarts:** a deploy closes sockets with code 1012 and
 the API is back within about a second; clients reconnect with backoff and
-resync from their last `seq`. Workspace Services receive all open tasks again
-on reconnect; results are idempotent by `resultId`.
+resync from their last `seq`. Connect Workers receive open assignments again
+on reconnect; results are idempotent by assignment attempt.

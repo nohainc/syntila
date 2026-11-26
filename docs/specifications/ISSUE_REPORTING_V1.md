@@ -2,7 +2,7 @@
 
 Issue reporting lets an authenticated user report a failed Work request with
 one request. Cloud derives the report from the authoritative failed execution;
-the browser cannot provide or override the account, Workspace, assignment,
+the browser cannot provide or override the account, Worker, assignment,
 diagnostics, or provider details.
 
 ## User and support APIs
@@ -39,11 +39,11 @@ Support responses may include sanitized diagnostics and the audit event list.
 They never expose prompts, response content, credentials, arbitrary provider
 stderr, environment variables, or local filesystem paths.
 
-The Workspace assignment error has two channels. Its `error.message` is the
+The Worker assignment error has two channels. Its `error.message` is the
 stable, user-facing execution message. An optional
 `error.details.diagnostic` is a bounded, redacted technical detail used only
 when Cloud assembles private issue-report evidence; it is not copied into the
-Work result, public report response, or AX UI. Cloud sanitizes this field again
+Work result, public report response, or web app UI. Cloud sanitizes this field again
 before persistence.
 
 The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
@@ -96,30 +96,30 @@ include report count, first/last occurrence, and affected worker, Engine,
 Profile, and provider versions.
 
 Cloud assembles a report from the failed `work_requests` row, its latest run and
-assignment, the assignment permission/profile snapshot, the latest
-Workspace inventory provider version. The fingerprint contains only technical
+assignment, the assignment permission/profile snapshot, and the latest
+Worker inventory provider version. The fingerprint contains only technical
 attributes: component, normalized error code, failure stage, engine/profile
 versions, and provider version. It never contains prompts or user IDs.
 
 When available, the report's private diagnostic document also includes the
-sanitized Workspace failure detail under `execution.failureDetail`. It is
+sanitized Worker failure detail under `execution.failureDetail`. It is
 bounded evidence for triage, not a promise that the full provider or process
 log is available.
 
-D1 metadata and the sanitized diagnostic document are written in one batch
+PostgreSQL metadata and the sanitized diagnostic document are written atomically
 before the optional R2 upload. If R2 is unavailable, the report remains
 durable and is marked `partial`; a later enrichment process may add the bundle.
-Workspace evidence distinguishes a disconnected or never-observed Workspace
-(`state: disconnected`, `reason: assignment_not_observed`) from a Workspace
+Worker evidence distinguishes a disconnected or never-observed Worker
+(`state: disconnected`, `reason: assignment_not_observed`) from a Worker
 that returned a bounded assignment error but whose local diagnostic store was
-not attached (`state: diagnostics_unavailable`). A connected Workspace may
+not attached (`state: diagnostics_unavailable`). A connected Worker may
 therefore contribute the exact early Engine failure detail without implying
 that a complete local log export was available.
 
 The admin detail response exposes a normalized `investigation` summary and a
 timeline made from sanitized diagnostic events and report audit events. It
 identifies the first significant error when available and explicitly lists
-missing evidence such as disconnected Workspace diagnostics or an unknown
+missing evidence such as disconnected Worker diagnostics or an unknown
 provider version. This keeps a report useful when local evidence cannot be
 retrieved.
 
