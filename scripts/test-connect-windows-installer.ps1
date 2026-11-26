@@ -10,7 +10,15 @@ function Run-Setup {
     if ($Process.ExitCode -ne 0) { throw "Setup failed: $($Process.ExitCode)" }
 }
 
+# ADR-034 decision 10: per-user install, no administrator rights.
+$Script = Get-Content (Join-Path $Root 'packaging/windows/connect.iss') -Raw
+if ($Script -notmatch '(?m)^PrivilegesRequired=lowest\s*$') { throw 'Installer must use PrivilegesRequired=lowest.' }
+if ($Script -notmatch '(?m)^DefaultDirName=\{localappdata\}\\Programs\\Syntila\\Connect\s*$') { throw 'Default install folder must be %LOCALAPPDATA%\Programs\Syntila\Connect.' }
+$Principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 Run-Setup
+if (-not (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{9A4E7B21-3C14-4F8B-9D62-5E1A8C3D4F10}_is1')) {
+    throw 'Install did not register a per-user uninstall entry (HKCU).'
+}
 foreach ($File in @('syntila-connect.exe', 'syntila-worker.exe', 'Syntila Connect.exe')) {
     if ((Get-FileHash (Join-Path $Target $File)).Hash -ne
         (Get-FileHash (Join-Path $Root "dist/connect/windows/release/$File")).Hash) {

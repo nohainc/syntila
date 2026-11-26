@@ -13,7 +13,21 @@ Windows may show publisher or SmartScreen warnings for these unsigned downloads.
 
 The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-connect.exe` and `syntila-worker.exe` in the same folder. Connect resolves the Worker Engine beside its CLI on each platform. Upgrade portable installations by replacing the complete bundle; existing Worker data is stored separately.
 
-The build requires production profile trust roots and uses the `connect-windows-release` environment. Environment protection rules may require approval for either workflow.
+## One-time GitHub setup
+
+1. Settings → Environments → create `connect-windows-release` (optional: required reviewers).
+2. In that environment (or repository) add these Variables (public values, not secrets):
+   - `SYNTILA_PROFILE_TRUST_ROOTS`: the public key set that matches the private signing key the backend uses (`SYNTILA_PROFILE_SIGNING_JWK` and `SYNTILA_PROFILE_SIGNING_KEY_ID` in `/etc/syntila/backend.env`). Derive the public value with `scripts/generate-signing-key.mjs` or `scripts/setup-local-profile-signing.mjs`. A mismatch makes Connect refuse every Profile. The build fails when it is empty.
+   - `SYNTILA_UPDATE_KEYS`: may stay empty; updates are manual.
+3. The server address is not built in: it comes from the pairing code the web app issues, so a released Connect talks to production (`https://api.syntila.app`) when paired from `https://syntila.app`.
+
+## Release procedure
+
+1. Bump `version:` in `apps/connect/pubspec.yaml` (x.y.z). The workflows read it and refuse a version that already has a release.
+2. Merge to `main`.
+3. Run **Build Connect for Windows** on `main`; note the run ID. It runs `dart test`, builds, runs `scripts/test-connect-windows-installer.ps1` (per-user install under `%LOCALAPPDATA%\Programs\Syntila\Connect`, no administrator rights, upgrade and uninstall) and uploads the installer, portable zip and checksums.
+4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS`, and that the checksum verifies.
+5. Install it on a Windows machine and follow [Connect onboarding](CONNECT_ONBOARDING.md).
 
 Shared setup lives in `.github/actions/` (`setup-flutter`, which uses `scripts/ci/setup-flutter-linux-arm64.sh` on Linux ARM64). Production deploys do not run on GitHub; they use the `scripts/prod-*.sh` scripts on the dev machine.
 
