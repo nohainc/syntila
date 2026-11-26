@@ -1,152 +1,17 @@
 # Input Delivery v1
 
-> **Current architecture:** Workers run under Syntila Connect ([ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution.md)). Request files and handoffs are delivered through R2 ([ADR-037](../decisions/ADR-037-files-and-artifacts.md)).
+Request files and handoffs use R2 so Workers running on different computers do not need a shared filesystem. [ADR-037](../decisions/ADR-037-files-and-artifacts.md) defines the authorization and transfer boundary; [ADR-044](../decisions/ADR-044-device-folders-and-space-folders.md) keeps local paths on the device.
 
-Status: implemented. Owners: Cloud (`routes/work-request-inputs.ts`,
-`workflow.ts` gate), Workspace Service (`input_delivery.dart`,
-`work_request_input_staging.dart`), AX (`ax_input_delivery.dart`).
+## Request files
 
-Input Delivery moves a Work Request's file inputs from AX to the Workspace
-that runs the request, before any Worker starts. It replaces inline base64
-file content in `assignment.start`, which bounded the total size of a
-request's files by the WebSocket frame limit (32 MiB).
+A person's attachments are uploaded before any Step starts. Cloud stores Work Request input metadata and R2 object references; the Worker uses its own fenced session to download inputs for a request on which it has a Step. A Worker without a Step on the request cannot download them. Connect verifies size and SHA-256, keeps a private copy and places files under `.syntila/inputs/<work-request-id>/file-NNN` in the working directory. Retries can reuse a verified local copy. File bodies do not travel in the realtime envelope.
 
-## Goals
+If placement fails before the provider starts, Connect sends a safe, path-free failure description, including an HTTP status when available. The description follows the encrypted storage and authorized-read rules in [ADR-036](../decisions/ADR-036-canonical-thread-timeline-and-attribution.md).
 
-- Send works like any message: the request is accepted at once and the
-  composer unlocks; files move in the background.
-- Uploads (AX → Cloud) and downloads (Cloud → Workspace) overlap: a file is
-  downloadable as soon as it is uploaded, while the next one still uploads.
-- No file content on the runtime WebSocket. Bytes stream over authenticated
-  HTTPS straight from R2, so no frame limit applies and the HTTPS fallback
-  transport works too.
-- The Worker starts only when every file is verified on the Workspace; a file
-  that cannot be delivered fails the request with its reason.
-- A failed transfer restarts the whole file (no resume).
-- One download serves every Workflow step and retry of the request.
+## Handoffs and outputs
 
-Limits: 10 files per request; per-file and total-storage limits follow the
-uploader's plan (Free 10 MB / 1 GB, Plus 100 MB / 20 GB, decimal bytes;
-ADR-025). Uploads stream: Cloud never buffers a raw body, and the Workspace
-streams the staged file into the execution directory, so a 100 MB file does
-not sit in memory.
+Steps hand off artifacts through R2 using artifact IDs and scoped download grants. A local path is not a handoff between computers. Worker-created output media is uploaded with the result and presented to authorized Thread participants using short-lived links where applicable. Storage limits, checksums and retention apply.
 
-## Data model
+## Security and acceptance
 
-`work_request_inputs` (migration `0088`), one row per file, keyed by the
-Cloud-generated `fileId` (`wrf-<uuid>`, also the R2 key
-`work-request-inputs/<fileId>`):
-
-| state             | meaning                                                  |
-| ----------------- | -------------------------------------------------------- |
-| `awaiting_upload` | accepted in the manifest; no verified bytes yet           |
-| `uploaded`        | bytes in R2 with SHA-256 `content_digest`; downloadable   |
-| `delivered`       | the target Workspace stored and verified the bytes        |
-| `failed`          | gave up uploading or delivering; fails the request        |
-
-`upload_attempts` / `delivery_attempts` count whole-file attempts;
-`error_message` is shown to the user. Each row has exactly one receiver
-(migration `0047`, CHECK): `workspace_id` is the request's
-`primary_workspace_id` on the Workspace path, and `worker_instance_id` is the
-one Worker every Step is bound to on the Worker path. `work_requests.input_json` stays immutable (the
-existing trigger); the verified digest and display previews live on the row
-and are merged into dispatch (`withInputFacts`) and history reads.
-
-## Flow
-
-1. **Accept.** AX submits the request with a manifest entry per picked file:
-   `{kind: "file", name, mediaType, sizeBytes, delivery: "upload"}` (no
-   bytes). Cloud assigns `fileId`s, checks quota against declared sizes,
-   requires a target Workspace, and inserts the rows with the request in one
-   batch. Files already uploaded (an existing `fileId`) start as `uploaded`.
-2. **Upload.** AX uploads up to 3 files at once:
-   `PUT /api/work-requests/:id/inputs/:fileId` (raw bytes, or multipart with
-   a JPEG preview). Only the requester may upload; the size must match the
-   manifest; uploaded/delivered files are immutable; uploads are refused once
-   the request ended or was cancelled. A failure restarts the file from
-   scratch (3 attempts). After the last one AX reports
-   `POST /api/work-requests/:id/inputs/:fileId/failed {message}`.
-3. **Wake.** After each upload Cloud sends the target Service
-   `input.available` (empty payload) through the Workspace Gateway. It is
-   only a hint.
-4. **Download.** The Service lists
-   `GET /api/workspace-runtime/inputs?workspaceRuntimeId=…` (runtime bearer
-   credential; inputs of open requests on its Workspace, state `uploaded`),
-   on wake-up, on session readiness, every 2 s while work is pending and
-   every 30 s when idle. It downloads up to 3 files at once from
-   `GET …/inputs/:fileId/content`, streaming to
-   `<Application Support>/staged-inputs/<fileId>.partial` while hashing, and
-   publishes the file atomically only if size and digest match. Then it
-   confirms `POST …/inputs/:fileId/delivered {contentDigest}`. A failed
-   attempt deletes the partial file and reports
-   `POST …/inputs/:fileId/attempt {final: false, message}`; the third
-   reports `final: true`, which marks the input `failed`.
-5. **Gate.** The request's Workflow, after `work_request.started` and before
-   dispatching any step, waits until every row is `delivered`
-   (`waitForEvent("work-inputs")`, re-reading D1 at least every 30 s). It
-   fails the request (first step `failed` with the input's reason) when a row
-   is `failed`, or when no row changed for 10 minutes; it ends as cancelled
-   on cancellation. Retries (`retryStepKind`) skip the gate.
-6. **Run.** Dispatch is unchanged. Attachments carry `fileId` and
-   `contentDigest`; the Service copies each verified file to
-   `.syntila/inputs/<workRequestId>/file-NNN`. A copy missing from the store
-   (retention, later retry) is downloaded again before the provider starts.
-
-Downloaded files are kept 7 days and serve every step of the request.
-
-## Progress
-
-Cloud publishes `work_request.input_updated` and wakes the Workflow on every
-state change. The detail response `GET /api/work-requests/:id` includes
-`inputs: [{fileId, name, sizeBytes, state, uploadAttempts,
-deliveryAttempts, errorMessage?}]`. The sending AX shows a CLI-like block on
-the request card until all files are ready, for example:
-
-```
-Delivering files to the Workspace (1/3 ready)…
-✓ spec.pdf — ready
-↓ data.csv — downloading to the Workspace (attempt 2)
-↑ photo.jpg — uploading
-```
-
-## Worker path
-
-A Worker-targeted request with files is accepted only when every Step is
-bound to the same Worker (`files_need_one_worker` otherwise): the files go to
-one computer. That Worker's Agent (Syntila Connect) uses the same endpoints
-under `/api/worker-agent/inputs` (list, `/:fileId/content`, `/:fileId/delivered`,
-`/:fileId/attempt`), authenticated with its session headers (`x-worker-id`,
-`x-worker-session-id`, bearer session token) instead of a runtime credential.
-There is no `input.available` wake-up; the Agent polls every 5 seconds while
-connected (`inputs.dart`), keeps verified copies in its private `inputs/`
-directory, and, right before the Engine starts, copies them to
-`.syntila/inputs/<work-request-id>/file-NNN` in the working directory (the
-assignment scratch folder or the Space folder). A copy the store lost is
-downloaded again. After three failed downloads the input fails the request.
-If input placement fails before the provider starts, the Agent sends a safe,
-path-free failure description (including the HTTP status when available) for
-the Worker failure shown in the thread. The detail follows the encrypted
-failure storage and authorized-read rules in ADR-036.
-
-## Security
-
-- Upload: authenticated user with execute access to the Thread who is the
-  request's requester.
-- Runtime endpoints: Workspace runtime credential; an input is visible only
-  to the runtime of its `workspace_id`. Agent endpoints: a live Agent
-  session; an input is visible only to the Agent of its `worker_instance_id`. Bytes are served only in `uploaded` or
-  `delivered` state, and only if the R2 object's size and digest match the
-  row.
-- The Service accepts only `wrf-` identities and `sha256:` digests, never
-  writes outside its store, and verifies the digest on write and read.
-- `input.available` carries no identifiers or content.
-
-## Known limits
-
-- Upload progress is per file, not per byte.
-- If the sender closes AX before its uploads finish, the request fails after
-  the 10-minute idle limit; the user sends it again.
-- Only the sending AX shows the progress block; other viewers see the
-  request queued until it runs or fails.
-- Chat (discussion) attachments still upload to Cloud before the message is
-  posted; they share the same upload code (parallel, whole-file retries).
+Cloud authorizes every transfer and never receives a local directory path. The connected computer's owner controls local folder access. Tests cover the Cloud routes and Connect input staging; they do not by themselves establish real-provider or multi-device acceptance. See [ADR-037](../decisions/ADR-037-files-and-artifacts.md) for the current transfer contract.
