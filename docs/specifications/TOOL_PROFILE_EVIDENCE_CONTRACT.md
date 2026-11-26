@@ -109,7 +109,7 @@ Cloud intentionally stores only this bounded contract for both local qualificati
 
 Version 2 adds `not_applicable` status semantics. Cloud rejects version 1 evidence for new validation; historical version 1 rows remain stored unchanged.
 
-The scenario set was reduced on 2026-10-21 to `activity_mapping`, `passive_probe` and `usage_check`; no scenario calls a model. Engine and CLI version ranges, the representative write, session create/resume, cancellation and timeout are no longer part of the evidence: version ranges are enforced by Workspace readiness on the user's machine, and cancellation and timeout are Engine behavior covered by Engine and supervisor tests. Evidence submitted with the earlier scenario set is rejected for new validation.
+The scenario set was reduced on 2026-10-21 to `activity_mapping`, `passive_probe` and `usage_check`; no scenario calls a model. Engine and CLI version ranges, the representative write, session create/resume, cancellation and timeout are no longer part of the evidence: version ranges are enforced by Connect readiness on the user's machine, and cancellation and timeout are Engine behavior covered by Engine and supervisor tests. Evidence submitted with the earlier scenario set is rejected for new validation.
 
 Local qualification, publication, acceptance, and promotion are separate requests:
 
@@ -185,7 +185,7 @@ Promotion through the lifecycle channels requires meeting specific evidence crit
        v
 [ Testing Channel ]
        |
-       | Multi-Workspace Canary
+       | Multi-Connect Canary
        v
 +-------------------------------+
 | Gate 2: Promote to Beta       | ---> Requires testing channel verification & operator authorization
@@ -246,8 +246,8 @@ CLI on the operator's machine. This workflow is not device attestation.
 As enforced by `validateToolProfileAcceptanceEvidence()` in `apps/cloud/src/tool-profile-validation.ts`:
 1. **Digest Equality:** `evidence.profileDigest === release.payload_digest`.
 2. **Identity Alignment:** Definition ID, release version, and logical worker type must match the database record.
-3. **Engine Version Recorded:** `evidence.engineVersion` must be a non-empty string. It is not compared with `profile.engineCompatibility`; Workspace enforces that range at runtime.
-4. **Tool Version Recorded:** `evidence.providerToolVersion` must be a non-empty string. It is not compared with `profile.providerTool.supportedVersions`; Workspace enforces those ranges at runtime.
+3. **Engine Version Recorded:** `evidence.engineVersion` must be a non-empty string. It is not compared with `profile.engineCompatibility`; Connect enforces that range at runtime.
+4. **Tool Version Recorded:** `evidence.providerToolVersion` must be a non-empty string. It is not compared with `profile.providerTool.supportedVersions`; Connect enforces those ranges at runtime.
 5. **Freshness:** `acceptedAt` timestamp must not be in the future (within clock skew) and must be $\le 90\text{ days}$ old.
 6. **Contract-Derived Scenarios:** Cloud expects every scenario key and derives applicable statuses from the signed Tool Profile:
    - `activity_mapping` (`passed` when the Profile has JSONL activity mappings; otherwise `not_applicable`)

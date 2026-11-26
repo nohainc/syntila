@@ -121,7 +121,7 @@ and failed-run responses as a separately identified terminal error field when
 both local peers support it. Arbitrary provider text can contain sensitive data
 that pattern-based credential detection does not recognize.
 
-The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+The provider failure details contract
 specifies its negotiation, credential boundary, limits and rollout. Arbitrary
 raw provider streams are not protocol fields.
 

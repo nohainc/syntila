@@ -93,7 +93,7 @@ Before deployment, every item must be checked by the release operator:
 
 - [ ] Primary sender is verified in Cloudflare.
 - [ ] Fallback sender is verified in Cloudflare.
-- [ ] Google Workspace receiving and reply routing are tested.
+- [ ] Google Connect receiving and reply routing are tested.
 - [ ] Sender configuration is centralized and the production Wrangler values
       are current.
 - [ ] Authentication and invitation tests pass.
@@ -105,7 +105,7 @@ Before deployment, every item must be checked by the release operator:
 Use this order for the release:
 
 1. Confirm both sender identities and DNS authentication in Cloudflare and
-   Google Workspace.
+   Google Connect.
 2. Run the focused tests and `pnpm email:config-check`.
 3. Record the currently deployed sender configuration as the rollback point.
 4. Deploy the Worker configuration and verify that the `SYNTILA_EMAIL`

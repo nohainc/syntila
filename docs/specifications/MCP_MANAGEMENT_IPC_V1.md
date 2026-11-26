@@ -73,7 +73,7 @@ execution fails with `worker_not_ready` and a local diagnostic carrying the
 `mcp_*` code, never running with a silent subset. If the Worker's Profile has no
 `mcpConfigArguments` slot (TOOL_PROFILE_V1 section 11.1) the execution fails with
 `mcp_unsupported` instead of running without the servers. Removing a server drops
-it from every binding. Bindings live in the Workspace's `Mcp/servers.json` and are
+it from every binding. Bindings live in the Connect's `Mcp/servers.json` and are
 never sent to Cloud.
 
 **Per-Step selection.** A Step's `mcpTools` (server IDs, at most 8, in the user
@@ -86,9 +86,9 @@ and a selected server that is not bound to the Worker type fails the execution
 with `mcp_server_not_bound` (never a silent subset). Consent, enablement and the
 digest checks still apply. Cloud holds server names only. The Workflow editor
 accepts server IDs manually, with separate choices for inheritance, no servers,
-and a selected list. The Workspace CLI (`syntila mcp list`) shows the IDs.
+and a selected list. The Connect CLI (`syntila mcp list`) shows the IDs.
 
 ## Not yet defined
 
 An inventory-backed picker for `mcpTools`, and Cloud-side policy beyond the
-Workspace's own checks.
+Connect's own checks.

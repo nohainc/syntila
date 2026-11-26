@@ -62,13 +62,13 @@ Per thread keep `lastSeq` (persist it locally if the client has storage).
 The server subscribes before reading the log, so an event can arrive both live
 and in `sync`, or live before `sync`; the rules above make that harmless.
 
-## Workspace Service ↔ server
+## Connect service ↔ server
 
 Server → workspace: `{"t":"task.assign","task":{…,"input":{body,options,references,attachments}},"redelivery":bool}`
 and `{"t":"task.cancel","taskId"}`. On connect all open tasks are sent;
 unacknowledged tasks are re-sent every 30 s. De-duplicate by `task.id`.
 
-Workspace → server:
+Connect → server:
 
 ```json
 {"t":"task.ack","id":"1","taskId":"…"}

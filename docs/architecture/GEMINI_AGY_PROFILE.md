@@ -14,8 +14,8 @@ store as ChatGPT. There is no Gemini executable or provider branch in Cloud.
 | Version | `--version` | `--version` |
 | Passive authentication | `login status` | No reliable passive authentication assertion; explicit live test required |
 | Live readiness | Exact `OK`, bounded, user initiated | Same Engine-owned check |
-| Models | Workspace CLI discovery, published through Cloud inventory | CLI `models`, all sanitized IDs, with exact Gemini family mappings where declared |
-| Effort | Workspace CLI discovery, per-model metadata | CLI-reported effort values are passed through; missing metadata means no effort picker |
+| Models | Connect CLI discovery, published through Cloud inventory | CLI `models`, all sanitized IDs, with exact Gemini family mappings where declared |
+| Effort | Connect CLI discovery, per-model metadata | CLI-reported effort values are passed through; missing metadata means no effort picker |
 | Input / output | Codex JSONL events | NDJSON `user` input; `init`, `step_update`, `result` events |
 | Sessions | Codex thread ID | AGY `conversation_id`, resumed with `--conversation` |
 | Cancellation / timeout | Shared process supervision | Same; Profile additionally maps `--print-timeout` |
@@ -66,13 +66,13 @@ is selected. A known unavailable ID remains excluded until cache/profile/CLI
 replacement; refresh alone does not assert that its account access recovered.
 
 The Service republishes Engine metadata after an assignment without another CLI
-probe. Workspace shows Models with status, a per-Worker refresh icon and its
+probe. Connect shows Models with status, a per-Worker refresh icon and its
 existing Test/activation actions. Test and refresh work for disabled Workers
 without enabling them. The existing section refresh also refreshes model
 metadata. Model selection stays in AX workflow/request controls, avoiding a
 competing Worker-level default setting.
 
-Workspace Runtime Protocol 5.1 inventory and Local Worker Protocol 4.0 probe
+Connect Runtime Protocol 5.1 inventory and Local Worker Protocol 4.0 probe
 results carry an optional versioned `modelCatalog` object. Older Profiles remain
 valid. The new Profile requires Engine 1.2.0 so it cannot accidentally run under
 an older implementation. Cloud stores bounded public discovery metadata in
@@ -128,7 +128,7 @@ required for this development-stage contract.
 Use Profile Lab's existing import/qualification/sign/publish/promotion flow for
 the candidate. Protected signing, full account qualification, signed macOS
 LaunchAgent testing, and safe Chat isolation remain release gates. Existing
-rollback/last-known-good handling is unchanged. Rebuild Workspace/Engine before
+rollback/last-known-good handling is unchanged. Rebuild Connect/Engine before
 using this candidate; changing Dart sources does not update an installed service.
 
 ## Validation evidence
@@ -136,14 +136,14 @@ using this candidate; changing Dart sources does not update an installed service
 The focused discovery tests cover filtering, exact execution, manual refresh,
 removed IDs, explicit rejection, verified/unavailable states, corruption and
 version/profile cache invalidation. Protocol tests cover bounds and round trips;
-Workspace tests cover persistence, activation independence, live authentication
+Connect tests cover persistence, activation independence, live authentication
 identity and inventory filtering. Cloud tests cover source/digest/version
 checks, generic effort validation, privacy and removed-model rejection.
 Existing Codex/AGY session, timeout, cancellation, malformed output, release
 verification and rollback tests provide regression coverage through the shared
-Engine/Workspace component suites.
+Engine/Connect component suites.
 
-[Real AGY evidence](../acceptance/real-provider/2026-10-11/gemini-discovery.json)
+Real AGY evidence
 records CLI 1.3.3, 11 Gemini models, live readiness, an explicit
 `gemini-3.8-flash-low` request, durable resume, and a verified temporary
 Work-file write. Chat/Work admission is determined by the Cloud workflow
@@ -155,10 +155,10 @@ account entitlement test. Earlier 1.2.16 catalog/help inspection was superseded
 by the CLI updating to 1.3.3 during validation. The candidate admits only those
 patch versions, and future versions require qualification. Legacy `capabilities`
 arrays in signed v1 payloads are accepted for migration parsing only and are
-ignored by Cloud, Workspace, and the Engine; new Profile releases omit the
+ignored by Cloud, Connect, and the Engine; new Profile releases omit the
 field.
 
-Workspace component validation currently reports four remaining failures outside
+Connect component validation currently reports four remaining failures outside
 this change: the scoped fixture lacks a directory lifecycle, the filesystem test
 expects obsolete per-Thread mutation rules, the lock subprocess harness times out,
 and a disconnected configuration test expects an endpoint the implementation
@@ -166,10 +166,10 @@ does not restore. The affected discovery/readiness tests and the unsigned
 development Profile execution regression pass independently.
 
 Executed validation: Engine component checks passed; Cloud/shared TypeScript
-checks and 661 tests passed; 14 focused Workspace tests, 13 AX selector/editor
+checks and 661 tests passed; 14 focused Connect tests, 13 AX selector/editor
 tests, 3 Profile Lab diff tests and 2 starter-provisioning tests passed. Protocol
 bindings and boundary checks passed. These cover the shared contracts and their
-direct consumers without unrelated native application builds. The full Workspace
+direct consumers without unrelated native application builds. The full Connect
 run passed 387 tests, skipped 10 and initially failed 5; the development execution
 failure was corrected and passed in the focused rerun. The four failures above
 remain unresolved. During initial implementation, no remote database migration or stable release

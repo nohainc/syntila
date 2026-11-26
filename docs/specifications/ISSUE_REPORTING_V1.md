@@ -46,7 +46,7 @@ when Cloud assembles private issue-report evidence; it is not copied into the
 Work result, public report response, or web app UI. Cloud sanitizes this field again
 before persistence.
 
-The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+The provider failure details contract
 adds a separate Work-visible channel when Cloud encryption is configured. It
 does not add provider text or failed-run responses to support reports or their
 diagnostics; the private diagnostic channel above remains separate.

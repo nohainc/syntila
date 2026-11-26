@@ -115,7 +115,7 @@ as recorded in the Phase 0 audit.
 
 Later phases must define canonical turns/context ownership, applied revisions,
 provider catch-up, multiple Conversations, switching/reset semantics and concurrent
-submission policy. Native handles and credentials remain Workspace/Engine-owned;
+submission policy. Native handles and credentials remain Connect/Engine-owned;
 Core remains provider-independent.
 
 ## Local native-session recovery
@@ -221,7 +221,7 @@ ID remains `direct` for Work; its Conversation retains product Workflow `work`.
 Attribution comes from the assignment's authoritative selection evidence, not
 current inventory, composer settings, or later Worker renames.
 
-`status` progresses from queued to running on Workspace acknowledgement (or an
+`status` progresses from queued to running on Connect acknowledgement (or an
 explicit running assignment status), then completed, failed, or cancelled.
 `startedAt` is the first Cloud-observed acceptance/running timestamp, not a claim
 about the provider's exact process start. It remains null if no start was observed.
@@ -231,10 +231,10 @@ same database operation, including failures outside the normal dispatcher path.
 Repeated completion delivery cannot rewrite terminal evidence. Database guards
 also prevent attribution edits, start-time changes, and lifecycle regressions.
 
-`workerSessionId` is a SHA-256 reference over Workspace, Worker, Profile definition
+`workerSessionId` is a SHA-256 reference over Connect, Worker, Profile definition
 and the Syntila logical session key for durable assignments. It is
 null for stateless assignments. It neither contains a native provider handle nor
-proves that a CLI thread resumed successfully. Workspace still owns the actual
+proves that a CLI thread resumed successfully. Connect still owns the actual
 session mapping, reset/generation state, and provider-native IDs. `baseContextRevision`
 records the Conversation revision at assignment creation; it is currently zero
 and does not certify canonical history ingestion. Session synchronization and
@@ -316,17 +316,17 @@ revision automatically. Cross-worker catch-up requires a later context ingestion
 implementation; possession of a native session is not evidence of synchronization.
 
 
-## Phase 6 — Workspace-owned Worker Sessions
+## Phase 6 — Connect-owned Worker Sessions
 
 `WorkerSession` is local execution state associated with a Conversation and a
 logical Worker/Profile, rather than a model. Its version 1 record contains `id`,
 `conversationId`, `workerId`, `profileId`, `profileVersion`, `nativeSessionId`,
 `synchronizedContextRevision`, `status`, `lastModelId`, `lastEffort`, `createdAt`,
-and `lastUsedAt`. Only Workspace's Engine state stores native provider handles;
+and `lastUsedAt`. Only Connect's Engine state stores native provider handles;
 Cloud stores the opaque Syntila reference on turns, not a Worker Session table.
 Last model/effort describe the last successful execution, and null denotes Default.
 
-Cloud derives the opaque reference from Workspace, logical Worker, Profile
+Cloud derives the opaque reference from Connect, logical Worker, Profile
 definition, Conversation, and logical session key. Model, effort, and compatible
 Profile release changes do not change it. The Thread Conversation maps to one
 Thread session key shared by Chat and Work, so the same Worker/Profile resumes
@@ -337,7 +337,7 @@ validation rejects using another Conversation's existing mapping.
 
 Durable assignments carry optional `workerSession` metadata with nested
 `schemaVersion: 1`, the Syntila session/Conversation/Worker IDs, and the dispatch
-`baseContextRevision`. Workspace validates ownership and translates this metadata
+`baseContextRevision`. Connect validates ownership and translates this metadata
 into Local Worker Protocol 4.0 execute frames. Native handles are forbidden in that
 metadata. Stateless executions do not carry Worker Session state. The turn records
 the frozen dispatch revision rather than a later mutable Conversation revision.
@@ -359,7 +359,7 @@ Current Conversations retain context revision zero, so normal continuation works
 
 [PostgreSQL migrations](../../apps/backend/migrations/README.md)
 updates atomic turn creation to retain the frozen dispatch revision. Apply after
-0010–0012. Roll out the updated Workspace and Engine together before enabling the
+0010–0012. Roll out the updated Connect and Engine together before enabling the
 Cloud assignment extension: older strict Local Worker Protocol decoders reject
 unknown execute fields. No provider CLI-specific executable, credentials service,
 remote migration, or deployment is introduced.
@@ -431,7 +431,7 @@ signed, bounded discovery invocation and provider qualification before admission
 `dynamic` declarations are rejected until that execution path exists.
 
 No D1 migration or protocol envelope change is needed. Existing published payloads
-and starter templates remain unchanged. Deploy updated Workspace/Engine validation
+and starter templates remain unchanged. Deploy updated Connect/Engine validation
 before publishing Profiles using the optional metadata, then update Cloud/AX for
 the safe projection. No remote Profile publication or deployment was performed.
 
@@ -447,7 +447,7 @@ while an execution is active; sending another request stays disabled until it en
 
 Workflow policy determines which values are shown; graph workflows
 retain their per-Step Work settings in the Workflows surface. The composer shows
-the eligible Space Worker with its name, Workspace label, and existing provider
+the eligible Space Worker with its name, Connect label, and existing provider
 icon or generic initial. Worker/model/effort selection remains in Workflows.
 Selectors prefer the typed version 1 `executionOptions` projection from Phase 7.
 Model selection is hidden when unsupported; effort follows the selected model's
@@ -508,7 +508,7 @@ historical authority.
 Core exports the provider-independent `routeConversation` planner and versioned
 `ConversationRoutePlan` contract. Input includes Conversation and Workflow
 identities, the immutable turn selection, its frozen context revision, normalized
-Worker execution options, runtime session capabilities, and Workspace-owned session
+Worker execution options, runtime session capabilities, and Connect-owned session
 metadata. Native provider handles are excluded from routing input and output.
 
 The router returns one of:
@@ -541,7 +541,7 @@ The new planner is not wired into dispatch; its full/delta requirements must be
 satisfied by future execution orchestration before plans can run. Existing Engine
 safeguards for nonzero context revisions and unsupported model switches remain.
 No SQL migration, wire protocol change, Profile schema change, or deployment is
-required. Session capability compatibility must be supplied by the Workspace-local
+required. Session capability compatibility must be supplied by the Connect-local
 adapter when execution integration is implemented.
 
 
@@ -568,7 +568,7 @@ exact, stale, future, and inactive context state. Current Conversations still us
 context revision zero; this phase does not create a context materializer or
 synchronization/reconstruction executor, and the Phase 11 Core planner remains a
 separate planning contract. No migration, Profile schema, or protocol change is
-required. Native session handles remain local to Workspace/Engine.
+required. Native session handles remain local to Connect/Engine.
 
 
 ## Phase 13 — Same Worker and model, different effort
@@ -633,18 +633,18 @@ The generic runtime still evaluates local Profile/session state independently of
 the TypeScript Core planner; incremental synchronization remains unimplemented.
 
 No SQL migration or signed Profile schema change is required. Local Worker
-Protocol 4.0 and Workspace assignment metadata gain an optional version 1
+Protocol 4.0 and Connect assignment metadata gain an optional version 1
 `workerSession.bootstrap` object (`conversationId`, `contextRevision`,
 `throughSequence`, `text`). Native handles never leave local Engine storage.
 Existing payloads continue to work with updated readers; strict older readers
-reject the new field. Update Workspace/Engine before enabling Cloud bootstrap
+reject the new field. Update Connect/Engine before enabling Cloud bootstrap
 emission for Profiles disabling model switching. No remote deployment was done.
 
 
 ## Phase 15 — Different Worker continuity
 
 Manual durable Conversations now send a scoped canonical context snapshot to every
-selected Worker, independent of provider or model-switch capability. Workspace
+selected Worker, independent of provider or model-switch capability. Connect
 continues to own each Conversation + Worker/Profile session; the UI selects the
 next Worker without handling bootstrap, synchronization, or native session IDs.
 
@@ -718,13 +718,13 @@ facts remain empty. This phase adds no context-authoring endpoint or automatic
 summary generation. Artifacts carry identity/digest, not bodies or storage secrets.
 
 Durable execution uses full context for bootstrap and changed facts/evidence for
-synchronization; Workspace/Engine preserve structured workflow facts in deltas.
+synchronization; Connect/Engine preserve structured workflow facts in deltas.
 Stateless assignments carry optional `statelessContext` through the same generic
 Profile prompt transport, without creating native durable sessions. Current
 sessions retain the existing new-request-only fast path. Workflow state is a
 dispatch-time snapshot, not a live status subscription.
 
-Core owns assembly and validation, Cloud owns SQL reads, and Workspace owns native
+Core owns assembly and validation, Cloud owns SQL reads, and Connect owns native
 session synchronization. Snapshots reject out-of-bound revisions, unordered
 history, more than 1,000 entries, or serialized documents over 256 KiB. Recent
 turns are the last 20 user/worker history entries; exact history is retained.
@@ -749,7 +749,7 @@ additive error-taxonomy value; older readers may display their generic fallback.
 
 No Phase 16 database migration is required. Structured context documents and the
 optional Local Worker Protocol 4.0 `statelessContext` envelope use schema version 1;
-updated Workspace/Engine readers must precede Cloud emission of the new field.
+updated Connect/Engine readers must precede Cloud emission of the new field.
 No deployment is included.
 
 
@@ -768,9 +768,9 @@ version 1 for the current protocol readers.
 
 Chat execution context contains task identity/state but no added environment or
 execution artifact set. Work and other workflows include scoped Space, Thread
-and Workspace identities, immutable Space/Thread instructions, and artifact
+and Connect identities, immutable Space/Thread instructions, and artifact
 identity/digest references from the same Work Request and Space. Local filesystem
-state, paths, credentials and artifact bodies are not read from Cloud. Workspace
+state, paths, credentials and artifact bodies are not read from Cloud. Connect
 continues to provide authorized Work Root access through the existing execution
 policy. This is a dispatch-time state snapshot, not a filesystem inspection.
 
@@ -792,7 +792,7 @@ execution context. Documents retain the existing bounded snapshot limits; graph
 reads additionally reject more than 10,000 dependency edges and 1,000 artifacts.
 
 No database migration is required. New document fields are additive version 1
-contracts; updated Engine/Workspace readers must precede Cloud rollout to preserve
+contracts; updated Engine/Connect readers must precede Cloud rollout to preserve
 execution context in resumed deltas. No deployment is included.
 
 
@@ -877,7 +877,7 @@ Results expose completed step text through the existing 24,000-character Human
 Product read limit, not raw provider output JSON. Failed/queued/running steps expose
 no stale result. Workflow context includes StepRun identity/role and prefers actual
 Worker attribution while retaining its separate, bounded context assembly. Logical
-Session references are allowed; provider-native handles remain Workspace-local.
+Session references are allowed; provider-native handles remain Connect-local.
 
 Accepted Conversation Chat/Work requests now atomically materialize their planned
 queued tasks and StepRuns before scheduling. Each initial simple request has one
@@ -891,7 +891,7 @@ selection, status, results and canonical history are preserved. Authorized Work
 read models and AX cache round-trip nested steps and timestamps; older cached
 records can omit the additions until refreshed. Production schema checks cover
 the new table and columns. Apply the schema update before deploying Cloud. No
-Workspace/Engine framing or provider transport change is required, and no remote
+Connect/Engine framing or provider transport change is required, and no remote
 migration/deployment is included.
 
 
@@ -1020,7 +1020,7 @@ problems before an execution exists.
 Request details retain results, timing, Worker identity and execution choices,
 but remove the technical expansion containing assignment IDs, Engine/Profile/tool
 versions, session policy, retry session strategy and raw error codes. Technical
-evidence remains in existing Workspace/Engine logs and Profile Lab diagnostics;
+evidence remains in existing Connect/Engine logs and Profile Lab diagnostics;
 presentation does not modify stored failure evidence or execution behavior.
 
 A successful reconstruction notice requires explicit recovery evidence. This
@@ -1091,7 +1091,7 @@ never relabel an older step's starting revision. The fresh-start schema rejects
 turn insertion when its base differs from its scoped request boundary, and retains
 the existing immutable-attribution update guard.
 
-Workspace-local WorkerSession records `synchronizedContextRevision` and
+Connect-local WorkerSession records `synchronizedContextRevision` and
 `synchronizedHistorySequence` only after successful native execution. With a
 bootstrap, the consumed revision includes the current request (`turnRevision`);
 it cannot merely record the preceding base. Store writes reject incorrect
@@ -1139,7 +1139,7 @@ Callers may retry a rejected execution through existing request handling.
 
 Persistent lock files are not ownership markers. OS ownership ends on normal
 release or process death, so restart does not require deleting a stale lock file.
-The lock directory stays inside Workspace-owned Engine state. This coordinates
+The lock directory stays inside Connect-owned Engine state. This coordinates
 Syntila Engine processes; external CLI usage is outside that boundary. Runtime
 Engine processes execute in one isolate; this is not a multi-isolate lock service.
 
@@ -1182,7 +1182,7 @@ Model-switch capability and unavailable-handle validation remain generic Worker
 Engine concerns. Reconstruction reuses the same prompt-preparation boundary
 within the original Worker step and WorkflowRun.
 
-Cloud never owns native session handles. Workspace retains session files, locks
+Cloud never owns native session handles. Connect retains session files, locks
 and local diagnostics. The existing Core Router remains the provider-independent
 policy boundary; the Dart adapter spaces that policy onto validated local state
 and the existing runtime envelope. No provider-specific execution path, new
@@ -1209,7 +1209,7 @@ boundary; routing decisions alone are not evidence that a provider resumed.
 | New Worker | Bootstrap existing canonical context | Core routing matrix; Cloud bootstrap fixtures |
 | Return to previous Worker | Resume its own session with bounded delta | Core round-trip regression; Engine delta-context fixtures |
 | Worker switch in Chat/Work | No warning | AX `spaces_pages_test.dart` |
-| Workspace/Engine restart | Read persisted native state without in-memory dependency | Engine `worker_session_test.dart` uses a new store instance; release compatibility tests start separate Engine processes |
+| Connect/Engine restart | Read persisted native state without in-memory dependency | Engine `worker_session_test.dart` uses a new store instance; release compatibility tests start separate Engine processes |
 | Lost native session | Invalidate, reconstruct once, retain logical run | Engine release compatibility fixtures and invalidation/replacement tests |
 | Chat request | One WorkflowRun and one StepRun | Cloud turn regression and workflow-run projection tests |
 | Work request | One WorkflowRun and one StepRun | Cloud `conversation-workflow-step-runs.test.ts` |
@@ -1237,7 +1237,7 @@ rather than deleting valid configuration or historical evidence.
 | --- | --- |
 | Selected Worker identifies the Conversation | Conversation identity is Thread + Workflow; turns and WorkerSessions carry Worker/Profile identity |
 | Model/effort are global conversation state | Thread bindings are configuration defaults; composer choices are local next-turn preferences; immutable turns retain actual execution choices |
-| Messages invoke CLI directly | Submission creates product request/run records; Workflow scheduling delegates execution; Workspace supervises the generic Engine |
+| Messages invoke CLI directly | Submission creates product request/run records; Workflow scheduling delegates execution; Connect supervises the generic Engine |
 | Work tab knows a provider runtime | Composer consumes normalized Worker options; shared `WorkerPresentation` owns branding and generic fallback, with no execution behavior |
 | Workflow owns provider/session behavior | Execution Engine owns session scope/configuration; local Router and Worker Engine own continuity and native handles |
 | One request means one provider session | Runs own StepRuns and immutable invocation turns; compatible native sessions can span requests and reconstruction stays within a step |
@@ -1277,7 +1277,7 @@ existing clear event.
 
 Both Chat and Work use the next Thread session generation after a clear. This
 resets session continuity; native provider session files remain owned locally by
-Workspace/Engine and are not physically erased by the Cloud action. Clearing the
+Connect/Engine and are not physically erased by the Cloud action. Clearing the
 Conversation deletes discussion messages and Work with their canonical history;
 Thread removal retains its existing cascading deletion behavior. Active Work
 must be cancelled before either clear action. Records already deleted by the

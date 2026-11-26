@@ -6,7 +6,7 @@
 
 The public site explains Syntila and directs visitors to the authenticated
 application. It does not implement application workflows or own user, Space,
-Thread, Workspace, or Worker state.
+Thread, Connect, or Worker state.
 
 | Domain | Responsibility | Authentication |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ embed the application. People collaborate in Spaces and Threads in the Syntila
 application on Web, iOS, and Android (with the web app available now on desktop
 and mobile, and native iOS/Android apps in progress for the Apple App Store and
 Google Play). Syntila Cloud provides application APIs, authentication,
-authorization, and orchestration. Syntila Workspace is the local desktop/server
+authorization, and orchestration. Syntila Connect is the local desktop/server
 runtime that supervises provider CLI execution.
 
 ## Visitor outcomes
@@ -27,7 +27,7 @@ runtime that supervises provider CLI execution.
 The site should help a visitor understand:
 
 1. What Syntila does.
-2. How Spaces, Threads, Syntila Cloud, and Syntila Workspace relate.
+2. How Spaces, Threads, Syntila Cloud, and Syntila Connect relate.
 3. How local provider CLI execution and Tool Profiles fit into the system.
 4. Where to start.
 
@@ -38,16 +38,16 @@ works** action links to public explanatory content.
 
 Syntila is where people discuss work, direct Threads, and review
 execution evidence. Syntila Cloud owns shared product state and authorization.
-A Space may use a Workspace through an explicit Space-to-Workspace Grant.
-Syntila Workspace runs locally and supervises the CLI Worker Engine, which
+A Space may use a Connect through an explicit Space-to-Connect Grant.
+Syntila Connect runs locally and supervises the CLI Worker Engine, which
 invokes a locally installed provider CLI using an approved Tool Profile.
 
 ```text
 Syntila -> Syntila Cloud -> Space / Thread policy
                                       |
-                             Space-to-Workspace Grant
+                             Space-to-Connect Grant
                                       v
-                           Syntila Workspace
+                           Syntila Connect
                                       |
                          CLI Worker Engine + Profile
                                       |
@@ -75,20 +75,20 @@ required to explain the current product.
 Public security content may explain these boundaries:
 
 - Better Auth establishes the human application session.
-- Syntila Cloud enforces Space, Workspace, Thread, and Profile policy.
-- A Space can use a Workspace only through an explicit grant.
-- Syntila Workspace supervises local provider processes and keeps provider
+- Syntila Cloud enforces Space, Connect, Thread, and Profile policy.
+- A Space can use a Connect only through an explicit grant.
+- Syntila Connect supervises local provider processes and keeps provider
   credentials local.
 - Tool Profiles are signed, bounded configuration interpreted by the generic
   CLI Worker Engine.
 
 Avoid absolute claims such as “unhackable,” “zero risk,” or guaranteed model
-correctness. Do not publish secrets, private Workspace details, or unsupported
+correctness. Do not publish secrets, private Connect details, or unsupported
 availability and provider claims.
 
 ## Public terminology
 
-Use **Syntila**, **Syntila Cloud**, **Syntila Workspace**, **Space**,
+Use **Syntila**, **Syntila Cloud**, **Syntila Connect**, **Space**,
 **Thread**, **Worker**, **CLI Worker Engine**, and **Tool Profile** for the
 current product. Avoid retired product concepts and implementation names in
 public copy. Provider names may appear when they match the current catalog and
@@ -99,8 +99,8 @@ trademark requirements.
 The public site does not:
 
 - implement login, discussion, Work, execution, or orchestration;
-- show private Space, Workspace, or Worker data;
-- install or register a Workspace;
+- show private Space, Connect, or Worker data;
+- install or register a Connect;
 - collect provider credentials or machine credentials;
 - expose authenticated Cloud APIs as public website functionality.
 
@@ -128,7 +128,7 @@ part of launch validation.
 Marketing analytics are separate from Syntila Cloud telemetry. Any enabled
 analytics sends only aggregate event name, public path, and timestamp. When the
 configured endpoint is absent, no analytics requests are sent. Do not send
-cookies, user identifiers, Space or Workspace identifiers, credentials, or
+cookies, user identifiers, Space or Connect identifiers, credentials, or
 application content.
 
 The public Worker uses a self-only Content Security Policy, denies framing,
@@ -144,7 +144,7 @@ Use the established Syntila brand system (`docs/design/SYNTILA_BRAND_SYSTEM.md`)
 An implementation is conformant when a visitor can, without signing in:
 
 - distinguish the public site from `syntila.app`;
-- explain the Space/Thread to Workspace execution path;
+- explain the Space/Thread to Connect execution path;
 - understand that provider execution uses local CLI software;
 - find the primary application action and public product explanations;
 - use the site with a keyboard and on narrow screens;

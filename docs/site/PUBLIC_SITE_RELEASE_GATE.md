@@ -32,17 +32,17 @@ Ask someone who has not worked on Syntila to review the site without
 additional explanation. They should be able to answer:
 
 1. What does Syntila help people do?
-2. How do Spaces and Threads use Syntila Workspace?
+2. How do Spaces and Threads use Syntila Connect?
 3. Where does provider CLI execution happen?
 4. How do they open the application?
 
-They should understand that execution runs through a local Workspace and that
+They should understand that execution runs through a local Connect and that
 provider credentials stay with provider CLI software on the user's machine.
 
 ## Content checklist
 
 - The public site and authenticated application have clear, separate roles.
-- Product explanation matches the current Space, Thread, Workspace,
+- Product explanation matches the current Space, Thread, Connect,
   Worker, Engine, and Tool Profile architecture.
 - Security and provider claims are supported by current implementation.
 - Privacy and Terms routes are present and current.

@@ -10,7 +10,7 @@
 
 Syntila v1 initially provisions ChatGPT and Gemini as official Workers. The
 official Worker Catalog is Cloud-managed and dynamically delivered. Additional
-approved Worker Types can become available without a Workspace application
+approved Worker Types can become available without a Connect application
 release when they can be expressed through an existing Engine family and
 supported Tool Profile schema.
 
@@ -37,7 +37,7 @@ implementation.
 
 The initial official Workers are:
 
-| Product type ID | User-facing name | v8 implementation | Cardinality per Workspace |
+| Product type ID | User-facing name | v8 implementation | Cardinality per Connect |
 | --- | --- | --- | --- |
 | `chatgpt` | ChatGPT | CLI Worker Engine + `chatgpt-codex` Profile -> Codex CLI | one stable catalog slot |
 | `gemini` | Gemini | CLI Worker Engine + `gemini-antigravity` Profile -> `agy` | one stable catalog slot |
@@ -71,7 +71,7 @@ sortOrder
 
 The descriptor represents the Cloud-defined Worker. It never contains a local
 Worker ID, local readiness, provider CLI version, locally downloaded Profile
-release, local activation, or Workspace ID. Those are Workspace inventory and
+release, local activation, or Connect ID. Those are Connect inventory and
 readiness facts. A descriptor can be parsed without knowing or branching on
 its Worker Type ID.
 
@@ -79,12 +79,12 @@ The authenticated human product catalog API is `GET /api/workers/catalog`. It
 returns active, visible stable Workers with their active Profile Definitions.
 It contains no local readiness or Profile release payload.
 
-Workspace has a separate runtime catalog API at
-`GET /api/workspace-runtime/workers/catalog`. It reads the Workspace's
+Connect has a separate runtime catalog API at
+`GET /api/workspace-runtime/workers/catalog`. It reads the Connect's
 selected Profile channel and returns every active, visible Worker with an
 active Profile Definition eligible for that channel:
 
-| Workspace channel | Eligible Worker release stages |
+| Connect channel | Eligible Worker release stages |
 | --- | --- |
 | `stable` | `stable` |
 | `beta` | `beta`, `stable` |
@@ -92,17 +92,17 @@ active Profile Definition eligible for that channel:
 
 Catalog discovery returns descriptors only. Signed Profile Release payloads
 are delivered separately by `GET /api/tool-profiles?workerTypeId=…`; the
-Workspace never receives Profile payloads as part of catalog discovery. A new
+Connect never receives Profile payloads as part of catalog discovery. A new
 approved `worker_catalog` row and its active Profile Definition therefore
-become discoverable without deploying Workspace or AX code.
+become discoverable without deploying Connect or AX code.
 
 Both catalog APIs use Cloud `worker_catalog` and the active Tool Profile
-Definition relationship as their source, but keep human-session and Workspace
+Definition relationship as their source, but keep human-session and Connect
 runtime authentication and response contracts separate.
 
-## Workspace Workers page
+## Connect Workers page
 
-The Workspace Workers page renders every local Worker from its Cloud catalog
+The Connect Workers page renders every local Worker from its Cloud catalog
 descriptor. The displayed Worker name and ordering come from that descriptor;
 the page does not maintain a provider-specific list:
 
@@ -125,7 +125,7 @@ deployment.
 
 `WorkerCatalogCoordinator` owns the synchronization pipeline for startup,
 periodic refresh, readiness, assignments, and the Workers page. It refreshes
-when Workspace starts, after each Cloud runtime session finishes sync and
+when Connect starts, after each Cloud runtime session finishes sync and
 becomes ready (including reconnect or recovery from offline), when the Workers
 surface opens, and before a user configures or tests a Worker. The Workers
 surface also offers a manual refresh action. Cloud's selected Profile channel
@@ -165,18 +165,18 @@ that catalog remain visible with `Catalog retired`; cached catalog contents do
 not retire local Workers while refresh is still pending.
 
 Cloud unavailability or an invalid Cloud response is never treated as an empty
-catalog. Workspace retains its last locally validated catalog and continues
+catalog. Connect retains its last locally validated catalog and continues
 using locally verified signed Profile releases. Retirement is applied only
 after a successful, validated authoritative catalog synchronization. Existing
 configured Workers can therefore continue offline when their cached catalog
 entry, signed Profile, local configuration, and provider CLI are still usable;
 a failed catalog or Profile refresh alone does not retire or disable them.
 
-After a successful synchronization, Workspace reconciles the previous and new
+After a successful synchronization, Connect reconciles the previous and new
 authoritative catalogs:
 
 - A newly added descriptor appears immediately and its Profile is synchronized.
-  Workspace does not create a local Worker slot; the user configures it.
+  Connect does not create a local Worker slot; the user configures it.
 - Changed metadata is reflected from the descriptor. Catalog metadata is not
   copied into persistent local Worker state.
 - A descriptor removed or hidden by Cloud is unavailable for setup and
@@ -187,16 +187,16 @@ authoritative catalogs:
   second slot is created.
 
 Cloud inventory snapshots include only configured local Workers whose type is
-present in the current catalog. For each included record, Workspace resolves a
+present in the current catalog. For each included record, Connect resolves a
 verified Profile compatible with the Worker Type and Engine. If that Profile
-or the Engine is unavailable, Workspace may retain the record for diagnostics,
+or the Engine is unavailable, Connect may retain the record for diagnostics,
 but reports non-ready state and no Profile release version.
 Cloud eligibility already rejects non-ready Workers and records without a
 Profile release identity, so stale local readiness cannot make an orphan or
 unrunnable Worker schedulable.
 
 The authenticated human Worker inventory API composes catalog `displayName`
-and `description`, plus the Workspace name, into each local inventory record.
+and `description`, plus the Connect name, into each local inventory record.
 AX reads these fields directly alongside readiness, capability, Engine,
 Profile, and provider-tool details; Thread Worker choices render
 `displayName · workspaceName` and retain the local Worker ID as the selection
@@ -205,10 +205,10 @@ from the Worker Type ID.
 
 Cloud also checks the authoritative catalog independently during scheduling
 and Thread binding validation. The inventory Worker Type must still have
-an active, visible catalog entry allowed by that Workspace's stable, beta, or
+an active, visible catalog entry allowed by that Connect's stable, beta, or
 testing channel, and its Profile Definition must still be the matching active
 definition. A retired or otherwise ineligible Worker is rejected even if a
-Workspace continues to report it as ready.
+Connect continues to report it as ready.
 
 Advanced Diagnostics may show:
 - Engine version;
@@ -223,7 +223,7 @@ A disabled Worker can still be tested.
 
 ## Readiness ownership
 
-Workspace owns local logical Worker state.
+Connect owns local logical Worker state.
 
 Engine + admitted Profile own provider-specific readiness behavior:
 - provider executable discovery;
@@ -232,7 +232,7 @@ Engine + admitted Profile own provider-specific readiness behavior:
 - live test;
 - result/error normalization.
 
-Workspace never runs provider commands directly.
+Connect never runs provider commands directly.
 
 Cloud receives only safe readiness/runtime projection.
 
@@ -256,7 +256,7 @@ grok
   profileDefinitionId: grok-cli
 ~~~
 
-The Profile release itself is selected by Workspace from trusted compatible
+The Profile release itself is selected by Connect from trusted compatible
 official releases.
 
 Changing Profile release does not change the logical Worker ID.
@@ -274,7 +274,7 @@ Examples:
 - Grok uses its locally configured Grok CLI login (`grok login`) or the
   user's own `XAI_API_KEY` environment.
 
-Workspace may show safe readiness guidance returned by Engine/Profile but does
+Connect may show safe readiness guidance returned by Engine/Profile but does
 not reimplement provider login flows.
 
 ## Model selection
@@ -292,7 +292,7 @@ No Profile may silently substitute a different model.
 The logical Worker exposes the safe intersection of:
 - signed Profile execution options;
 - provider tool/version behavior;
-- Workspace local permissions.
+- Connect local permissions.
 
 Cloud scheduling must never assume a capability solely because the Worker Type
 normally supports it.
@@ -313,17 +313,17 @@ Only the first item is the product Worker identity.
 
 ## Dynamic catalog expansion & Profile Lab administration
 
-Architecture v8 permits a new approved logical Worker (such as `claude` or arbitrary CLI integrations) to be created and rolled out dynamically without modifying or redeploying Syntila Workspace or Syntila application source code.
+Architecture v8 permits a new approved logical Worker (such as `claude` or arbitrary CLI integrations) to be created and rolled out dynamically without modifying or redeploying Syntila Connect or Syntila application source code.
 
 ### End-to-end creation flow:
 1. **Creation in Profile Lab:** An authorized maintainer launches Syntila Profile Lab (`apps/profile_lab`) and creates a new `worker_catalog` entry and `tool_profile_definitions` binding via Cloud admin REST endpoints (`POST /api/admin/workers/catalog` and `POST /api/admin/workers/definitions`).
 2. **Draft Authoring & Local Testing:** The maintainer authors an initial Draft Profile payload (`LocalDraftProfileCandidate`) and executes local passive probes, live probes, and diagnostic session tests directly against the provider CLI in Profile Lab's isolated test sandbox.
 3. **Evidence Capture & Signed Publication:** Profile Lab collects a verified `ToolProfileEvidenceContract` artifact and submits it to Cloud (`POST /api/admin/workers/definitions/:id/releases`). Cloud verifies evidence, signs the profile payload using Ed25519, and creates an immutable `tool_profile_releases` row.
 4. **Channel Promotion:** The maintainer promotes the release to the `testing` channel (`POST /api/admin/workers/definitions/:id/channels/testing`).
-5. **Dynamic Workspace & AX Discovery:**
-   - **Workspace:** On next periodic catalog sync (`GET /api/workspace-runtime/workers/catalog`), Workspace dynamically discovers the new `WorkerDescriptor`, downloads the signed Tool Profile (`ToolProfileReleaseAdmission`), configures the local Worker slot, verifies local provider CLI readiness, and syncs safe readiness to Cloud.
-   - **Syntila:** On next catalog fetch (`GET /api/workers/catalog`), AX automatically renders the new Worker in Workspaces inventory, and Threads can bind task roles to it immediately.
-   - **Execution:** When AX dispatches a Thread step to the new Worker, Cloud schedules the task to the ready Workspace, and Workspace executes it using the generic CLI Worker Engine (`engines/cli_worker`) configured by the signed Tool Profile.
+5. **Dynamic Connect & AX Discovery:**
+   - **Connect:** On next periodic catalog sync (`GET /api/workspace-runtime/workers/catalog`), Connect dynamically discovers the new `WorkerDescriptor`, downloads the signed Tool Profile (`ToolProfileReleaseAdmission`), configures the local Worker slot, verifies local provider CLI readiness, and syncs safe readiness to Cloud.
+   - **Syntila:** On next catalog fetch (`GET /api/workers/catalog`), AX automatically renders the new Worker in Workers inventory, and Threads can bind task roles to it immediately.
+   - **Execution:** When AX dispatches a Thread step to the new Worker, Cloud schedules the task to the ready Connect, and Connect executes it using the generic CLI Worker Engine (`engines/cli_worker`) configured by the signed Tool Profile.
 
 Zero lines of application source code in `apps/workspace` or `apps/app` contain hardcoded Worker Type identities.
 
@@ -334,27 +334,27 @@ Logical Worker mapped to the `fixture-cli` Tool Profile Definition. Its v1
 release payload and offline version, readiness, success, and error fixtures
 live under `packages/tool-profile/test/fixtures/`. The generic Profile fixture
 harness and CLI Worker Engine acceptance test exercise it without a new
-Workspace or Engine implementation or a provider-specific Worker executable.
+Connect or Engine implementation or a provider-specific Worker executable.
 The entry is excluded from the stable catalog and is not an official user-facing
 Worker.
 
 The dynamic catalog acceptance fixture separately introduces
 `dynamic-test-worker` / `Dynamic Test Worker` with Profile Definition
 `dynamic-test-cli`. These identifiers exist only in tests. Cloud schema and
-catalog tests prove database discovery; Workspace tests prove catalog display,
+catalog tests prove database discovery; Connect tests prove catalog display,
 signed Profile download, explicit local configuration, readiness, inventory,
 and generic Engine execution; AX tests prove metadata display and Thread
-selection; Cloud scheduler tests prove it can be assigned. The Workspace
+selection; Cloud scheduler tests prove it can be assigned. The Connect
 fixture then retires the still-ready local Worker and verifies it is omitted
 from inventory and rejected for new execution, before restoring the catalog
 entry and confirming the same local Worker is eligible again. A Cloud scheduler
 test independently rejects a stale Ready inventory row after retirement. AX
 keeps a bound retired Worker visible as unavailable and preserves its binding
-until the user selects a replacement. None of Workspace or AX production
+until the user selects a replacement. None of Connect or AX production
 source needs to know this Worker Type.
 
-The same fixture restarts Workspace after persisting the catalog, signed
-Profile, and configured local Worker, then makes Cloud unavailable. Workspace
+The same fixture restarts Connect after persisting the catalog, signed
+Profile, and configured local Worker, then makes Cloud unavailable. Connect
 loads the cached descriptor and verifies the installed Profile; local Engine
 work still completes. A Cloud-side Worker addition and newer Profile remain
 unseen until a successful sync. A retirement made while offline also leaves

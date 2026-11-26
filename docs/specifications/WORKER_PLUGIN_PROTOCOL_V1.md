@@ -12,7 +12,7 @@
 **Host:** the generic CLI Worker Engine's plugin host (never the `syntila` CLI, never Cloud)
 
 This is the contract between the Engine's plugin host and one plugin process.
-It is separate from the Local Worker Protocol (Workspace ↔ Engine) and from
+It is separate from the Local Worker Protocol (Connect ↔ Engine) and from
 provider CLI protocols. It is not a Tool Profile and exposes no Profile schema.
 
 Keywords MUST, SHOULD and MAY follow RFC 2119.
@@ -388,7 +388,7 @@ catalog. Metadata is bounded by the host deadline and normal frame limits.
 
 Engine probes refresh discovery on live checks, first use, and after one minute;
 other passive checks reuse the catalog. Catalog identity is bound to the plugin
-manifest digest and package version. Workspace publishes the standard catalog,
+manifest digest and package version. Connect publishes the standard catalog,
 and Cloud accepts it only against the enabled, owner-scoped plugin pin. Selection
 uses normal execution-option and scheduler validation. Effort and compaction
 remain unsupported by this plugin contract.
@@ -446,6 +446,6 @@ model's token/context budget and may reject requests with
 
 This change only removes the plugin protocol ceiling. The separate local Worker
 protocol currently limits a canonical bootstrap to 256 KiB, an execute prompt
-to 512 KiB and a Worker frame to 1 MiB. Cloud and Workspace transports may
+to 512 KiB and a Worker frame to 1 MiB. Cloud and Connect transports may
 apply their own limits. End-to-end unbounded prompts require changes to those
 separate contracts; protocol 1.2 must not be advertised as removing them.

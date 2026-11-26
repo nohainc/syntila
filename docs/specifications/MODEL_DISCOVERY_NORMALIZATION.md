@@ -1,6 +1,6 @@
 # Provider discovery and normalization — Phase 3
 
-Implemented 2026-10-11. Architecture v8 and the Workspace Service ownership
+Implemented 2026-10-11. Architecture v8 and the Connect service ownership
 boundary remain unchanged. Extends [Worker execution options v2](WORKER_EXECUTION_OPTIONS_V2.md)
 and [Tool Profile v1](TOOL_PROFILE_V1.md).
 
@@ -89,7 +89,7 @@ Variant verification/availability is tracked in the local v2 catalog's private
 remain selectable. A family is unavailable when every variant is unavailable,
 and verified when all available variants have executable success evidence.
 Refresh preserves statuses only in the existing exact Profile/version cache
-binding and only for still-discovered efforts. Workspace strips both native ID
+binding and only for still-discovered efforts. Connect strips both native ID
 and variant status bookkeeping before inventory publication. Catalog revision
 includes local binding and statuses, with stable ordering; public clients receive
 only the existing opaque revision and aggregate public selection metadata.
@@ -139,12 +139,12 @@ runtime protocol passed. Broader Cloud/shared scope: 678 passed, one existing
 fixture failure (`capabilities` forbidden in worker inventory). Engine component
 validation stops on existing supervisor formatting; AX component validation stops
 on existing app-state/cache formatting. These unrelated files were preserved.
-Focused Workspace registry/inventory coverage verifies private-field stripping.
+Focused Connect registry/inventory coverage verifies private-field stripping.
 No real provider inference was run: process fixtures prove parameter routing,
 while the installed catalog establishes listed support. Provider-account execution
 verification remains a separate release acceptance activity.
 
-## Workspace static model display and Gemini reversal (2026-10-13)
+## Connect static model display and Gemini reversal (2026-10-13)
 
 The Service projects filtered static model names and hasModelDiscovery from its
 resolved Profile through existing local IPC. Worker cards use static names for
@@ -162,8 +162,8 @@ display fix remains. Saved family selections introduced by the reverted mapping
 may require reselection. Runtime refresh invalidates the prior catalog by digest.
 
 Reversal verification: seven focused Cloud migration tests, thirteen Engine
-discovery/execution tests, and two Workspace static/empty-catalog regressions
-passed. Production and the running Workspace show the original digest at
+discovery/execution tests, and two Connect static/empty-catalog regressions
+passed. Production and the running Connect show the original digest at
 revision 9; the live Gemini Worker Test passed and both Workers show Ready.
 Cloud component validation stops on existing stale generated types; Engine
 component validation stops on existing unrelated formatting violations.

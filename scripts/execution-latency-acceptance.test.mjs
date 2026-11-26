@@ -330,7 +330,7 @@ describe("execution latency release gate", () => {
   });
   it("keeps the retained partial baseline incomplete", () => {
     const root = new URL(
-      "../docs/acceptance/latency/2026-10-14/",
+      "./fixtures/latency/",
       import.meta.url,
     );
     const events = ["post-fix-cloud.jsonl", "post-fix-service.jsonl"].flatMap(

@@ -2,7 +2,7 @@
 
 **Status:** Canonical architecture contract for V9 implementation
 **Date:** 2026-10-12
-**Scope:** Syntila Cloud, Profile Lab, Workspace, CLI Worker Engine, and the logical Worker catalog
+**Scope:** Syntila Cloud, Profile Lab, Connect, CLI Worker Engine, and the logical Worker catalog
 
 This specification defines the V9 identity, publication, verification,
 activation, and execution-snapshot contract for Worker Profiles. It supersedes
@@ -26,7 +26,7 @@ Syntila Cloud
         | one current published Profile + bounded history
         | atomic publication and authorization
         v
-Syntila Workspace / Service
+Syntila Connect / Service
         | fetch -> verify -> cache -> activate
         v
 Generic CLI Worker Engine
@@ -38,17 +38,17 @@ Provider CLI
 The Engine remains provider-independent. ChatGPT, Gemini, and future logical
 Workers differ through Profile data and the provider CLI they describe, not
 through provider-specific Engine executables or branches in Cloud or
-Workspace.
+Connect.
 
 ## 2. Shared identity model
 
 | Concept | V9 meaning |
 | --- | --- |
-| Logical Worker | Stable product identity selected by AX, Workflows, Cloud, and Workspace, such as `chatgpt` or `gemini`. |
+| Logical Worker | Stable product identity selected by AX, Workflows, Cloud, and Connect, such as `chatgpt` or `gemini`. |
 | Profile | One canonical JSON behavior definition belonging to exactly one logical Worker. |
 | Profile revision | Cloud-assigned monotonically increasing revision of the same logical Worker's published Profile. A revision is not an active release channel. |
 | Profile digest | SHA-256 digest of the canonical Profile JSON. |
-| Profile candidate | Unpublished JSON being edited and tested in Profile Lab. It is not a published Profile and is never admitted to normal Workspace execution. |
+| Profile candidate | Unpublished JSON being edited and tested in Profile Lab. It is not a published Profile and is never admitted to normal Connect execution. |
 | Profile snapshot | The verified Profile identity, revision, digest, and canonical JSON captured for one execution. It remains immutable until that execution completes. |
 | Known-good history | Retained prior published snapshots used for audit or restoration. Historical snapshots are not separately active. |
 
@@ -76,7 +76,7 @@ multiple active Profiles for one logical Worker.
    the next revision, persist the current Profile, and record audit evidence as
    one atomic state transition. A partial publication MUST NOT be
    observable as current state.
-6. **Verified Workspace activation:** Workspace MUST fetch, verify, cache, and
+6. **Verified Connect activation:** Connect MUST fetch, verify, cache, and
    validate a Profile before activation. A failed candidate MUST NOT replace
    the active cached Profile.
 7. **Stable execution snapshot:** An execution MUST use the Profile snapshot
@@ -187,7 +187,7 @@ candidate's declarative `activity.mappings` to sanitized Codex or agy fixtures,
 including repeated tool calls and unknown events, and binds the result to the
 candidate digest. Invalid selectors, unsupported mapping fields, and unsafe
 detail extractors are rejected before publication. The legacy percentage
-mapping remains only as a temporary compatibility path for older Workspace
+mapping remains only as a temporary compatibility path for older Connect
 clients.
 
 The V9 integration evidence also includes a real Engine-process harness with a
@@ -231,9 +231,9 @@ Lab history is therefore a comparison and recovery view, not a second
 publication channel; restoration always creates a new current revision and
 refreshes the synchronized editor state.
 
-## 6. Workspace verification, caching, and activation
+## 6. Connect verification, caching, and activation
 
-An authenticated, non-revoked Workspace runtime MAY fetch a catalog Worker's
+An authenticated, non-revoked Connect runtime MAY fetch a catalog Worker's
 current published Profile before configuring that Worker locally. The read
 endpoint MUST NOT require a `workspace_worker_inventory` row: Profile sync
 precedes local setup and inventory publication. Runtime authentication and
@@ -245,11 +245,11 @@ Worker as `Setup required`. It MUST NOT label that expected setup state a
 Profile error or activate the staged payload before probing. Failed downloads,
 invalid snapshots and incompatible Engines retain their actual failure states.
 
-Workspace MUST treat Cloud as the authority for the current Profile but MUST
+Connect MUST treat Cloud as the authority for the current Profile but MUST
 remain able to operate from its verified local cache when synchronization is
 temporarily unavailable.
 
-For a newly fetched or refreshed Profile, Workspace MUST:
+For a newly fetched or refreshed Profile, Connect MUST:
 
 1. verify the logical Worker identity, digest, and canonical JSON;
 2. validate the Profile schema and Engine compatibility;
@@ -259,7 +259,7 @@ For a newly fetched or refreshed Profile, Workspace MUST:
 6. atomically mark it current only after all admission checks pass;
 7. retain the prior verified known-good snapshot for recovery and diagnostics.
 
-Workspace MUST repeat the canonical digest and schema verification locally.
+Connect MUST repeat the canonical digest and schema verification locally.
 A snapshot that fails any check MUST remain staged or be discarded and MUST
 NOT become the active Profile.
 
@@ -273,7 +273,7 @@ needed by in-flight executions. Refresh is periodic or event-triggered, not
 part of every assignment. A fetched snapshot is verified, staged, and then
 activated for new executions; the resolver never searches a release list.
 
-On first access after upgrade, Workspace may read the legacy approved stable
+On first access after upgrade, Connect may read the legacy approved stable
 snapshot exactly once, validate its digest and schema, and materialize it as a
 V9 current snapshot with migration metadata. The legacy per-definition,
 per-version directory is removed only after that V9 snapshot has been written
@@ -287,7 +287,7 @@ Explicit revocation of current must not fall back to last-known-good. Each execu
 opens an immutable `revision-digest` payload, so activation of a later Profile
 cannot rewrite the bytes used by an execution already in progress.
 
-Workspace's Worker management view is operational rather than publication-
+Connect's Worker management view is operational rather than publication-
 oriented. It SHOULD show the logical Worker, provider tool and detected CLI
 version, current Profile revision and status, enabled/disabled state,
 readiness, and execution permissions. It MUST NOT expose Profile channels,
@@ -296,7 +296,7 @@ local Worker test remain available as user-facing actions.
 
 ## 7. Execution snapshots and continuity
 
-When Workspace admits an assignment, it binds the execution to a Profile
+When Connect admits an assignment, it binds the execution to a Profile
 snapshot containing at least:
 
 ```text
@@ -309,8 +309,8 @@ providerToolVersion
 ```
 
 The Engine receives the canonical JSON for that snapshot and MUST NOT reload
-the current Cloud or Workspace Profile during the execution. New executions
-may use a later revision only after Workspace has verified and activated it.
+the current Cloud or Connect Profile during the execution. New executions
+may use a later revision only after Connect has verified and activated it.
 Existing executions finish under their original snapshot, including retries
 that are part of the same execution lifecycle.
 
@@ -326,9 +326,9 @@ and fixture providers use the same execution pipeline.
 | Component | V9 responsibility | V9 prohibition |
 | --- | --- | --- |
 | Cloud | Own logical Worker identity, current Profile, revision/digest metadata, bounded history, authorization, atomic publication, and audit. | Must not execute provider CLIs or expose multiple active channels. |
-| Profile Lab | Edit candidates, validate, run Engine-backed provider tests, show diffs, request publication, and request known-good restoration. | Must not publish without operator authorization, store provider credentials, or make candidates active in Workspace. |
-| Workspace / Service | Fetch, verify, cache, activate, snapshot, and supervise Profile-backed Engine executions. | Must not edit Profile JSON, select a channel, or use an unverified payload. |
-| CLI Worker Engine | Interpret the finite Profile schema, supervise provider CLI processes, enforce limits/security/session integrity, and emit provider-neutral results. | Must not contain provider-specific Worker executables or bypass Profile/Workspace admission. |
+| Profile Lab | Edit candidates, validate, run Engine-backed provider tests, show diffs, request publication, and request known-good restoration. | Must not publish without operator authorization, store provider credentials, or make candidates active in Connect. |
+| Connect / Service | Fetch, verify, cache, activate, snapshot, and supervise Profile-backed Engine executions. | Must not edit Profile JSON, select a channel, or use an unverified payload. |
+| CLI Worker Engine | Interpret the finite Profile schema, supervise provider CLI processes, enforce limits/security/session integrity, and emit provider-neutral results. | Must not contain provider-specific Worker executables or bypass Profile/Connect admission. |
 | AX / product workflows | Select logical Workers and display safe readiness/diagnostic metadata. | Must not edit or directly activate Profiles. |
 
 ## 9. Explicitly removed from the V9 contract
@@ -338,7 +338,7 @@ The following V8 concepts are not compatibility targets for V9:
 - draft-to-testing-to-beta-to-stable Profile promotion;
 - testing, beta, and stable channel pointers;
 - multiple competing active Profile releases;
-- channel-specific Workspace selection;
+- channel-specific Connect selection;
 - release-number administration as the identity of current behavior;
 - channel rollback APIs.
 
@@ -394,7 +394,7 @@ The V9 Cloud API exposes one current Profile identity per logical Worker:
 | `PUT` | `/api/admin/workers/:id/profile` | Publish a tested candidate as the next revision. |
 | `GET` | `/api/admin/workers/:id/profile/history` | Inspect retained previous snapshots. |
 | `POST` | `/api/admin/workers/:id/profile/restore` | Republish a retained snapshot as a new revision. |
-| `GET` | `/api/workers/:id/profile` | Return the verified current Profile to an authorized Workspace runtime. |
+| `GET` | `/api/workers/:id/profile` | Return the verified current Profile to an authorized Connect runtime. |
 
 The publish request MUST contain `expectedRevision`, `candidateDigest`, the
 candidate `profile`, and recent `evidence`. `expectedRevision` is `0` only
@@ -412,15 +412,15 @@ tables. Migration history remains append-only.
 
 ## 12. Shared validation and interpretation
 
-Cloud, Profile Lab, Workspace, and the CLI Worker Engine MUST use the same
+Cloud, Profile Lab, Connect, and the CLI Worker Engine MUST use the same
 provider-neutral V9 validation contract. The shared contract is implemented by
 the TypeScript `@syntila/tool-profile` package for Cloud-side validation and
-the Dart `syntila_tool_profile_v1` package for Profile Lab, Workspace, and
+the Dart `syntila_tool_profile_v1` package for Profile Lab, Connect, and
 Engine runtime validation. Both implementations MUST remain semantically
 aligned with the versioned Profile schema.
 
 The Dart package owns the canonical V9 snapshot admission check used by both
-Profile Lab and Workspace. Each consumer supplies the expected Worker identity
+Profile Lab and Connect. Each consumer supplies the expected Worker identity
 and repeats digest/schema validation locally.
 
 The validation contract MUST include:
@@ -449,12 +449,12 @@ The V9 contract is accepted when all four runtime/control-plane components
 reference this specification and agree on these facts:
 
 - the same stable logical Worker identity names the Profile in Cloud, Profile
-  Lab, Workspace, and Engine admission data;
+  Lab, Connect, and Engine admission data;
 - the same canonical JSON and digest identify the behavior being published,
   cached, activated, and executed;
 - the same Cloud-assigned revision identifies the current published state;
 - publication and restoration are operator-authorized and atomic;
-- Workspace activation and Engine execution use a verified immutable snapshot;
+- Connect activation and Engine execution use a verified immutable snapshot;
 - no component requires Profile testing, beta, or stable channels.
 
 ## 14. V8 lifecycle cleanup
@@ -467,7 +467,7 @@ are deployed. It preserves `worker_catalog`, current/history snapshots,
 diagnostic event history, security audit records, local test scenarios, and the
 Profile Lab sandbox boundary for unpublished candidates.
 
-Workspace keeps only the verified current snapshot and one verified
+Connect keeps only the verified current snapshot and one verified
 last-known-good snapshot. A last-known-good snapshot is an offline recovery
 cache, never a second release channel; explicit revocation still prevents its
 activation.

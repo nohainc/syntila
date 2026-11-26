@@ -179,20 +179,20 @@ MCP one.
 dart run syntila_external_worker_conformance -- ./my-plugin       # author tool, any language
 ```
 
-This starts your plugin directly and runs the same 21 cases the Workspace runs
+This starts your plugin directly and runs the same 21 cases the Connect runs
 (`packages/syntila_external_worker_conformance`). It is free and needs no Syntila
 account. A pass means **your plugin speaks the protocol**. It does not mean the
 plugin is safe, truthful about its access list or free of malicious behaviour,
 and users are never shown it as a security rating.
 
-On a Plus Workspace:
+On a Plus Connect:
 
 ```sh
-syntila plugins import ./my-plugin       # copies it into the Workspace store
+syntila plugins import ./my-plugin       # copies it into the Connect store
 syntila plugins validate my-plugin       # static checks; runs nothing
 syntila plugins test my-plugin           # conformance inside the Engine
 syntila plugins register my-plugin       # shows consent, then re-run with --accept <hash>
-syntila plugins enable my-plugin         # same, per Workspace
+syntila plugins enable my-plugin         # same, per Connect
 ```
 
 Consent is by content: `register` and `enable` print what the user is accepting
@@ -213,7 +213,7 @@ The plugin-mode Engine now applies POSIX hard CPU/open-file limits before exec,
 Windows job memory/process-count/CPU limits, and observed data-directory limits.
 On POSIX, memory/process count and aggregate CPU are sampled in addition to
 the hard per-process CPU limit. Windows samples aggregate job handles. These
-sampled budgets can miss short-lived activity and are not hard kernel quotas. See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md)
+sampled budgets can miss short-lived activity and are not hard kernel quotas. See resource-limit evidence
 for defaults and platform verification gaps.
 
 **Not enforced:** filesystem and network isolation. A process boundary is not a

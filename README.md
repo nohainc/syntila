@@ -20,7 +20,7 @@ Architecture v9 is the current design target; the v8 implementation remains the 
 ~~~text
 Syntila
 -> Syntila Cloud
--> Syntila Workspace
+-> Syntila Connect
 -> generic CLI Worker Engine
 -> signed Tool Profile
 -> provider CLI
@@ -41,8 +41,8 @@ are implementation details shown only in Advanced Diagnostics.
 - **Syntila** — Flutter Web application for Spaces, Threads, Chat
   (discussion) and Work.
 - **Syntila Cloud** — TypeScript/Cloudflare collaboration, scheduling,
-  Workspace Gateway, Worker catalog and Profile release control plane.
-- **Syntila Workspace** — headless Dart execution/security service and
+  Worker gateway, Worker catalog and Profile release control plane.
+- **Syntila Connect** — headless Dart execution/security service and
   management CLI (`syntila`) for macOS, Linux and Windows.
 - **Syntila Profile Lab** — internal macOS Flutter/Dart engineering desktop
   application for Worker and Tool Profile authoring, testing, and lifecycle
@@ -51,9 +51,9 @@ are implementation details shown only in Advanced Diagnostics.
   supported local CLI Workers.
 - **Tool Profiles** — signed immutable official provider integration releases.
 
-## Install Workspace on Ubuntu
+## Install Connect on Ubuntu
 
-Headless Workspace packages for Ubuntu 22.04 and newer are available for amd64
+Headless Connect packages for Ubuntu 22.04 and newer are available for amd64
 and ARM64 through the [signed APT repository](https://nohainc.github.io/syntila/).
 Follow the one-time repository setup there, then install with:
 
@@ -92,7 +92,7 @@ and a local API gateway on `http://localhost:8787`. By default the gateway runs 
 Local state and browser profiles may persist between runs; isolation from production
 does not mean a fresh database or browser session. To forward HTTP and WebSocket
 requests to production Cloud instead, explicitly use `--proxy`: actions in that
-mode affect live accounts, remote data and Workspace connections. Authentication
+mode affect live accounts, remote data and Connect connections. Authentication
 cookies are adapted to localhost while retaining HttpOnly; production authentication
 secrets stay on Cloud.
 Stop previous frontend/backend processes before restarting the launcher.
@@ -147,7 +147,7 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 
 ## Technology stack
 
-- Flutter + Dart for Syntila; pure Dart (no Flutter) for the Syntila Workspace
+- Flutter + Dart for Syntila; pure Dart (no Flutter) for the Syntila Connect
   service and CLI.
 - TypeScript for Syntila Cloud.
 - Dart AOT for the generic CLI Worker Engine.
@@ -155,7 +155,7 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 - Cloudflare D1 for structured state.
 - Cloudflare R2 where release/artifact payload storage is appropriate.
 - Better Auth for human authentication.
-- Local Worker Protocol between Workspace and CLI Worker Engine; see [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md) for supported versions.
+- Local Worker Protocol between Connect and CLI Worker Engine; see [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md) for supported versions.
 - Signed Tool Profile v1 releases for provider CLI behavior.
 - GitHub Actions for CI/CD.
 - Wrangler for Cloudflare deployment.
@@ -164,7 +164,7 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 
 - **Space** — collaboration/history/authorization boundary.
 - **Thread** — persistent unit of work and local working directory.
-- **Workspace** — one machine-backed execution environment.
+- **Connect** — one machine-backed execution environment.
 - **Worker Type** — stable product AI/tool identity such as `chatgpt` or
   `gemini`.
 - **CLI Worker Engine** — generic local executor/interpreter; not a user-facing
@@ -173,23 +173,23 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
   Engine.
 - **Provider CLI** — local tool that owns provider authentication/session/billing
   mode.
-- **Workspace Grant** — Space authorization to use a Workspace.
+- **Connect Grant** — Space authorization to use a Connect.
 - **Assignment** — immutable execution snapshot resolving Space + Thread +
   logical Worker + runtime evidence.
 
 ## Runtime trust boundary
 
-Workspace supervises Engine processes but does not implement provider behavior.
+Connect supervises Engine processes but does not implement provider behavior.
 
 The Engine:
-- loads a Workspace-admitted signed Profile;
+- loads a Connect-admitted signed Profile;
 - finds/probes the provider CLI;
 - launches it without a shell;
 - parses its bounded output;
 - enforces session continuity;
 - normalizes progress/result/error.
 
-Profiles cannot disable Engine/Workspace security invariants.
+Profiles cannot disable Engine/Connect security invariants.
 
 Provider secrets never enter Syntila Cloud.
 
@@ -205,7 +205,7 @@ Provider secrets never enter Syntila Cloud.
 - [First-party Worker catalog v1](docs/specifications/FIRST_PARTY_WORKER_CATALOG_V1.md)
 - [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md)
 - [Technology Stack](docs/architecture/TECH_STACK.md)
-- Workspace release operations
+- Connect release operations
 - Release trust and rotation
 - [AI Development Rules](AGENTS.md)
 

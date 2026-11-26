@@ -4,7 +4,7 @@ Cloudflare Access is optional infrastructure protection for staging,
 administrative, debug, and other internal environments. It is not the human
 authentication boundary for production AX. Production users sign in through
 Better Auth at `/api/auth/*`, and Syntila resolves that session to its own
-Workspace and authorization model.
+Connect and authorization model.
 
 ## Configure Access
 

@@ -19,7 +19,7 @@ Open the selected Worker’s **Draft & Test** view. With no local Draft or relea
 
 - Add `apps/profile_lab/assets/profiles/<workerTypeId>.json` to the repository and select the Worker (or choose **Reload from folder**). Profile Lab never generates or seeds a Profile. A file for another Worker or definition is rejected.
 
-There is no second Draft selector or identity-entry dialog. Cloud-managed starter templates are authoring aids; Workspace never reads them.
+There is no second Draft selector or identity-entry dialog. Cloud-managed starter templates are authoring aids; Connect never reads them.
 
 ## Test, save, and sync
 
@@ -29,14 +29,14 @@ There is no second Draft selector or identity-entry dialog. Cloud-managed starte
 4. For a failure, use the offered Retry, version-range, or Repair Profile action. Save any changed payload and rerun. Proposals and repairs are Draft edits, never evidence.
 5. Choose **Sync to Cloud** after saving. Confirm the header reports **Synced to Cloud** for the exact version and digest. Sync does not publish automatically. Resolve conflicts explicitly using compare/reload controls.
 
-## Publish and test in Workspace
+## Publish and test in Connect
 
-After saving, validating, and testing the exact candidate, choose **Publish**. Cloud authenticates the operator, revalidates the candidate and evidence, checks the expected revision and digest, and atomically publishes the next current Profile revision. Refresh Workspace and run a real task.
+After saving, validating, and testing the exact candidate, choose **Publish**. Cloud authenticates the operator, revalidates the candidate and evidence, checks the expected revision and digest, and atomically publishes the next current Profile revision. Refresh Connect and run a real task.
 
 Development and customer environments use the same lifecycle. Desktop app signing does not control Profile publication. Missing authorization, stale revision, invalid JSON, or stale evidence is explained beside the publish action.
 
-For publication, Beta/Stable promotion, Workspace assignment, rollback, and revocation, follow [Updating an Existing Profile](OPERATOR_RUNBOOK_UPDATE_PROFILE.md).
+For publication, Beta/Stable promotion, Connect assignment, rollback, and revocation, follow [Updating an Existing Profile](OPERATOR_RUNBOOK_UPDATE_PROFILE.md).
 
 ## Activity and verification
 
-Use **Activity** for all events, or filter to the current Worker. Expand an event for raw IDs, reasons, provenance, and details. Use `⌘R` to refresh the active resource. Before live rollout, retain real-provider and Workspace acceptance evidence as required by the Profile lifecycle contract; deterministic test fixtures do not replace it.
+Use **Activity** for all events, or filter to the current Worker. Expand an event for raw IDs, reasons, provenance, and details. Use `⌘R` to refresh the active resource. Before live rollout, retain real-provider and Connect acceptance evidence as required by the Profile lifecycle contract; deterministic test fixtures do not replace it.

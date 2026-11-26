@@ -413,7 +413,7 @@ it("normalizes retained installed Codex and AGY evidence into the same public co
   const { spaceWorkerExecutionOptions } =
     await import("../../src/domain/worker-execution-options.js");
   const evidenceRoot = new URL(
-    "../../../../docs/acceptance/real-provider/2026-10-11/",
+    "../fixtures/model-evidence/",
     import.meta.url,
   );
   const codex = JSON.parse(

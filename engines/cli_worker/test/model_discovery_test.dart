@@ -435,7 +435,7 @@ Future<void> main() async {
       };
       final native = parseDiscoveredModels(
         await File(
-          '../../docs/acceptance/real-provider/2026-10-11/model-effort-audit-agy.tsv',
+          'test/fixtures/model-effort-audit-agy.tsv',
         ).readAsString(),
         'gemini-',
       );

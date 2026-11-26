@@ -25,7 +25,7 @@ limits (device validation pending). Data size is observed on all platforms.
 Sampling can miss short spikes and children that finish between samples. POSIX
 has an observed aggregate CPU budget; Windows has an observed job handle budget.
 Neither is a hard aggregate kernel quota.
-See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md). The reported
+See resource-limit evidence. The reported
 isolation tier is `none`; read-only Steps are ineligible for plugins.
 
 ## Install, test and consent
@@ -39,7 +39,7 @@ syntila plugins enable my-plugin
 ```
 
 `register` and `enable` show the proposed consent and its hash. Review it before
-repeating the command with `--accept <hash>`. Each Workspace needs its own
+repeating the command with `--accept <hash>`. Each Connect needs its own
 explicit enablement. Updated content changes the pinned digest and needs new
 consent. For interpreted plugins, the system interpreter is outside the pinned
 script digest; prefer a self-contained executable from the author.
@@ -66,7 +66,7 @@ signatures but do not carry your local trust decisions.
 ## Disable, export or remove
 
 Use `syntila plugins disable my-plugin` to stop future scheduling on this
-Workspace. Review existing running work separately. Use `syntila plugins export
+Connect. Review existing running work separately. Use `syntila plugins export
 my-plugin /path/to/export.syntila-plugin` to transfer a credential-free bundle;
 exports exclude plugin data, sessions, logs, entitlement leases and credentials.
 They still contain executable code and author metadata.

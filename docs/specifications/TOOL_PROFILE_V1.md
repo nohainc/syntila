@@ -87,7 +87,7 @@ Work's `restricted` policy expands to `--sandbox workspace-write`. Argument
 expansion tests cover the default and all compatibility override layouts, both
 fresh and resumed conversations, and preserve the existing full-access mapping.
 
-Workflow policy is resolved by Cloud and carried in the assignment. Workspace
+Workflow policy is resolved by Cloud and carried in the assignment. Connect
 does not require a Worker or Profile capability declaration for Chat or Work.
 The Profile's signed sandbox mapping still determines the provider arguments;
 the web app owns which workflows and Workers may be selected.
@@ -119,7 +119,7 @@ unsupported CLI behavior, the proposal must:
 When v2 is justified, it must have its own strict versioned validator and
 interpreter semantics. v1 payloads continue through the unchanged v1 validator;
 they are never reinterpreted as v2, and neither validator accepts unknown
-fields. Workspace and Engine reject unsupported schema versions before
+fields. Connect and Engine reject unsupported schema versions before
 execution. Profile releases remain immutable and signed over the schema
 version and complete behavior payload. No schema v2 is defined by this
 specification.
@@ -159,10 +159,10 @@ Definition, and Cloud allows at most one active Definition per Worker.
 }
 ~~~
 
-Workspace/Engine rejects a Profile outside the running Engine version range.
+Connect/Engine rejects a Profile outside the running Engine version range.
 Semantic-version checks use full SemVer precedence, including prerelease
 ordering; build metadata does not affect compatibility. Both Engine and
-Workspace use the shared Tool Profile v1 comparator.
+Connect use the shared Tool Profile v1 comparator.
 
 ## 6. Provider tool declaration
 
@@ -221,7 +221,7 @@ retesting before publication. Engine compatibility bounds remain enforced.
 - arbitrary Profile absolute executable paths are forbidden;
 - standard locations may use approved path placeholders only;
 - Engine owns maximum path count/search depth;
-- Workspace/Engine may add generic safe OS locations;
+- Connect/Engine may add generic safe OS locations;
 - a cached absolute path may be tried first only after checking its identity,
   path bounds, expected executable name, and executable status again;
 - when `allowPathSearch` is true, Engine searches the inherited OS `PATH`
@@ -283,7 +283,7 @@ Rules:
 - complete parent environment inheritance is forbidden;
 - constant values are bounded;
 - approved placeholders may be used where the schema permits;
-- Profiles cannot remove Workspace-enforced baseline/safety values.
+- Profiles cannot remove Connect-enforced baseline/safety values.
 
 The Engine constructs the final provider environment.
 
@@ -395,14 +395,14 @@ for `restricted`, `provider_default`, and `full_access`.
 An execution argument list may contain at most one
 `{"forEachAdditionalDirectory": ["--add-dir", "{{additionalDirectory}}"]}`
 slot (1–8 values, at least one containing `{{additionalDirectory}}`). The
-Engine repeats the values once per Workspace-verified additional folder from
+Engine repeats the values once per Connect-verified additional folder from
 `execute.request` `additionalDirectories`, in order, and emits nothing when
 there are none. `{{additionalDirectory}}` is invalid anywhere else. When an
 assignment has additional folders, the base argument list and every
 compatibility override that replaces it must contain the slot; otherwise the
-Workspace fails the assignment instead of running without the folders.
+Connect fails the assignment instead of running without the folders.
 
-Workspace Local Worker Protocol 4.0 assignments can select only `restricted`
+Connect Local Worker Protocol 4.0 assignments can select only `restricted`
 or `provider_default`; omitted values default to `restricted`. `full_access`
 remains a schema-level profile mapping for products with a separate explicit
 authorization path and is not representable in normal assignments.
@@ -430,7 +430,7 @@ invalid anywhere else. Per [section 3.1](#31-schema-evolution-gate):
 2. **Generic.** The slot names no provider; the Engine knows only the
    `{"mcpServers": {name: {command, args, env}}}` file shape.
 3. **Authority.** The Engine writes the file only from `mcpServers` in
-   `execute.request`, which the Workspace Service populates solely from servers
+   `execute.request`, which the Connect service populates solely from servers
    the user consented to and enabled for that Step. See the
    [authorization model](AUTHORIZATION_MODEL.md#mcp-server-configuration).
 4. **Semantics.** If the Profile has this slot, the Engine always writes a
@@ -577,7 +577,7 @@ is a list of actions the provider refused to run (for example AGY's
 `denied_actions`) and is reported as `permission_denied` even when the provider
 turn says success; an empty list is ignored.
 
-The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+The provider failure details contract
 specifies declarative extraction of native error codes and responses on
 failure via an optional `execution.failureExtraction` block. Each selector is
 evaluated against the provider event carrying the failure, using the existing
@@ -776,7 +776,7 @@ full_access
 
 to bounded provider arguments.
 
-`full_access` is usable only when Workspace/product policy explicitly permits
+`full_access` is usable only when Connect/product policy explicitly permits
 it. Normal v8 assignment execution does not permit it. A Profile cannot
 independently broaden local permissions.
 
@@ -840,7 +840,7 @@ Cloud workflow policy.
 
 ## 25. Profile release envelope
 
-Workspace verifies a Tool Profile Release v1 envelope before passing the
+Connect verifies a Tool Profile Release v1 envelope before passing the
 payload to the generic CLI Worker Engine. The payload digest is lowercase
 hexadecimal SHA-256 over the canonical JSON encoding of the complete validated
 Profile v1 object. The Ed25519 signature is over UTF-8 bytes of:
@@ -867,7 +867,7 @@ providerCompatibility
 ~~~
 
 `providerCompatibility` is the signed payload's
-`providerTool.supportedVersions`. Workspace recomputes the payload digest,
+`providerTool.supportedVersions`. Connect recomputes the payload digest,
 compares every repeated envelope claim against the payload and Cloud release
 metadata, then checks the publisher/key ID against its Ed25519 trust roots.
 Changing behavior, identity, release version, logical Worker binding, Engine
@@ -875,11 +875,11 @@ compatibility, provider compatibility, publisher, or key ID invalidates
 admission.
 
 Lifecycle state, channel, promotion pointers, audit fields, display name, and
-timestamps are registry metadata outside the signed envelope. Workspace may
+timestamps are registry metadata outside the signed envelope. Connect may
 accept a trusted signed release at a permitted channel, but those fields cannot
-change signed behavior or compatibility claims. Workspace also rejects a
+change signed behavior or compatibility claims. Connect also rejects a
 revoked payload digest, `<profileDefinitionId>@<releaseVersion>`, publisher, or
-signing key ID. Key rotation adds a new key ID and public key to the Workspace
+signing key ID. Key rotation adds a new key ID and public key to the Connect
 trust roots before signing with it; key IDs cannot be relabeled after signing.
 
 ## 26. Immutability and Lifecycle
@@ -893,7 +893,7 @@ Once a Profile release is published beyond draft:
 - any modification produces a new sequential release version;
 - lifecycle promotion changes channel pointers and lifecycle state only, never the payload;
 - rollback moves a channel pointer to an earlier valid release;
-- revocation permanently invalidates the release across Cloud and Workspaces.
+- revocation permanently invalidates the release across Cloud and Workers.
 
 ## 27. Validation levels
 
@@ -926,7 +926,7 @@ Once a Profile release is published beyond draft:
 - representative assignment and Thread write where the Profile can write
   local files;
 - durable session start and resume when the Profile supports sessions;
-- bounded timeout and assignment cancellation through the Workspace process
+- bounded timeout and assignment cancellation through the Connect process
   tree supervisor.
 
 ### Draft testing lifecycle & signed-release invariant
@@ -937,12 +937,12 @@ The profile testing workflow incorporates an iterative draft testing lifecycle i
    - Represents a mutable, in-development draft profile stored locally in Profile Lab.
    - Evaluates `isSigned => false`.
    - Executed **strictly** within Profile Lab's isolated test sandbox via `PlatformProcessSupervisor`.
-   - **MUST NOT** enter Syntila Workspace's trusted profile store (`ToolProfileReleaseStore`), local worker registry, or Cloud scheduling.
+   - **MUST NOT** enter Syntila Connect's trusted profile store (`ToolProfileReleaseStore`), local worker registry, or Cloud scheduling.
 
 2. **Admitted Cryptographic Release (`ToolProfileReleaseAdmission`):**
    - Represents an immutable, published release signed by Syntila Cloud Ed25519 private key.
    - Evaluates `isSigned => true`.
-   - Syntila Workspace strictly requires `isSigned => true` for admission. Unsigned draft objects are rejected by static types and runtime verifiers (`WorkerTrustPolicy`).
+   - Syntila Connect strictly requires `isSigned => true` for admission. Unsigned draft objects are rejected by static types and runtime verifiers (`WorkerTrustPolicy`).
 
 3. **Evidence-Bound Transition:**
    - The supported Profile Lab sandbox emits an execution-contract result after applicable Engine scenarios pass. Cloud checks the submitted contract's identity, canonical digest, reported version ranges, freshness, and scenario map, then stores it for lifecycle gating. This is an authenticated client assertion, not remote attestation that a local provider binary executed the scenarios; see the [evidence contract](TOOL_PROFILE_EVIDENCE_CONTRACT.md).
@@ -1049,7 +1049,7 @@ app-server command, performs the JSON-RPC `initialize` handshake, then calls
 `defaultReasoningEffort` fields become the sanitized catalog. Codex `id` is the
 logical selection identity; `model` is retained as nativeId locally for CLI
 invocation (falling back to id when absent). Engine catalog v2 is stripped of
-nativeId before Workspace inventory publication; its public projection follows
+nativeId before Connect inventory publication; its public projection follows
 [Worker execution options v2](WORKER_EXECUTION_OPTIONS_V2.md). Runtime inventory
 supplies the matching versioned catalog; it cannot widen a Profile without that
 declaration. For discovery-backed Profiles, the runtime catalog is the only
@@ -1157,7 +1157,7 @@ A Profile may declare a top-level `usage` object:
   on a `usage.request` frame and answers with `usage.result` (`output`,
   `errorOutput`, `exitCode`, `truncated`). Terminal escape sequences are removed
   and each stream is capped at 64 KiB; nothing else is changed.
-- **Cloud, Workspace and the Engine never parse the report.** Providers
+- **Cloud, Connect and the Engine never parse the report.** Providers
   calculate usage differently, so the Profile owns how usage is read and the
   text travels unchanged. AX alone may normalize it for display
   (`worker_usage_parser.dart`): the format is detected from the text (Claude
@@ -1192,10 +1192,10 @@ A Profile may declare a top-level `usage` object:
   models, with no model call. `grok models` exits 0 even when signed out
   (it prints `You are not authenticated.`), so this check proves the CLI
   runs, not that it is signed in.
-  See the [local Copilot verification](../acceptance/real-provider/2026-10-23/copilot.md)
+  See the local Copilot verification
   for captured statistics, model/effort limits, and the framing distinction.
 - Cloud relays on demand: `POST /api/workspaces/:workspaceId/workers/:workerId/usage`
-  (Workspace owner only) sends `worker.usage.request`; the Service replies with
+  (Connect owner only) sends `worker.usage.request`; the Service replies with
   `worker.usage.result`. Results are never stored in Cloud or posted to a Thread.
 - AX exposes it as `Usage` in the composer `+` menu and as the `/usage` command.
 

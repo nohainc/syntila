@@ -2,13 +2,13 @@
 
 Status: implemented additive contract, 2026-10-11. Extends the existing Worker
 execution options and discovered catalog; it does not introduce a parallel
-model catalog or a provider runtime. Architecture v8 and the Workspace Service
+model catalog or a provider runtime. Architecture v8 and the Connect service
 ownership contract remain authoritative.
 
 ## Existing boundary, new version
 
 ```text
-Provider discovery → generic Engine → local catalog/cache → Workspace Service
+Provider discovery → generic Engine → local catalog/cache → Connect service
 → sanitized worker inventory → Cloud execution options → AX selectors
 ```
 
@@ -43,7 +43,7 @@ internal effort representation so existing controls continue to work.
 | CLI arguments, credentials, paths, native session data | Existing signed Profile/execution ownership | Not catalog fields | **Forbidden** |
 
 Local Worker Protocol remains a trusted machine-side execution boundary, not an
-AX API. Workspace inventory explicitly removes native IDs; its strict schema
+AX API. Connect inventory explicitly removes native IDs; its strict schema
 rejects a nativeId or any other undeclared implementation field. Cloud builds a
 public allowlisted projection instead of forwarding raw catalog objects.
 
@@ -136,7 +136,7 @@ identity; availability, mapping, Profile or CLI changes change it. It is an opaq
 identity, not a signature or authorization token. Local caches with explicit
 native fields verify this revision on load.
 
-Workspace strips native fields while preserving the original opaque revision.
+Connect strips native fields while preserving the original opaque revision.
 Cloud forwards it only for a schema-valid catalog matching the admitted Profile
 digest and installed CLI version. Version 1 catalogs and static Profiles receive
 a deterministic Cloud-derived SHA-256 revision over normalized catalog metadata,
@@ -146,7 +146,7 @@ may change revision once; schema version identifies the encoding.
 ## Additive migration and rollout
 
 Deploy readers first: shared protocol/Core readers and AX v1/v2 decoder, then
-Cloud v2 projection and inventory decoder, then Workspace/Engine v2 writers.
+Cloud v2 projection and inventory decoder, then Connect/Engine v2 writers.
 Do not enable v2 writers against an older Cloud inventory validator or deploy
 Cloud v2 projection before its AX decoder. No negotiation fallback or compatibility
 API is added to the unreleased architecture. A downgrade to old readers requires
@@ -154,7 +154,7 @@ rolling back writers and clearing/recreating only the unsupported **catalog
 cache** after preserving it; never reset an installation or Work Root.
 
 No D1 migration is required: the existing model_catalog_json stores the versioned
-object. Registry layout, installation/Workspace/runtime IDs, secure credentials,
+object. Registry layout, installation/Connect/runtime IDs, secure credentials,
 Work Root, Profiles and sessions are preserved. Existing Profile payloads remain
 immutable. Importing/signing/promoting the updated authoring candidate is a
 separate release operation. Generated Engine artifacts must be rebuilt when
@@ -168,12 +168,12 @@ shipping the new writer; no native app packaging or release signing was performe
 | Engine analysis and complete source test suite | Clean analysis; 42 passed, including actual fixture invocation of distinct logical/native Codex IDs, explicit ultra and omitted effort |
 | Local catalog protocol tests | 2 passed; v1/v2 roundtrip, native privacy, duplicate/default validation and revision behavior |
 | Shared Dart Profile options tests | 10 passed; additive selection mode and effort validation |
-| Workspace focused registry/inventory/discovery tests | 13 passed; persistence, eligible release/version filtering, stripped native fields |
+| Connect focused registry/inventory/discovery tests | 13 passed; persistence, eligible release/version filtering, stripped native fields |
 | AX focused selector/workflow tests | 8 passed; v1/v2 decoding, six effort values, invalid metadata, Auto and unavailable selections |
-| Changed AX files / Workspace / Profile Lab / Engine analysis | Clean |
+| Changed AX files / Connect / Profile Lab / Engine analysis | Clean |
 | Cloud and changed shared TypeScript packages | Type checks passed |
-| Workspace Service check | Compiled, started headlessly and stopped cleanly |
-| Generic Engine artifact build | Passed; refreshed Workspace and Profile Lab copies (no native app build) |
+| Connect service check | Compiled, started headlessly and stopped cleanly |
+| Generic Engine artifact build | Passed; refreshed Connect and Profile Lab copies (no native app build) |
 | Documentation links and diff whitespace | Passed |
 
 Component validation was attempted for each changed component and direct shared
@@ -188,7 +188,7 @@ package consumer. Broader suites are **not clean**:
 - Cloud/shared component test scope yielded 675 passed and one unchanged inventory
   fixture containing a forbidden legacy capabilities field. The additional
   installed-evidence test passed separately after that run.
-- Workspace analysis passed; full tests yielded 371 passed, 10 skipped and 20
+- Connect analysis passed; full tests yielded 371 passed, 10 skipped and 20
   failures, including legacy Profile/initialize capabilities fixtures, runtime
   lifecycle/filesystem expectations and subprocess checks. Focused changed-boundary
   tests and the separately invoked Service check pass.
@@ -271,13 +271,13 @@ also exercises transient discovery failure and recovery using its real local cac
 
 Engine component validation passed: protocol 28, signed Profile 25, CLI runtime
 18, Engine 46 tests. The standalone Service compile/start/stop smoke check passed.
-Workspace focused tests 18, AX model/workflow tests 15 and focused TS contract tests
+Connect focused tests 18, AX model/workflow tests 15 and focused TS contract tests
 21 passed. Cloud, Core and runtime protocol type checks, changed-file analysis,
 document links and diff checks passed. This scope follows the changed shared
 protocol/runtime packages into their direct consumers and exercises the headless
 publication boundary rather than relying on GUI state.
 
-Broader checks retain prior unrelated failures: Workspace format/analysis clean,
+Broader checks retain prior unrelated failures: Connect format/analysis clean,
 376 passed, 10 skipped, 20 legacy fixture/lifecycle failures; Cloud/shared selected
 component scope 206 passed and one forbidden-`capabilities` inventory fixture
 failure; AX component stops on pre-existing app-state/cache formatting; Profile
@@ -289,7 +289,7 @@ The public/runtime stale indicators are optional additive fields in the existing
 v2 contract. Deploy readers before emitters when updating components separately.
 Engine supervisor admission now declares 1.2.0 consistently with its compiled
 artifact, correcting the previous 1.1.0 declaration. No registry schema reset,
-replacement Workspace, database migration, credential change, Work Root change,
+replacement Connect, database migration, credential change, Work Root change,
 Profile promotion or historical-record rewrite is needed. Provider file/version
 changes are detected on the next background pass (normally within one minute),
 or immediately through an explicit refresh. Disconnect Cloud retains local
@@ -305,7 +305,7 @@ and the reported provider version. Invalid or mismatched metadata clears the
 current catalog; historical Work snapshots are retained. Duplicate Worker IDs
 reject a snapshot before any writes or omission pruning. Local inventory
 revisions remain monotonic and ownership remains bound to the authenticated
-Workspace.
+Connect.
 
 For v2 discovery catalogs, Cloud preserves the published selection mode,
 effort values, defaults, availability and catalog revision. Provider-specific
@@ -320,7 +320,7 @@ catalog; new clients can pin their reviewed catalog. A mismatched revision or
 stale catalog rejects new selections with an explicit refresh error. Resolved
 bindings carry the revision into Work snapshots. Both admission and scheduling
 validate the exact model/effort pair against the current Worker/profile binding;
-scheduling rechecks capability validity before dispatch. Existing Workspace,
+scheduling rechecks capability validity before dispatch. Existing Connect,
 Worker ownership, grant, profile-release and live-connection checks still apply.
 No default effort or alternate model is substituted. Unchanged unavailable
 workflow preferences can be saved as historical intent, but cannot execute.
@@ -333,7 +333,7 @@ Deploy Cloud/runtime v2 readers first, then services that publish v2, and only
 then AX revision-dependent writes. Do not bulk delete v1 records before every
 supported service has refreshed successfully. Each successful v2 snapshot
 replaces its legacy record in place; rollback requires capability refresh,
-not rewriting historical Work or resetting Workspace identity. This phase
+not rewriting historical Work or resetting Connect identity. This phase
 adds optional JSON fields and ingestion validation; it requires no D1 schema
 migration and performs no production deployment.
 
@@ -347,7 +347,7 @@ focused tests passed 29 tests. AX component validation remains blocked by
 pre-existing formatting in `ax_app_state.dart`; changed-file analysis reports
 one pre-existing cache-codec style warning and no errors. These scopes cover
 the changed Cloud boundary, direct shared-contract consumers and AX cache;
-no Workspace/Engine behavior or native packaging changed in this phase.
+no Connect/Engine behavior or native packaging changed in this phase.
 
 ## Phase 6: shared Flutter Model/Effort selection
 
@@ -357,9 +357,9 @@ v1/v2 public contract; it does not introduce another wire catalog. Native IDs,
 argument templates and signed payloads are absent from these presentation types.
 `syntila_design/ModelEffortSelector` supplies the shared Flutter controls.
 
-AX workflow defaults and step overrides, AX transient request settings, Workspace
+AX workflow defaults and step overrides, AX transient request settings, Connect
 Service-catalog inspection, and Profile Lab's trusted proposal dialog use this
-component. Workspace uses read-only mode and continues to fetch capabilities
+component. Connect uses read-only mode and continues to fetch capabilities
 only through authenticated Service IPC. AX uses a compact dialog for request
 settings. Profile Lab groups choices by trusted profile release, projects actual
 discovered efforts and availability, and passes the selected pair through the
@@ -389,7 +389,7 @@ Worker's catalog. Cloud's transient-selection reader now accepts the same option
 revision as workflow preferences; deploy this Cloud reader before the updated AX
 client. Legacy selections without pins remain readable. Existing unavailable
 preferences remain historical intent; Cloud still authorizes each execution.
-No persistence schema migration, Worker/Workspace identity reset, credential
+No persistence schema migration, Worker/Connect identity reset, credential
 change, or native packaging change is required.
 
 ### Phase 6 verification and limits
@@ -397,13 +397,13 @@ change, or native packaging change is required.
 The shared design package passed all 15 tests, including keyboard selection,
 semantic labels, dependent effort retention/reset, unavailable saved choices,
 inheritance, freshness and read-only presentation. The pure Dart protocol package
-passed 10 tests. Direct client scopes passed AX 34, Workspace 9 and Profile Lab
+passed 10 tests. Direct client scopes passed AX 34, Connect 9 and Profile Lab
 17 tests. Profile Lab coverage invokes the compiled generic Engine with a fixture
 provider and checks exact model/effort arguments. AX integration covers restored
 unavailable selections and local revision persistence.
 
 Changed-file analysis is clean. The three component checks were attempted:
-Workspace formatting/analysis passed and tests reported 377 passed, 10 skipped,
+Connect formatting/analysis passed and tests reported 377 passed, 10 skipped,
 20 existing legacy fixture/lifecycle failures; Profile Lab formatting/analysis
 passed and tests reported 151 passed with two existing first-run fixture failures;
 AX still stops on existing `ax_app_state.dart` formatting. Cloud regression for
@@ -421,7 +421,7 @@ dependent AX writes; this implementation does not deploy or promote a Profile.
 
 ## Phase 7 — application surfaces
 
-Workspace uses the shared read-only catalog presentation, including each model's
+Connect uses the shared read-only catalog presentation, including each model's
 supported efforts, known provider default, availability, loading and stale state.
 Refresh is available even when the catalog is missing and uses the existing
 management action lifecycle; the GUI remains a Service client. No worker
@@ -444,11 +444,11 @@ current catalog by this change.
 
 
 Phase 7 verification: shared selector widget tests (8), AX Workflow/Work
-integration tests (15), Workspace catalog/worker-view tests (10), and Core
+integration tests (15), Connect catalog/worker-view tests (10), and Core
 conversation-router tests (19) pass. Targeted Dart analysis of the selector,
-AX surfaces and Workspace management UI is clean. This scope checks field
+AX surfaces and Connect management UI is clean. This scope checks field
 permissions, inheritance, defaults, missing/stale/loading catalogs, saved
-invalid selections and the existing model-switch routing policy. Workspace
+invalid selections and the existing model-switch routing policy. Connect
 component validation reports 377 passing, 10 skipped and the same 20 existing
 fixture/lifecycle failures; its management UI tests pass. AX component validation
 still stops at the pre-existing `ax_app_state.dart` formatting difference.
@@ -532,11 +532,11 @@ Migration `0037_immutable_execution_selection.sql` adds a guard to the fresh v8
 baseline that prevents assignment selection/attribution rewrites while permitting
 status/result and unrelated context updates. It preserves existing records and
 performs no label/default backfill. Apply the migration and deploy public readers
-before relying on the new writer fields, then update Workspace Service together
+before relying on the new writer fields, then update Connect service together
 with its supervised Engine 1.3.0 artifact. Dynamic-catalog Workers still running
 older Engines receive a clear update-required scheduling rejection. Static
 Profile selections remain compatible through their signed-release binding.
-No installation ID, Workspace identity, credential, Work Root or session reset is
+No installation ID, Connect identity, credential, Work Root or session reset is
 required. No production migration or deployment was performed here.
 
 
@@ -552,10 +552,10 @@ required. No production migration or deployment was performed here.
   admission, immutable historical labels and selection rewrite prevention.
 - AX history/cache tests pass (40) and both historical Work/Chat label widget
   cases pass (2). Cache rehydration retains frozen labels, effort and revision.
-- Workspace execution/lifecycle/headless publication tests pass (13); Service
+- Connect execution/lifecycle/headless publication tests pass (13); Service
   compilation and headless start/stop pass. Direct Profile Lab runtime consumers
   pass (10). Cloud binding types and all six relevant TypeScript checks pass.
-- Broader Workspace validation reports 378 passing, 10 skipped and the same 20
+- Broader Connect validation reports 378 passing, 10 skipped and the same 20
   existing fixture/lifecycle failures. AX component validation still stops at the
   pre-existing `ax_app_state.dart` formatting difference; targeted cache analysis
   has one existing style info outside the changed serialization fields.
@@ -591,15 +591,15 @@ overflow exposed by AX component validation.
 | Codex per-model effort metadata | Engine `model_discovery_test.dart`, `native_model_execution_test.dart` |
 | Gemini combined identifiers and exact reverse mapping | Engine `combined_model_execution_test.dart` exercises all 11 mapped pairs |
 | Model change and no-effort provider | Dart domain and shared selector tests |
-| Offline saved selections and execution gating | Workspace capability lifecycle, catalog coordinator and dynamic Worker acceptance; Cloud scheduler tests |
-| Profile changes, rollback and catalog revision | Workspace capability lifecycle; Cloud catalog inventory binding and scheduler tests |
+| Offline saved selections and execution gating | Connect capability lifecycle, catalog coordinator and dynamic Worker acceptance; Cloud scheduler tests |
+| Profile changes, rollback and catalog revision | Connect capability lifecycle; Cloud catalog inventory binding and scheduler tests |
 | Workflow default/step override precedence | Core workflow configuration, Cloud workflow execution configuration and AX workflow integration tests |
 | Existing session compatibility | Engine Worker session/release compatibility tests |
 | Immutable historical execution | Cloud assignment snapshot and conversation tests; AX Work history and persistent cache tests |
 | Migration and retired fields | SQLite capability removal migration tests, immutable assignment trigger tests, strict runtime protocol tests |
 
 Real installation evidence is retained in
-[the execution acceptance record](../acceptance/real-provider/2026-10-11/model-effort-execution.json).
+the execution acceptance record.
 Codex 0.160.0 and `agy` 1.3.3 each passed provider-default smoke execution and
 explicit low/high execution on one discovered family. The generic Engine's
 private snapshots matched each logical pair, native identifier and catalog
@@ -611,9 +611,9 @@ published and no production database migration was applied.
 
 Validation uses the full directly affected components and packages, rather than
 native app packaging: Cloud/shared TypeScript tests, all shared Dart/presentation
-checks, AX, Workspace, Profile Lab, Engine and standalone headless Service checks.
+checks, AX, Connect, Profile Lab, Engine and standalone headless Service checks.
 `pnpm check` was explicitly attempted but stopped at existing architecture guards
-for Workspace configuration names, a diagnostic `configuredWorkers` key, the
+for Connect configuration names, a diagnostic `configuredWorkers` key, the
 nullable installation lock helper and the headless development build guard.
 This repository-wide gate remains unresolved; successful component results do
 not imply `pnpm check` passed. No retired database fields are dropped by this
@@ -622,7 +622,7 @@ until the additive catalog rollout is complete.
 
 
 Final Phase 9 executable results: Cloud/shared TypeScript 696 passed across 106
-files; AX 659 passed; Workspace 398 passed with 14 opt-in live tests skipped in
+files; AX 659 passed; Connect 398 passed with 14 opt-in live tests skipped in
 the routine component run; Profile Lab 154 passed. Shared Dart domain 10,
 Local Worker Protocol 30, runtime 18, signed Profile package 25, Engine 48 and
 shared presentation 17 tests passed, with formatting and analysis clean.

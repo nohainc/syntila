@@ -487,7 +487,7 @@ surfaces those counts separately as a short Test summary.
 details when encryption is configured. Display in the Work UI is a separate
 phase. The target semantics, credential boundary, rollout and verification are
 specified in
-[Provider failure details](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md).
+Provider failure details.
 
 ### Provider failure details contract (Phase 1)
 

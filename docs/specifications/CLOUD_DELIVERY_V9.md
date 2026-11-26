@@ -4,7 +4,7 @@
 
 ## Transport ownership
 
-Cloud keeps one Workspace transport with two interchangeable delivery modes:
+Cloud keeps one Connect transport with two interchangeable delivery modes:
 
 | Mode | Use | Reliability rule |
 | --- | --- | --- |
@@ -56,20 +56,20 @@ command queued → assignment acknowledged → provider started → terminal out
 
 The final capacity guard is an atomic conditional insert. It counts only
 `created`, `dispatched`, `acknowledged`, and `running` assignments for the same
-Workspace Worker, so concurrent dispatches cannot both claim the final slot.
+Connect Worker, so concurrent dispatches cannot both claim the final slot.
 Terminal states release the slot through the same persisted assignment row.
 
 ## Terminal delivery
 
 The terminal path is durable at both ends:
 
-1. Workspace writes the local journal terminal record before sending it.
+1. Connect writes the local journal terminal record before sending it.
 2. Cloud validates the complete assignment and attempt identity.
 3. Cloud records the assignment and task terminal projection idempotently.
 4. Cloud sends a terminal acknowledgement containing the persisted status.
-5. Workspace marks the journal delivery reconciled only after that acknowledgement.
+5. Connect marks the journal delivery reconciled only after that acknowledgement.
 
-If the transport or acknowledgement is lost, Workspace resends the same
+If the transport or acknowledgement is lost, Connect resends the same
 assignment and attempt identity during synchronization. Repeated terminal
 delivery is a no-op after the first terminal transition. A previous attempt,
 foreign runtime, or terminal assignment cannot rewrite the current outcome.
@@ -101,11 +101,11 @@ from a missing activity event.
 
 The Cloud workflow enforces the acceptance and startup windows before the
 configured execution deadline. Scheduled recovery also handles cancelled Work
-Requests, expired Workspace grants, disconnected runtimes, and execution
+Requests, expired Connect grants, disconnected runtimes, and execution
 deadlines. All recovery writes use the same terminal transition guard as normal
 terminal deliveries, so recovery is safe to repeat after a retry or isolate
 restart.
 
-The compatibility boundary remains the existing Workspace Runtime Protocol.
+The compatibility boundary remains the existing Connect Runtime Protocol.
 No additional network channel or provider-specific Cloud executable is
 introduced by Phase 5.

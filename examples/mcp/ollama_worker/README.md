@@ -28,7 +28,7 @@ fit, because Ollama truncates an oversized prompt without an error. Ollama error
 
 ## Run it as an External Worker
 
-Package it and attach it to the Workspace as a Worker. Once enabled it is an
+Package it and attach it to the Connect as a Worker. Once enabled it is an
 ordinary local Worker: it is listed, checked and scheduled like any other.
 
 ```sh

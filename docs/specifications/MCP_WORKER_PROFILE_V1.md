@@ -58,7 +58,7 @@ Output (`structuredContent`; text content mirrors `text`):
   `prompt` remains the complete assembled prompt and may be used by an agent
   Worker. If the separate representation is unavailable, `request` falls back
   to the assembled request; Workers must continue to support `prompt` alone.
-  On the Workspace-to-Engine connection, the extra input is sent only when the
+  On the Connect-to-Engine connection, the extra input is sent only when the
   External Worker Engine advertises `external_conversation_v1` at initialize
   and the combined frame fits the protocol limit. Oversize frames retain the
   complete assembled prompt and use the existing request fallback.
@@ -77,7 +77,7 @@ Output (`structuredContent`; text content mirrors `text`):
   native-session Worker uses the session key and mode and applies a delta on
   resume; Syntila decides when synchronization or reconstruction is needed.
   The Engine omits `execution` when a Worker's tool schema disallows it.
-  The Workspace omits workflow metadata when the Engine does not advertise
+  The Connect omits workflow metadata when the Engine does not advertise
   `external_execution_v1`; older Workers retain their existing prompt.
 - `access: restricted` is advisory to the server; Syntila does not claim
   enforcement (ADR-027 §3). A read-only Step is still scheduled on an External

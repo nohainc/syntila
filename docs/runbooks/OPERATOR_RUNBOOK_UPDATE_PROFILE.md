@@ -34,20 +34,20 @@ conflict; refresh and compare before retrying.
 V9 Profiles are not cryptographically signed and have no testing, beta, or
 stable channels. The Profile payload is protected by canonical digest
 validation, schema validation, Engine compatibility checks, authenticated
-publication, and Workspace-side verification before activation. macOS app
-signing and Workspace application-release signing are separate mechanisms.
+publication, and Connect-side verification before activation. macOS app
+signing and Connect application-release signing are separate mechanisms.
 
 ## Restore a previous snapshot
 
 Open **History**, compare the prior revision with the current Profile, and
 choose **Restore**. Restoration creates a new current revision with the
 specified reason; it does not expose the old snapshot as another active
-channel. Workspace executions already in progress keep their selected Profile
+channel. Connect executions already in progress keep their selected Profile
 digest until completion.
 
-## Workspace behavior
+## Connect behavior
 
-Workspace periodically refreshes the current Profile and retains the current
+Connect periodically refreshes the current Profile and retains the current
 verified snapshot plus one last-known-good snapshot. It can continue using an
 authorized cached Profile during a temporary Cloud outage where policy permits.
 Explicit revocation still blocks activation and cannot be bypassed by the
@@ -64,4 +64,4 @@ automatically publish local edits.
 
 See [WORKER_PROFILE_V9.md](../specifications/WORKER_PROFILE_V9.md) for the
 canonical contract and RELEASE_TRUST_AND_ROTATION.md
-for the separate Workspace application-release trust model.
+for the separate Connect application-release trust model.

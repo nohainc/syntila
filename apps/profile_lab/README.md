@@ -9,7 +9,7 @@ This README is for developers and authorized operators. The normative product an
 - **Profile Lab** authors one local candidate per Worker, runs the complete local test ladder, and requests Cloud validation/publication for that exact candidate digest.
 - **The CLI Worker Engine** executes Profile-defined behavior using provider CLI programs installed on the operator's Mac. Provider behavior belongs in Worker and Tool Profile data, not provider-specific app branches.
 - **Syntila Cloud** owns the Worker catalog, one current Profile, bounded history, digest metadata, authorization, audit records, and atomic publication. Profile Lab uses Cloud APIs and has no direct database access.
-- **Syntila Workspace** runs admitted, digest/schema-validated Profile snapshots and owns local Work Roots and execution sessions. Profile Lab is not a Workspace: it does not accept Work assignments or own Work Roots.
+- **Syntila Connect** runs admitted, digest/schema-validated Profile snapshots and owns local Work Roots and execution sessions. Profile Lab is not a Connect: it does not accept Work assignments or own Work Roots.
 - Provider CLI login and credentials stay with the locally installed provider CLI. Profile Lab does not collect or store provider API keys.
 
 ## Local development

@@ -26,14 +26,14 @@ changed during that rehearsal.
 ## Reconcile Thread fences after a database restore
 
 Restoring Cloud state can also move `threads.lease_fence_counter` behind the
-Workspace's durable per-Thread fence. Execution then fails before provider
+Connect's durable per-Thread fence. Execution then fails before provider
 startup with `SpaceMutationViolation: stale or conflicting Space fencing token`.
 This is a coordination-state failure, not a provider authentication failure.
 
 Back up the database using SQLite's backup API. Match each local
 `space-fences/<spaceId>/<threadId>.json` record against both Cloud identities.
 Within a transaction, and only for Threads with no unreleased leases, raise the
-Cloud counter to `MAX(current counter, recorded Workspace fencingToken)`. The
+Cloud counter to `MAX(current counter, recorded Connect fencingToken)`. The
 next lease will increment it. Never lower counters, delete local fences, clear
 sessions, or bypass the fence check. Audit all restored Threads rather than
 repairing only the first reported failure. The repair must not retry a failed

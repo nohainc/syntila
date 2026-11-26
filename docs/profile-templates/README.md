@@ -19,4 +19,4 @@ Cloud Profile.
 
 Grok release 1 remains an authoring candidate. Installed-CLI evidence, validation
 results and open qualification gates are recorded in
-[the Grok acceptance note](../acceptance/real-provider/2026-10-23/grok.md).
+the Grok acceptance note.

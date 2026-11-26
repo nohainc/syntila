@@ -5,7 +5,7 @@ is preparing Fieldnotes, an imaginary app for collecting and organizing ideas.
 The [scene script](scenes.md) is reusable; it is not evidence that an execution,
 rehearsal, or capture exists.
 
-Do not use or alter the existing personal account, its data, or its Workspace
+Do not use or alter the existing personal account, its data, or its Connect
 configuration. Use ordinary demo accounts and product workflows. The initial
 plan called for isolated rehearsal before production; the user subsequently
 authorized creation of three production demo accounts and direct activation.
@@ -24,13 +24,13 @@ any addresses used for invitations; do not assume demo mailboxes exist. Use defa
 Never put addresses, credentials, tokens, or sensitive local paths in this guide
 or captured images.
 
-Local rehearsal needs an isolated backend and separate demo Workspace. Worker
+Local rehearsal needs an isolated backend and separate demo Connect. Worker
 execution additionally requires a verified current Profile, an available model,
 provider CLI authentication, and readiness. ChatGPT and Gemini are documented
 first-party Workers, not guaranteed available choices. Choose from the live
 catalog; never claim an execution succeeded without observing it. Provider
-sign-in and demo Workspace preparation are separate actions; do not modify the
-personal Workspace.
+sign-in and demo Connect preparation are separate actions; do not modify the
+personal Connect.
 
 ## Capture and refresh guide
 
@@ -59,7 +59,7 @@ execution is unavailable, record the blocker and defer that shot.
    Android platform tools are installed. Availability in a list does not prove
    that a build, runtime, connection or sign-in works. Use the build instructions
    in the [app README](../../apps/app/README.md); do not install or modify the
-   personal Workspace. If a target cannot run, defer its captures.
+   personal Connect. If a target cannot run, defer its captures.
 3. For every image record in a non-secret capture log: date, scene number,
    destination, environment, build/version, device or simulator and OS, actual
    viewport and pixel dimensions, scale, theme, orientation, and reviewer. For
@@ -126,16 +126,16 @@ accepting the invitations for these fictional accounts.
   **Launch checklist** Threads in Northstar Studio, and **Visual direction** in
   Fieldnotes Design. Add the scripted fictional overview and human messages
   through the product as the respective demo participants.
-- [ ] Prepare and connect a separate approved demo Workspace, verified current Worker
+- [ ] Prepare and connect a separate approved demo Connect, verified current Worker
   Profiles, and provider CLI authentication; select available approved Workers
-  and models. Do not change the existing personal Workspace or its credentials.
+  and models. Do not change the existing personal Connect or its credentials.
 - [ ] Submit the two scripted Chat workflow prompts and the scripted Work
   execution prompt in their respective Threads. Review actual outputs and use
   only suitable completed results; no success is guaranteed.
 - [ ] Capture and review the six scenes on approved devices, then store or share
   only the approved images at the approved destination. Exclude sensitive data.
 - [ ] Decide and approve retention or cleanup of the demo accounts, Spaces,
-  Workspace, provider sessions, and captures separately; do not delete or
+  Connect, provider sessions, and captures separately; do not delete or
   revoke anything merely because the demo is complete.
 
 Approval of this proposal is not approval to perform production actions. Record
@@ -148,7 +148,7 @@ The launcher defaults to isolated local D1, but it reuses local state and a
 persistent browser profile; it does not create a clean demo environment. Do not
 use `--proxy`, which reaches production. A safe rehearsal requires a separately
 prepared local database, browser sessions for all three participants, and demo
-Workspace, with no personal state or credentials. The launcher alone does not
+Connect, with no personal state or credentials. The launcher alone does not
 provide those separate resources. Do not reset or migrate an existing local
 database to make room for the demo.
 
@@ -163,7 +163,7 @@ No production interaction was performed during that fixture check. Production
 demo accounts were created separately after the user changed direction. See the scene-by-scene record in
 [scenes.md](scenes.md).
 
-## Separate demo Workspace and Worker setup
+## Separate demo Connect and Worker setup
 
 This section is guidance, not a record that setup or sign-in occurred. Use a
 separate demo machine, or an installation demonstrably isolated at the OS-user,
@@ -173,10 +173,10 @@ is not sufficient. If these boundaries cannot be established, stop and use a
 separate machine. Do not run setup, login, register, reset, logout, disconnect,
 or configuration changes on the existing personal installation. A local build's
 separate application state alone does not isolate provider credentials or Work
-Root; a local backend also cannot serve a production demo Workspace.
+Root; a local backend also cannot serve a production demo Connect.
 
 1. Before setup, the user records non-secret baseline evidence of the personal
-   installation: machine/OS user, Workspace name and status, configured Work
+   installation: machine/OS user, Connect name and status, configured Work
    Root, registered service identity, and enabled Workers. Avoid credentials,
    token values and sensitive paths in shared notes. Do not stop or modify it.
    Identify the demo machine, OS user, separate Work Root, target Cloud, and
@@ -184,16 +184,16 @@ Root; a local backend also cannot serve a production demo Workspace.
 2. On the isolated demo installation, the user signs in as the demo owner using
    `syntila login`, then registers with `syntila register`, or uses `syntila
    setup` for the guided lifecycle. Start the service and connect using the
-   Workspace CLI guidance; set and verify a separate Work Root on the demo
+   Connect CLI guidance; set and verify a separate Work Root on the demo
    installation. Inspect `syntila status` and `syntila work-dir`. Check plan and
-   account limits before registration; do not unregister another Workspace to
+   account limits before registration; do not unregister another Connect to
    make room. The user controls the sign-in and any credentials.
-3. As the demo Space owner in Syntila, select the demo owner's Workspace in the
+3. As the demo Space owner in Syntila, select the demo owner's Connect in the
    Space **Workflows** tab and configure the needed workflows and Workers. The
    selection creates or repairs the internal execution grant; this is not a
-   separate member permission or personal Workspace sharing grant. Confirm the
+   separate member permission or personal Connect sharing grant. Confirm the
    actual controls and effective authorization during approved setup; this flow
-   has not been rehearsed here. See Workspace Space Grants.
+   has not been rehearsed here. See Connect Space Grants.
 4. Install each provider CLI separately on the demo machine under the isolated
    OS user, following the provider's current instructions. The user signs in
    separately to Codex CLI for ChatGPT and Antigravity CLI for Gemini, if used,
@@ -208,14 +208,14 @@ Root; a local backend also cannot serve a production demo Workspace.
    and readiness reported. Resolve failures through normal diagnostics, never by
    bypassing Profile validation. A live test may use provider resources.
 6. At setup time record only non-secret evidence: date, target environment,
-   demo Workspace identity, Space selection/grant outcome, each available Worker
+   demo Connect identity, Space selection/grant outcome, each available Worker
    and model name, readiness, and any blocker. Prefer ChatGPT and Gemini if both
    are available and suitable. Otherwise use two supported models if available;
    defer scene 4 if there is no second suitable choice. Model availability is
    dynamic, and catalog presence alone does not prove execution readiness.
    Chat requires a Profile admitted for read-only Chat: the current Antigravity
    starter is not verified for that capability. Do not assume Gemini can run
-   Chat; see [Chat acceptance](../acceptance/CHAT_WORKFLOW.md).
+   Chat; see Chat acceptance.
 7. In the demo Thread select the eligible Worker/model and workflow. Scenes 3
    and 4 use read-only Chat; scene 5 uses Work. A successful scene 5 produces a
    concise checklist grouped by owner with store copy, visual review,
@@ -251,7 +251,7 @@ actual authorization controls. Maya creates **Launch plan**, **App Store copy**,
 **Website messaging**, **Launch checklist**, and **Visual direction** in the
 Spaces indicated in [the script](scenes.md). Each participant posts only their
 scripted messages; the owner submits the three exact prompts in that script.
-Maya selects an independently isolated demo Workspace for the Space Workflows;
+Maya selects an independently isolated demo Connect for the Space Workflows;
 the user signs in to any provider CLIs. Use the available eligible Worker and
 model for Chat, a second available Worker or model for the second Chat scene,
 and a ready Worker for the Work checklist. Capture and review the six scenes as
@@ -263,13 +263,13 @@ Threads. Leo and Amara were invited and accepted membership in both Spaces;
 all three accounts signed in. The scripted overview, three discussion messages,
 and visual direction message were posted by the intended participants. The
 invitation endpoints succeeded; delivery to a mailbox was not verified. Default
-avatars were retained. No personal account or Workspace was used for these
+avatars were retained. No personal account or Connect was used for these
 operations.
 
 Still pending: an independently isolated demo machine or installation and Work
-Root, demo-owner Workspace registration and authorization, user-controlled
+Root, demo-owner Connect registration and authorization, user-controlled
 provider sign-ins, actual Worker/model readiness, the three AI requests, and
-reviewed captures. No provider sign-in, Workspace setup, AI execution or capture
+reviewed captures. No provider sign-in, Connect setup, AI execution or capture
 was performed in this phase. Account and provider plan eligibility and costs
 remain to be checked. Continue to keep the existing personal account, its data,
-Workspace and provider sessions unchanged.
+Connect and provider sessions unchanged.

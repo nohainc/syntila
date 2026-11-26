@@ -14,9 +14,9 @@ publication transaction. Cloud revalidates the payload, evidence, candidate
 digest, and expected revision before storing the new current snapshot and
 history record.
 
-V9 Profiles are not cryptographically signed. Workspace verifies the canonical
+V9 Profiles are not cryptographically signed. Connect verifies the canonical
 payload digest, schema, Worker identity, and Engine compatibility before
-activation. Workspace application releases retain their separate native
+activation. Connect application releases retain their separate native
 release-signing mechanism. There are no Profile testing, beta, or stable
 channels; previous snapshots are inspected or restored as a new current
 revision. Provider credentials remain local to the provider CLI, and local
@@ -31,7 +31,7 @@ not an active API, storage, or runtime contract.
 
 Syntila Profile Lab is an internal macOS desktop application (`apps/profile_lab`) dedicated to authoring, validating, sandbox testing, publishing, promoting, rolling back, and revoking Syntila Tool Profiles and Logical Workers.
 
-Under Architecture v8, provider-specific Worker executables are replaced by one generic CLI Worker Engine (`engines/cli_worker`) configured by signed, immutable Tool Profiles. Vendor CLI tools evolve rapidly. Profile Lab is the operational control surface that enables engineers and maintainers to keep provider CLI integrations up to date without releasing new Workspace application binaries.
+Under Architecture v8, provider-specific Worker executables are replaced by one generic CLI Worker Engine (`engines/cli_worker`) configured by signed, immutable Tool Profiles. Vendor CLI tools evolve rapidly. Profile Lab is the operational control surface that enables engineers and maintainers to keep provider CLI integrations up to date without releasing new Connect application binaries.
 
 ### Current release controls
 
@@ -47,7 +47,7 @@ Syntila enforces a strict separation across four distinct product surfaces:
 
 ```text
 +-----------------------+      +-----------------------+      +-----------------------+
-|      Syntila      |      |   Syntila Workspace  |      |  Syntila Profile Lab |
+|      Syntila      |      |   Syntila Connect  |      |  Syntila Profile Lab |
 +-----------------------+      +-----------------------+      +-----------------------+
 | Human orchestration   |      | Local Work Root &     |      | Profile engineering   |
 | Spaces & Threads|      | reliable execution    |      | Draft authoring       |
@@ -65,8 +65,8 @@ Syntila enforces a strict separation across four distinct product surfaces:
 ### Boundary Rules:
 1. **Syntila:** Web application for human space orchestration. Displays catalog workers and local readiness. Exposes zero profile editing or administration.
 2. **Syntila Cloud:** Multi-tenant authoritative backend. Manages `worker_catalog`, `tool_profile_definitions`, `tool_profile_releases`, release channels, and Ed25519 cryptographic signatures. Executes zero provider tools.
-3. **Syntila Workspace:** Background-first native desktop machine runtime. Manages local Work Roots, process tree execution, and local worker readiness. Consumes **only** cryptographically signed, admitted Tool Profile Releases.
-4. **Syntila Profile Lab:** Administrative desktop engineering application. Authors and tests unsigned local Draft Profile candidates against installed provider CLIs in an isolated sandbox. Exposes full release lifecycle management. **Never registers as an execution Workspace, never accepts Work assignments, and never owns Space Work Roots.**
+3. **Syntila Connect:** Background-first native desktop machine runtime. Manages local Work Roots, process tree execution, and local worker readiness. Consumes **only** cryptographically signed, admitted Tool Profile Releases.
+4. **Syntila Profile Lab:** Administrative desktop engineering application. Authors and tests unsigned local Draft Profile candidates against installed provider CLIs in an isolated sandbox. Exposes full release lifecycle management. **Never registers as an execution Connect, never accepts Work assignments, and never owns Space Work Roots.**
 
 ---
 
@@ -86,7 +86,7 @@ Generic CLI Worker Engine (`engines/cli_worker`)
 Provider CLI (local executable binary)
 ```
 
-No Worker identity (such as `chatgpt` or `gemini`) is hardcoded in Profile Lab, Workspace, or AX. Syntila Cloud is the sole authority for catalog descriptors and profile bindings. Adding a new Worker in Profile Lab makes it discoverable by Workspaces and selectable in AX without application redeployment or code modifications.
+No Worker identity (such as `chatgpt` or `gemini`) is hardcoded in Profile Lab, Connect, or AX. Syntila Cloud is the sole authority for catalog descriptors and profile bindings. Adding a new Worker in Profile Lab makes it discoverable by Workers and selectable in AX without application redeployment or code modifications.
 
 The Create Worker form starts new catalog entries in the `testing` release stage and offers only `testing`, `beta`, or `stable`. Worker and Profile capability arrays are not authored here; workflow eligibility and access policy are Cloud-owned. The v8 development cutover removed releases that contained the retired top-level `capabilities` field. New drafts and releases are rejected if they contain that field.
 
@@ -96,7 +96,7 @@ Profile Lab builds default to `https://syntila.app`. Development builds can set 
 
 ### Profile Lab application boundaries
 
-The `ProfileLabController` remains the UI-facing façade, with draft editing and sync, Engine testing, session handling, and Cloud administration implemented in separate controller components. `ProfileAdminApiClient` decodes Cloud reads into typed read models for Workers, definitions, releases, evidence, audit events, channel pointers, Workspace assignments, and signing preflight. The Tool Profile payload remains an open JSON object because its schema evolves independently. The controller converts Cloud read models to JSON-shaped presentation state for the Worker lifecycle views; no legacy navigation or compatibility pages are retained. New application logic should use typed read model fields directly.
+The `ProfileLabController` remains the UI-facing façade, with draft editing and sync, Engine testing, session handling, and Cloud administration implemented in separate controller components. `ProfileAdminApiClient` decodes Cloud reads into typed read models for Workers, definitions, releases, evidence, audit events, channel pointers, Connect assignments, and signing preflight. The Tool Profile payload remains an open JSON object because its schema evolves independently. The controller converts Cloud read models to JSON-shaped presentation state for the Worker lifecycle views; no legacy navigation or compatibility pages are retained. New application logic should use typed read model fields directly.
 
 ---
 
@@ -171,7 +171,7 @@ Cloud owns `tool_profile_starter_templates`, keyed by `profile_definition_id`,
 with schema version, v1 Profile JSON and update timestamp. The fresh v8 baseline
 and development seed include the tested `chatgpt-codex` and `gemini-antigravity`
 v1 fixture payloads. Templates are mutable authoring data, carry no qualification
-or signature, and are absent from Workspace APIs and storage. Normal local tests,
+or signature, and are absent from Connect APIs and storage. Normal local tests,
 Cloud sync, qualification, signing and rollout remain required. The definition
 response’s nullable `starterTemplate` contains `{schemaVersion: 1, profile: ...}`.
 The v8 baseline is updated in place; existing development databases must be
@@ -192,7 +192,7 @@ signing flow.
 Profile Lab allows engineers to author and iteratively refine Draft Profiles before requesting a signed release:
 
 - **Local Draft Store (`DraftProfileStore`):** Persists draft configurations locally under Profile Lab's dedicated application support directory (`~/Library/Application Support/syntila_profile_lab/drafts/`).
-- **Unsigned Draft Candidate (`LocalDraftProfileCandidate`):** Implements `ToolProfileCandidate` with `isSigned => false`. Unsigned drafts are strictly barred from entering Workspace's trusted profile store (`ToolProfileReleaseStore`).
+- **Unsigned Draft Candidate (`LocalDraftProfileCandidate`):** Implements `ToolProfileCandidate` with `isSigned => false`. Unsigned drafts are strictly barred from entering Connect's trusted profile store (`ToolProfileReleaseStore`).
 - **Sandbox Test Supervisor:** Uses `PlatformProcessSupervisor` from `syntila_cli_worker_runtime` to run tests out of process with hard execution deadlines, process tree cleanup, and secret redaction (`SafeProviderDiagnostics`).
 - **Progressive Test Ladder:** Keeps schema, Engine compatibility, executable discovery, version, passive probe, and live probe as preflight stages. It then submits actual assignments through the generic CLI Worker Engine, including a file write verified inside the isolated sandbox. Session create/resume and model selection each submit real Engine assignments when the Profile contract supports them; unsupported or untestable scenarios are shown as skipped, never passed.
 - **Representative Write Verification:** The write stage requires the expected UTF-8 sentinel and accepts either the exact bytes or one conventional terminal LF/CRLF. This accommodates provider CLIs that serialize a text-file edit with a final line ending while still rejecting missing, redirected, or altered content.
@@ -215,7 +215,7 @@ Profile Lab stores local sandbox contracts against the canonical payload SHA-256
 3. **Cloud Signing Boundary:** Cloud requires the stored qualification ID, reloads and validates it against the current draft, verifies release-manager scope (`profiles:release:manage`) and signer readiness, and signs the release using Cloud's Ed25519 private key. Stable promotion, Stable channel assignment, and rollback require a recent session-bound passkey step-up. Release revocation requires release-manager authorization, a mandatory reason, and explicit confirmation in Profile Lab.
 4. **Cloud Acceptance Evidence API:** After publication, Profile Lab can separately submit an acceptance contract for the signed release. Cloud validates it and returns an immutable acceptance evidence ID.
 5. **Stable Promotion:** Profile Lab sends only the stored Cloud evidence ID. Cloud reloads and revalidates that record against the signed Profile and digest before promotion.
-6. **Signed Admission (`ToolProfileReleaseAdmission`):** Returned to clients with `isSigned => true`. Production Workspaces load and verify these signed releases using public keys (`ReleaseTrustRoots`).
+6. **Signed Admission (`ToolProfileReleaseAdmission`):** Returned to clients with `isSigned => true`. Production Workers load and verify these signed releases using public keys (`ReleaseTrustRoots`).
 
 ---
 
@@ -232,7 +232,7 @@ Local Draft → Cloud Qualification → Published Release → Testing Channel �
 - **Channel Pointers:** Cloud maintains channel pointers (`workspace_tool_profile_channels`) pointing to release versions (`testing`, `beta`, `stable`).
 - **Channel Promotion:** Promoting a release moves a pointer forward. The underlying profile payload and signature remain 100% immutable.
 - **Rollback:** Pointing a channel backward to an earlier immutable release version instantly restores a known-good configuration.
-- **Revocation:** Marking a release as revoked (`revoked_at` timestamp) causes Cloud and Workspaces to immediately refuse execution for that release version across all channels.
+- **Revocation:** Marking a release as revoked (`revoked_at` timestamp) causes Cloud and Workers to immediately refuse execution for that release version across all channels.
 
 ---
 
@@ -255,7 +255,7 @@ The separate Repair Loop remains an experimental local heuristic and is not mode
 
 Audit records provide clear operational history (e.g. *"Draft v20 created by AI-assisted change, reviewed by Vitalii, tested on Codex 0.188.0, published by controlled signer, promoted to Testing by Vitalii"*).
 
-Profile Lab's `SYNTILA_RELEASE_TRUST_KEYS_JSON` build define contains public Ed25519 trust roots only. If no valid root is configured, no model runner is offered. Production and development builds must receive the same managed public trust configuration used to validate Workspace Tool Profile releases.
+Profile Lab's `SYNTILA_RELEASE_TRUST_KEYS_JSON` build define contains public Ed25519 trust roots only. If no valid root is configured, no model runner is offered. Production and development builds must receive the same managed public trust configuration used to validate Connect Tool Profile releases.
 
 ---
 
@@ -274,9 +274,9 @@ Profile Lab enforces strict security boundaries verified by automated repository
 
 ### Acceptance Criteria and Current Status
 
-**Manual Profile lifecycle: COMPLETE** for the implemented control path. Profile Lab supports human Worker/Profile creation, Draft editing, local Engine qualification, Cloud-signed publication, channel management, and lifecycle administration. Fixture acceptance covers dynamic Workspace discovery, AX projection, and Work execution without Worker-specific source changes. Publication and Stable promotion reference separately stored Cloud qualification and acceptance records.
+**Manual Profile lifecycle: COMPLETE** for the implemented control path. Profile Lab supports human Worker/Profile creation, Draft editing, local Engine qualification, Cloud-signed publication, channel management, and lifecycle administration. Fixture acceptance covers dynamic Connect discovery, AX projection, and Work execution without Worker-specific source changes. Publication and Stable promotion reference separately stored Cloud qualification and acceptance records.
 
-This status does not claim that all real-provider workflows pass or that a deployed Testing Workspace rollout has completed. The [real-provider acceptance record](../acceptance/real-provider/2026-10-03/README.md) documents provider-specific results and remaining rollout gates. Cloud validates the submitted evidence contract and binds it to the release digest, but does not remotely observe or attest to the local provider process; see the [evidence contract](TOOL_PROFILE_EVIDENCE_CONTRACT.md).
+This status does not claim that all real-provider workflows pass or that a deployed Testing Connect rollout has completed. The real-provider acceptance record documents provider-specific results and remaining rollout gates. Cloud validates the submitted evidence contract and binds it to the release digest, but does not remotely observe or attest to the local provider process; see the [evidence contract](TOOL_PROFILE_EVIDENCE_CONTRACT.md).
 
 ### Human Control and AI Proposal Boundary
 
@@ -305,12 +305,12 @@ The application activates the initial tab after its first frame and activates
 the current tab after successful sign-in.
 
 Concurrent refreshes coalesce by domain and resource identity (catalog,
-Workspace channels, definition, definition releases, release evidence, and
-scoped audit). Catalog and Workspace data load lazily, including successful
+Connect channels, definition, definition releases, release evidence, and
+scoped audit). Catalog and Connect data load lazily, including successful
 empty results; explicit Refresh retries or reloads them. Releases are keyed by
 Definition. Evidence and audit refresh on activation. Loading and errors are
 owned by their individual domains. Publication, Cloud save, promotion,
-rollback, revocation, and Workspace channel updates disable only their
+rollback, revocation, and Connect channel updates disable only their
 initiating actions. Operations continue when the operator changes primary areas.
 Responses for a previous Cloud origin/session or a superseded Definition or
 release selection must not replace the current read model.
@@ -321,11 +321,11 @@ failed refresh. Failures display the actual error and Retry, including when
 an older catalog remains visible. A malformed response is a failure, not an
 empty catalog. Search with no matches has its own message. No built-in Worker
 fallback exists: Cloud's `worker_catalog` and `tool_profile_definitions` remain
-the shared source for Profile Lab and Workspace. The fresh v8 bootstrap seeds
+the shared source for Profile Lab and Connect. The fresh v8 bootstrap seeds
 ChatGPT and Gemini identities and Definitions, but no signed releases.
 
 Regression coverage includes authenticated tab switching while catalog and
-Workspace requests remain delayed, duplicate request coalescing, catalog
+Connect requests remain delayed, duplicate request coalescing, catalog
 failure and unauthorized rendering, and the real admin catalog endpoint over
 the fresh v8 database. These fixture checks do not establish deployed-service
 or packaged desktop acceptance.
@@ -360,15 +360,15 @@ offers **View Releases** rather than publishing the same immutable version again
 No release rows are bootstrapped, and macOS app signing does not control these actions.
 
 The unsigned exception also supports an explicitly opted-in local-development
-Workspace. It uses `SYNTILA_DEVELOPMENT_PROFILE_DIRECTORY` in a non-release build
+Connect. It uses `SYNTILA_DEVELOPMENT_PROFILE_DIRECTORY` in a non-release build
 and requires a loopback Cloud origin. It reads `<definition>/draft.json` from the
 selected local directory (normally the Lab draft directory), validates Tool
 Profile schema and catalog identity, and applies Engine/provider compatibility.
-Each execution pins canonical bytes by digest in Workspace's separate
+Each execution pins canonical bytes by digest in Connect's separate
 `development_profiles` directory. Drafts never become `ToolProfileReleaseAdmission`
 and never enter the signed release store, channel pointers, or last-known-good
 state. Edits apply to later resolutions, not already selected runs. Release
-builds and remote Cloud connections reject this exception. The Workspace marks
+builds and remote Cloud connections reject this exception. The Connect marks
 it Unsigned / Local development. This supersedes the blanket unsigned exclusion
 only for this bounded development path; production execution still uses signed
 Profiles through the generic CLI Worker Engine.
@@ -378,7 +378,7 @@ then run `bash scripts/run-profile-lab-development.sh`. It defaults to
 `http://localhost:8787`; set `SYNTILA_DEVELOPMENT_CLOUD_URL` to the same loopback
 origin as your local Cloud. Sign in through the browser as the owner,
 save and test a draft in the Lab, sync it, and publish to Testing. Assign the
-development Workspace to Testing in the Lab and run a real task. The Workspace launcher
+development Connect to Testing in the Lab and run a real task. The Connect launcher
 uses a separate DevelopmentState directory so existing production registration
 is not reused. It now defaults to signed Cloud releases. Explicitly set
 `SYNTILA_DEVELOPMENT_PROFILE_DIRECTORY` to opt into unsigned local Draft execution;
@@ -415,11 +415,11 @@ of signing configuration; no verification flags are rewritten.
 
 The selected Worker’s Releases view starts with Testing, Beta, and Stable cards populated from Cloud’s channel pointers, followed by published release history (Cloud drafts are excluded). Selecting a release shows status, publication time, provider version compatibility, release-scoped Cloud evidence, and implementation differences against the nearest earlier published version. Canonical payload and signing metadata are collapsed under Technical details. Promotion is contextual; Stable promotion continues to require qualifying Cloud evidence and the existing authorization gate. Rollback and revocation remain reason/confirmation protected and are accessed through release overflow. Refreshing releases also refreshes channel assignments and preserves the selected published version when available.
 
-With no published releases, the view offers Draft & Test. Overview always shows Configure, Test, Sync, Publish, and Rollout. Promotion depends on release-management authorization and evidence gates, rather than desktop signing or current signer availability; existing immutable signatures do not change on promotion. Starter templates and local testing remain independent of Workspace runtime state.
+With no published releases, the view offers Draft & Test. Overview always shows Configure, Test, Sync, Publish, and Rollout. Promotion depends on release-management authorization and evidence gates, rather than desktop signing or current signer availability; existing immutable signatures do not change on promotion. Starter templates and local testing remain independent of Connect runtime state.
 
-### Workspace rollout and Activity presentation
+### Connect rollout and Activity presentation
 
-Workspaces shows a compact rollout heading, Testing/Beta/Stable counts, search, and a table with Workspace, Host, App version, Connection, and Channel. Connection reflects the latest `execution_workspaces.status` reported to Cloud; absent status is Unknown, not inferred from runtime registration. Rollout help is available through an info control. Selecting another channel opens a confirmation describing the old/new assignment and effect on subsequent Profile resolution. Cancel leaves the assignment unchanged; existing authorization and Stable passkey verification remain enforced. Running sessions retain their pinned release.
+Workers shows a compact rollout heading, Testing/Beta/Stable counts, search, and a table with Connect, Host, App version, Connection, and Channel. Connection reflects the latest `execution_workspaces.status` reported to Cloud; absent status is Unknown, not inferred from runtime registration. Rollout help is available through an info control. Selecting another channel opens a confirmation describing the old/new assignment and effect on subsequent Profile resolution. Cancel leaves the assignment unchanged; existing authorization and Stable passkey verification remain enforced. Running sessions retain their pinned release.
 
 Activity defaults to all events and offers an optional current-Worker filter. Event summaries lead with Worker name, version, lifecycle action, and actor name. Raw IDs, reasons, provenance, and full details remain expandable. Global and definition audit responses add nullable `actorDisplayName` and `workerDisplayName`, resolved through existing user/catalog records; these are current display labels, not historical snapshots. Missing identities are shown as System or an operator while retaining raw IDs in details. No schema migration is required.
 
@@ -429,11 +429,11 @@ Profile Lab shares `LabPageHeader`, `StatusBadge`, `LifecycleStepper`, `EmptySta
 
 At compact desktop widths (below 1000 points), the Worker catalog stacks above the selected Worker; wide windows retain the sidebar. Lifecycle steps and headers wrap, tables scroll horizontally, and the workbench retains its responsive pane arrangement. Layout regression checks cover all primary views at 800×700 and 1440×1000.
 
-`⌘S` saves a valid modified local Draft when Draft & Test is active, including with editor focus. It never publishes or syncs automatically. `⌘R` refreshes the current resource: catalog on Overview, Cloud/evidence state on Draft & Test without replacing editor text, releases/channel pointers on Releases, Workspace assignments on Workspaces, and events on Activity. Both shortcuts are blocked behind dialogs and during conflicting operations; Save requires authorized Profile administration. Save and refresh tooltips advertise the shortcuts; the obsolete global telemetry strip is removed. Automated tests cover labels, contrast, focus, modal boundaries, and layouts; native VoiceOver verification remains a separate manual check.
+`⌘S` saves a valid modified local Draft when Draft & Test is active, including with editor focus. It never publishes or syncs automatically. `⌘R` refreshes the current resource: catalog on Overview, Cloud/evidence state on Draft & Test without replacing editor text, releases/channel pointers on Releases, Connect assignments on Workers, and events on Activity. Both shortcuts are blocked behind dialogs and during conflicting operations; Save requires authorized Profile administration. Save and refresh tooltips advertise the shortcuts; the obsolete global telemetry strip is removed. Automated tests cover labels, contrast, focus, modal boundaries, and layouts; native VoiceOver verification remains a separate manual check.
 
 ### First-run acceptance and UI migration
 
-Only Workers, Workspaces, and Activity are primary areas (`LabArea`). Workers owns Overview, Draft & Test, and Releases. The workbench is `DraftTestWorkbench`, with `ProfileDraftEditor` as its editor pane; obsolete Profiles/Tests/evidence pages, their navigation aliases, the duplicate Draft selector, and the global telemetry/status strip are removed without compatibility shims. Existing local Draft and evidence storage paths, identities, formats, and Cloud APIs remain unchanged by this UI cleanup.
+Only Workers, Workers, and Activity are primary areas (`LabArea`). Workers owns Overview, Draft & Test, and Releases. The workbench is `DraftTestWorkbench`, with `ProfileDraftEditor` as its editor pane; obsolete Profiles/Tests/evidence pages, their navigation aliases, the duplicate Draft selector, and the global telemetry/status strip are removed without compatibility shims. Existing local Draft and evidence storage paths, identities, formats, and Cloud APIs remain unchanged by this UI cleanup.
 
 `worker_first_run_acceptance_test.dart` covers sign-in, catalog selection, absent Profile, one-click initial Draft, dynamic `codex`/`agy` discovery, the actual eleven-stage ladder through the bundled Engine, persisted matching local evidence, local save, and Cloud Draft sync for both Workers with ready and missing signers. Ready-signer cases continue through qualification submission, Testing publication, and release history. Browser approval and Cloud persistence are controlled boundary fixtures. Provider executables use the existing v1 payload contracts with isolated home/PATH/environment; they do not call vendor services. The no-template path verifies a blank Draft inherits catalog identity and remains unqualified. A cold-start check reopens the same persisted Draft and matching evidence without recreating or translating them. Catalog Stable is always explicitly labeled as catalog stage and cannot establish a Stable release pointer. Signing/production rollout and real vendor acceptance remain separate release gates.
 

@@ -58,7 +58,7 @@ Per caller (the credential, or the client address when there is none):
 3000 requests and 600 mutating requests per minute, with a burst of a
 quarter of that. Over the limit: `429`, code `rate_limited`, a
 `retry-after` header and `retryAfterSeconds` in the body. Connected
-Workspace traffic (`/api/workspace-runtime/*`) and the realtime socket are
+Connect traffic (`/api/workspace-runtime/*`) and the realtime socket are
 exempt. Configure with `SYNTILA_RATE_LIMIT_PER_MINUTE` and
 `SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE` (0 disables).
 
@@ -99,13 +99,13 @@ over-limit field is `400 invalid_request`, never ignored; field limits are
 checked before the 2 MiB body cap matters, which answers `413
 payload_too_large`. Some handlers keep a fixed message for a rejected body
 (for example `Invalid folder selection`); the code is still `invalid_request`
-and `details` still lists every problem. The Workspace runtime and desktop
+and `details` still lists every problem. The Connect runtime and desktop
 registration routes and the plugin routes keep their own error JSON (`code` such
 as `invalid_installation_id`, or the plugin route codes) because the desktop
 client reads them.
 
 The one free-form body is `POST /api/workspaces/:id/mcp-action`: an object
-forwarded verbatim to the Workspace gateway, which owns that contract. The
+forwarded verbatim to the Connect gateway, which owns that contract. The
 guard in `apps/backend/test/domain/request-body-guard.test.ts` allows no other
 route to read a body without a schema.
 
@@ -144,7 +144,7 @@ Timestamp cursors (notes, Space audit, files, Work Requests) are
 one exception is the app's Work history, which keeps positions in its
 offline cache and may build the cursor that pages after a request it holds.
 Lists bounded by what one person can see (Spaces, Threads, members,
-Workspaces, people) are returned whole. Notifications are a bounded feed.
+Workers, people) are returned whole. Notifications are a bounded feed.
 
 ## Idempotency
 

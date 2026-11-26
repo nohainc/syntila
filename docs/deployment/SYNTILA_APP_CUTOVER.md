@@ -35,9 +35,9 @@ syntila.com domain is not configured.
 - Cloud validation initially passed 1,230 tests with six timeouts. All 53
   tests in the three affected files passed when rerun with one worker.
 - Deployment/migration script tests passed (66 tests across 14 files).
-- Workspace validation found eight failures. After fixing macOS signing of
+- Connect validation found eight failures. After fixing macOS signing of
   copied Engine aliases, all 28 tests in the seven affected files passed.
-  Workspace Service compiled, started headlessly and stopped cleanly.
+  Connect service compiled, started headlessly and stopped cleanly.
 - Branding, documentation links, protocol generation and production-security
   checks passed. Broader Engine validation still encounters process timeouts;
   real provider tests require separate opt-in credentials/environment.
@@ -59,7 +59,7 @@ new-origin OAuth callbacks and the corresponding Worker secrets are configured.
 
 The public site is being prepared for `https://syntila.app`, and the web app
 for `https://app.syntila.app`. The app Worker must retain the root domain until
-legacy auth and Workspace clients have a verified path; do not transfer the
+legacy auth and Connect clients have a verified path; do not transfer the
 root hostname to the site before that compatibility is in place and tested.
 The Worker now has both domains attached. The stable backend-token issuer is
 configured separately as `SYNTILA_BACKEND_TOKEN_ISSUER=https://syntila.app`;
@@ -67,7 +67,7 @@ changing `BETTER_AUTH_URL` must not silently change the issuer expected by the
 VPS. Set and validate the passkey relying-party ID and permitted origins so
 existing passkeys remain usable. Update Google and GitHub OAuth callback URLs,
 verify sign-in and desktop authorization, and plan reauthentication for
-host-only browser cookies. Preserve existing Workspace installation and
+host-only browser cookies. Preserve existing Connect installation and
 runtime identity, and verify existing saved root-domain Cloud URLs before
 cutover. Redirect legacy website paths to their matching new URLs. The Privacy
 Policy contains outstanding disclosure placeholders and must be completed
@@ -82,6 +82,6 @@ subdomain and redirects the old public-site hostnames to the matching new site
 paths. These are staged changes, not proof that existing desktop clients,
 passkeys, or cookies work after deployment. Keep the old and new browser origins
 in the VPS `ALLOWED_ORIGINS` setting until the transition is complete; retain
-existing persisted Workspace and Profile Lab Cloud origins. Verify old desktop
-sessions, Workspace recovery, both OAuth providers, and passkeys against the
+existing persisted Connect and Profile Lab Cloud origins. Verify old desktop
+sessions, Connect recovery, both OAuth providers, and passkeys against the
 actual deployed services before declaring cutover complete.

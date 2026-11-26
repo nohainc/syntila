@@ -6,7 +6,7 @@ Date: 2026-10-11. Status: design proposal; runtime contracts remain unchanged.
 
 Inspected the six requested modules, the generic Engine's execution validation and
 argument construction, the Tool Profile v1 specification and Dart validator,
-v8/Workspace architecture, ROADMAP, ADR-018 and the workflow configuration ADR-019.
+v8/Connect architecture, ROADMAP, ADR-018 and the workflow configuration ADR-019.
 The attached review describes the starter migration accurately, but the current
 runtime-catalog authoring candidate differs from that migration.
 
@@ -19,9 +19,9 @@ Cloud updates, configuration writes or application builds were performed.
 
 Retained sanitized evidence and the exhaustive current-selection mapping:
 
-- [AGY exact catalog](../acceptance/real-provider/2026-10-11/model-effort-audit-agy.tsv)
-- [Codex metadata](../acceptance/real-provider/2026-10-11/model-effort-audit-codex.json)
-- [Mapping table, CSV](../acceptance/real-provider/2026-10-11/model-effort-audit-mapping.csv)
+- AGY exact catalog
+- Codex metadata
+- Mapping table, CSV
 
 The CSV includes every explicit Codex pair and every explicit model with omitted
 effort. Invocation columns are structured selection argument fragments appended
@@ -116,12 +116,12 @@ remains null for this dynamic Profile. `ultra` is unsupported on both Luna model
 
 1. Keep Worker identity stable. Extend the existing catalog/public options with
    an explicitly versioned contract; do not change schemaVersion 1 meanings.
-   Workspace Service remains inventory authority; generic Engine interprets
+   Connect service remains inventory authority; generic Engine interprets
    signed Profiles. Cloud/AX receive selection metadata only.
 2. A signed Profile declares a finite selection strategy: independent native
    model + effort argument, or explicit logical-pair-to-native-model table.
    No suffix stripping, regular-expression inference, concatenation or provider
-   branches in Workspace, Core, Cloud or UI. Dynamic catalogs intersect signed
+   branches in Connect, Core, Cloud or UI. Dynamic catalogs intersect signed
    mappings; a mapping never makes an absent native ID available.
 3. Independent selections preserve provider effort lists/defaults. Combined
    mappings explicitly enumerate each logical ID/effort/native ID. Duplicate or

@@ -57,9 +57,9 @@ synchronization deferral, so time spent waiting for the Service to reach
 
 ## Delivery probe
 
-`POST /api/workspaces/:workspaceId/delivery-probe` (allowed for the Workspace
-owner only, requiring `workspace:manage`) calls the Workspace Gateway's
-`diagnostic-probe`, which sends `diagnostic.probe` over the Workspace's live
+`POST /api/workspaces/:workspaceId/delivery-probe` (allowed for the Connect
+owner only, requiring `workspace:manage`) calls the Worker gateway's
+`diagnostic-probe`, which sends `diagnostic.probe` over the Connect's live
 transport and waits up to 5 s for `diagnostic.probe.ack`. No assignment,
 Worker, Engine or provider process is involved. Probes and their acknowledgements
 are held in memory, including on HTTP long-poll; they do not advance the durable
@@ -79,16 +79,16 @@ advertised `workspace.probe_payload.v1` in `workspace.hello` (otherwise
 returning 409) and attaches a random base64 `echo` string (up to 65 536 ASCII
 characters) to `diagnostic.probe`, verifying that `diagnostic.probe.ack` echoes
 it verbatim (`outcome: "echo_mismatch"` if not). At most one probe batch may be
-in flight per Workspace (concurrent batches receive 429).
+in flight per Connect (concurrent batches receive 429).
 
-Both message types are additive within Workspace protocol 5.1: an older Cloud
+Both message types are additive within Connect protocol 5.1: an older Cloud
 never sends a probe, and a newer Service only answers one.
 
 ## Histograms and privacy
 
 The Service keeps fixed-bucket histograms per stage interval
 (`from->to` and `since_received:stage`) and exports p50/p95/p99/max/mean under
-`cloud.latency` in the Workspace diagnostics report. Percentiles are bucket
+`cloud.latency` in the Connect diagnostics report. Percentiles are bucket
 upper bounds clamped to the observed maximum. Only numeric durations, closed
 stage names and bounded labels are retained; no prompts, output, paths or
 credentials.
@@ -141,6 +141,6 @@ Auxiliary startup milestones (worker_resolved, profile_ready, waiting_for_space,
 using a build-pinned capture manifest, separate idle/burst interval tables,
 strict stage/identity/clock validation and explicit incomplete results. It
 reuses this parser and existing traces; it introduces no logging or command
-path. See [V9 acceptance](../acceptance/EXECUTION_RELIABILITY_V9.md#performance-evidence).
+path. See V9 acceptance.
 The original baseline tool remains an exploratory report and can report partial
 traces; its successful exit does not certify release acceptance.
