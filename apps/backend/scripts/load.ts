@@ -1,20 +1,20 @@
 // Load test against a running backend (/api).
 // N users each own a Space with a live browser realtime connection; every
 // user posts M messages. Reports REST latency, realtime fan-out latency
-// (post → event on the socket) and throughput. With a published ChatGPT Tool
-// Profile, it also runs C concurrent Chat requests through one Workspace.
+// (post → event on the socket) and throughput. Worker Chat load is not supported.
 //
 // A mixed phase follows: every user at once creates Threads and notes,
 // renames, edits, and reads (Spaces, messages, notes, notifications).
 // Afterwards, with PGHOST or DATABASE_URL set, scripts/check-invariants.sql
 // runs against the database and any violation fails the load test.
 //
-// bun scripts/load.ts <baseUrl> <privateJwkFile> [users=50] [messages=20] [chats=20] [mixed=10]
-import { FakeWorkspace, User, completeWith, publishedChatgptProfile, runMessagePosts, tokenMinter, waitFor, type Client, type Jwk } from "./lib/clients";
+// bun scripts/load.ts <baseUrl> <privateJwkFile> [users=50] [messages=20] [chats=0] [mixed=10]
+import { User, runMessagePosts, tokenMinter, type Client, type Jwk } from "./lib/clients";
 
 const [base, jwkFile, usersArg, messagesArg, chatsArg, mixedArg] = Bun.argv.slice(2);
 if (!base || !jwkFile) { console.error("usage: bun scripts/load.ts <baseUrl> <privateJwkFile> [users] [messages] [chats]"); process.exit(2); }
-const USERS = Number(usersArg ?? 50), MESSAGES = Number(messagesArg ?? 20), CHATS = Number(chatsArg ?? 20), MIXED = Number(mixedArg ?? 10);
+const USERS = Number(usersArg ?? 50), MESSAGES = Number(messagesArg ?? 20), CHATS = Number(chatsArg ?? 0), MIXED = Number(mixedArg ?? 10);
+if (CHATS !== 0) throw new Error("Worker Chat load is unavailable; pass chats=0. This script covers human traffic only.");
 const mint = tokenMinter(JSON.parse(await Bun.file(jwkFile).text()) as Jwk);
 const run = Date.now().toString(36);
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))]! : NaN; };
@@ -42,7 +42,7 @@ try {
     const user = new User(base, await mint(`load-${run}-${i}`));
     const { spaceId, threadId } = await user.spaceWithThread(`Load ${run} ${i}`);
     const live = user.realtime([spaceId]);
-    await live.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
+    await live.waitFor("subscription", (f) => f.type === "subscription.ready", 30_000);
     clients.push({ user, spaceId, threadId, live });
     cleanup.push(() => user.api("PATCH", `/api/spaces/${spaceId}`, { archived: true }));
   }));
@@ -88,37 +88,7 @@ try {
     if (mixedErrors) failed = true;
   }
 
-  const profile = await publishedChatgptProfile();
-  if (!profile || CHATS <= 0) console.log("skip chat load (no ChatGPT Tool Profile published, or chats=0)");
-  else {
-    console.log(`chat: ${CHATS} concurrent Chat requests through one Workspace`);
-    const owner = new User(base, await mint(`load-${run}-owner`));
-    const desktop = await mint(`load-${run}-owner`, { client: "desktop", client_aud: "syntila.desktop.management" });
-    const workspace = await new FakeWorkspace(base, profile, completeWith("ok")).register(desktop, `Load ${run}`);
-    cleanup.push(() => workspace.release(desktop));
-    workspace.connect();
-    await waitFor("workspace ready", () => workspace.ready);
-    const { spaceId, threadId } = await owner.spaceWithThread(`Load chat ${run}`);
-    cleanup.push(() => owner.api("PATCH", `/api/spaces/${spaceId}`, { archived: true }));
-    const pick = await owner.api("PUT", `/api/spaces/${spaceId}/workflow-workspace`, { workspaceId: workspace.workspaceId, confirmReset: true });
-    if (pick.status !== 200) throw new Error(`select workspace: ${pick.status}`);
-    const total: number[] = [];
-    let chatErrors = 0;
-    await Promise.all(Array.from({ length: CHATS }, async (_, i) => {
-      const start = performance.now();
-      const submit = await owner.api("POST", `/api/threads/${threadId}/work-requests`, { workflowId: "chat", objective: `load ${i}`, executionSelection: { workerId: workspace.workerId } });
-      if (submit.status >= 300) { chatErrors++; console.error(`chat ${i}: ${submit.status} ${JSON.stringify(submit.body).slice(0, 200)}`); return; }
-      const id = submit.body.workRequest.id;
-      const done = await waitFor("chat done", async () => {
-        const r = await owner.api("GET", `/api/work-requests/${id}`);
-        return ["completed", "failed", "cancelled"].includes(r.body?.workRequest?.status) ? r.body.workRequest : undefined;
-      }, 120_000).catch(() => null);
-      if (done?.status === "completed") total.push(performance.now() - start); else chatErrors++;
-    }));
-    report("chat submit → completed", total);
-    console.log(`chat errors ${chatErrors}`);
-    if (chatErrors) failed = true;
-  }
+  console.log("Worker Chat load is not covered by this test");
   const broken = await brokenInvariants();
   if (broken === null) console.log("invariants: skipped (set PGHOST or DATABASE_URL to check them)");
   else if (broken.length) { console.error(`invariants BROKEN: ${broken.join("; ")}`); failed = true; }

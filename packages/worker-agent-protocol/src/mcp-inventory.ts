@@ -2,13 +2,13 @@ import { z } from "zod";
 
 /**
  * Sanitized MCP inventory v1: what Cloud and the AX app may know about a
- * Workspace's MCP servers. It carries identity, status, consented tool names
+ * Connect's MCP servers. It carries identity, status, consented tool names
  * and definition hashes, and Worker-type bindings. It never carries launch
  * commands, executable paths, endpoints, tokens, environment values or tool
  * descriptions/schemas; the objects are strict, so such fields are rejected,
  * not stripped. Internal v1 payload; not an advertised transport capability yet.
  *
- * Inventory is information, never authority: the Workspace re-checks consent,
+ * Inventory is information, never authority: Connect re-checks consent,
  * enablement and the tool hash before every execution.
  */
 export const MCP_INVENTORY_MAX_SERVERS = 64;
@@ -55,7 +55,7 @@ export const McpInventoryServerSchema = z
     availability: McpInventoryAvailabilitySchema,
     diagnostic: McpInventoryDiagnosticSchema.optional(),
     tools: z.array(McpInventoryToolSchema).max(MCP_INVENTORY_MAX_TOOLS),
-    /** Legacy: sent by older Workspaces, ignored. Servers are no longer bound
+    /** Legacy: sent by older Connect versions, ignored. Servers are no longer bound
      * per Worker type; every consented, enabled server serves the owner. */
     boundWorkerTypes: z
       .array(z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/))

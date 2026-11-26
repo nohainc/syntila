@@ -119,9 +119,8 @@ Worker Runtime Protocol, Worker, and Engine admission:
 - `shell:execute`
 - `network:use`
 
-Cloud intersects only the permissions allowed by the requester's Space member rights
-with `workspace_space_grants.allowed_permissions_json`, then applies the
-request's read-only Step policy. Cloud does not pretend to know the local
+Cloud derives permissions from the requester’s current Space rights and the
+request’s read-only Step policy. Cloud does not pretend to know the local
 Worker permission set. Worker compares the exact permission IDs in the
 assignment snapshot against the installed Worker's local permission ceiling;
 unknown names are rejected. Space access policy values such as `view`,
@@ -234,23 +233,7 @@ flags and removes `settings.allowWork`; obsolete writes receive 400. History is
 preserved, and accepted runs retain their execution evidence. Already-running
 provider calls are not cancelled by a settings change.
 
-Own Workers in Chat (derived from `chat`) lets a member answer the Chat workflow
-with a Worker from a Worker they own, instead of a Worker from the Space's
-Workflow Worker. Only Workers the member owns qualify; Workers other people
-share with them (Person Grants, the Space Worker) do not. On first use the
-member's Worker receives a read-only Space grant (`repository:read`, one
-concurrent assignment) made by that member and audited as
-`chat.own_workspace.authorized`. Admission rejects a non-Chat workflow, a
-missing right, or a Worker the requester does not own. Dispatch rejects any
-Chat candidate outside the Space Workflow Worker unless the requester owns
-it and currently holds the right (`own_worker_not_allowed`), so other members
-can never run someone's personal Worker. The Worker sees only the
-conversation context the Thread provides and runs in its owner's Worker,
-not in Space files. The assignment snapshot records `workerOwnerUserId` and
-`workerOwnerName`; `workerOwnerName` is set only when the Worker ran outside
-the Space Workflow Worker. Conversation turns expose it, and the message
-header shows it after the Worker name; responses from the Space Worker show
-no owner.
+Worker selection is authorized against current ownership, sharing, Space rights and readiness. A request names its Worker explicitly; authorization is rechecked before dispatch. See [ADR-035](../decisions/ADR-035-worker-targeted-execution.md) and [ADR-042](../decisions/ADR-042-worker-space-member-access.md).
 
 Own Thread management permits creation and management of Threads created by
 that member, while the owner can manage every Thread. Destructive cleanup follows

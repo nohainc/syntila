@@ -22,7 +22,7 @@ check "schema migrations match live" "$(psql_pg -d $scratch -c "select string_ag
 # Tables of the current schema (apps/backend/migrations/schema.lock). A table
 # that does not exist makes psql fail and the test with it, which is the point:
 # this list must follow the schema.
-for t in users spaces space_memberships threads conversation_history_entries execution_workspaces worker_assignments; do
+for t in users spaces space_memberships threads conversation_history_entries worker_instances worker_assignments; do
   live=$(psql_pg -d syntila -c "select count(*) from $t")
   restored=$(psql_pg -d $scratch -c "select count(*) from $t")
   echo "     $t: restored $restored, live now $live"

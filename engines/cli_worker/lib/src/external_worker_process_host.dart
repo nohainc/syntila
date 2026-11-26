@@ -253,7 +253,7 @@ class ExternalWorkerProcessHost {
     }
     final spec = McpServerSpec(
       serverId: launch.pluginId,
-      workspaceId: 'engine',
+      hostScopeId: 'engine',
       launch: launch,
       requireWorkerProfile: true,
       pins: ToolPins(pins),

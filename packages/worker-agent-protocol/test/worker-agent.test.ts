@@ -509,7 +509,7 @@ describe("Workspace Runtime protocol", () => {
         type: "worker.inventory",
         payload: { workers: [worker], fullSnapshot: true },
       }),
-    ).toThrow(/requires Workspace protocol 5.1/);
+    ).toThrow(/requires Worker Agent protocol 5.1/);
   });
 
   it("requires logical Worker types in Cloud assignment snapshots", () => {

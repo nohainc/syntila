@@ -158,14 +158,13 @@ To keep `HomePage` and `_ForYouItemTile` decoupled from backend schemas, realtim
 ```text
 AxHomeAttentionItem
 ├── id: String
-├── type: AxHomeAttentionType (spaceInvitation, needsInput, approvalRequired, executionFailed, executionCompleted, workerProblem, workspaceProblem)
+├── type: AxHomeAttentionType (spaceInvitation, needsInput, approvalRequired, executionFailed, executionCompleted, workerProblem, workerOffline)
 ├── priority: int? (explicit priority override or derived default order)
 ├── title: String
 ├── description: String
 ├── spaceId?: String
 ├── threadId?: String
 ├── workerId?: String
-├── workspaceId?: String
 ├── timestamp?: DateTime
 ├── timestampDisplay?: String
 ├── primaryAction?: AxHomeAttentionAction (label, onPerform closure, isDestructive)
@@ -187,7 +186,7 @@ AxHomeAttentionItem
 ## Cached / Local Read Model Architecture (Phase 10)
 
 Home is designed as a **pure projection** of already synchronized client-side state:
-- **No Reload Storms on Navigation:** Navigating `Space A → Home → Space B → Home` consumes shared in-memory stores (`store.spaces`, `store.workspaces`, `store.executionChanges`, `store.invitations`, `store.catalogs.workers`, `store.notifications`, `store.productUpdateReadStates`) via reactive `ListenableBuilder` and `AxQueryBuilder`.
+- **No Reload Storms on Navigation:** Navigating `Space A → Home → Space B → Home` consumes shared in-memory stores (`store.spaces`, `store.executionChanges`, `store.invitations`, `store.catalogs.workers`, `store.notifications`, `store.productUpdateReadStates`) via reactive `ListenableBuilder` and `AxQueryBuilder`.
 - **Zero Independent Server Reloads:** Opening Home never triggers independent HTTP fetch bursts for entities that are already managed by Syntila's background sync engine.
 
 ---
@@ -202,7 +201,7 @@ AxProductUpdate
 ├── title: String
 ├── summary: String
 ├── details?: String
-├── category: AxProductUpdateCategory (feature, improvement, security, workflow, collaboration, workspace, worker)
+├── category: AxProductUpdateCategory (feature, improvement, security, workflow, collaboration, worker)
 ├── publishedAt: DateTime / String
 ├── minimumAppVersion?: String
 ├── maximumAppVersion?: String
@@ -234,7 +233,7 @@ AxUserProductUpdateState
 ### 4. Home Presentation for What's New (Phase 14)
 - **Capacity:** Shows up to four newest published, version-compatible updates. Home ignores historical dismissal state; no Hide control appears on Home or the full changelog.
 - **Tile Elements:**
-  1. Distinct category icon plus badge pill (`[COLLABORATION]`, `[WORKFLOW]`, `[SECURITY]`, `[WORKSPACE]`, `[WORKER]`, `[FEATURE]`, `[IMPROVEMENT]`).
+  1. Distinct category icon plus badge pill (`[COLLABORATION]`, `[WORKFLOW]`, `[SECURITY]`, `[WORKER]`, `[FEATURE]`, `[IMPROVEMENT]`).
   2. Date format: e.g. `Oct 7, 2026`, right-aligned and derived from the publication timestamp.
   3. Bold title, full summary, and full details text.
   4. Rows are informational and not clickable; `See all` opens the full changelog.
@@ -275,7 +274,7 @@ AxAiCapabilityUpdate
 ```
 
 ### 2. Presentation & Filtering on Home
-- **Scoped by Active Workers:** When workers are configured in the user's workspace, Home filters AI capability updates to highlight relevant provider/worker capabilities.
+- **Scoped by Active Workers:** When Workers are available to the user, Home filters AI capability updates to highlight relevant provider/worker capabilities.
 - **Capacity:** Home shows up to four newest relevant updates; `See all` retains all relevant updates and inherits Home’s content width. No Hide controls appear.
 - **Card Presentation (`_AiUpdateCard`):** Displays the original Worker brand icon (generic fallback for unknown Workers), worker name, category pill badge (e.g. `[MODEL ADDED]`, `[CAPABILITY ADDED]`), right-aligned publication date including year (`Oct 7, 2026`), bold title, and the full update text. Rows are informational: not clickable and without a `Configure →` action; `See all` opens the AI updates dialog.
 
@@ -367,11 +366,11 @@ Home Hierarchy Order
 ```
 
 ### 1. Hierarchy Rules & Visual Weight Guarantees
-- **Action Signals First:** Product news and AI model changes must never visually compete with, overshadow, or distract from an approval request, execution failure, workspace disconnection, or space invitation.
+- **Action Signals First:** Product news and AI model changes must never visually compete with, overshadow, or distract from an approval request, execution failure, Worker disconnection, or space invitation.
 - **For You Section Prominence:**
   - Placed at the very top of Home above all executions and threads.
   - Distinct high-contrast card border and surface styling.
-  - High-visibility semantic category badges (orange for approvals/input, red for execution failures, amber for offline workspaces/workers, primary for invitations).
+  - High-visibility semantic category badges (orange for approvals/input, red for execution failures, amber for offline Workers, primary for invitations).
   - Primary call-to-action buttons (`FilledButton` for primary actions like "Review →" or "Accept") ensure direct operational resolution.
 - **Running Now Section:**
   - Positioned immediately below For You when active runs exist, offering real-time visibility and direct jump navigation into active execution trees.
@@ -397,14 +396,14 @@ Reserved Card Surfaces
 - **Clean Worker Flow:** `For You`, `What's New`, and `AI Updates` render items as lightweight list rows directly within their section with subtle hairline dividers, eliminating visual clutter from nesting boxes inside boxes.
 - **Card Purpose Preservation:** Large cards are reserved strictly for rich content containers where multi-dimensional metadata benefits from a bounded spatial enclosure:
   - **`Continue Working`:** Thread title, space badge, snippet previews, collaborator identities, and jump actions.
-  - **`Running Now`:** High-priority active execution telemetry, objective, elapsed time, and direct workspace navigation.
+  - **`Running Now`:** High-priority active execution telemetry, objective, elapsed time, and direct Worker navigation.
   - **`Onboarding`:** First-turn welcome cards and setup milestones.
 
 ---
 
 ## Home Header & Contextual Greeting (Phase 23)
 
-Established-user Home strips away generic marketing subtitles to deliver an uncluttered, distraction-free workspace header:
+Established-user Home strips away generic marketing subtitles to deliver an uncluttered, distraction-free Home header:
 
 ```text
 Established Home Header
@@ -413,7 +412,7 @@ Established Home Header
 ```
 
 ### 1. Architectural Rules
-- **No Marketing Subtitles:** Legacy marketing taglines like `"Your execution capacity at a glance."` are permanently eliminated. The workspace content underneath speaks for itself.
+- **No Marketing Subtitles:** Legacy marketing taglines like `"Your execution capacity at a glance."` are permanently eliminated. The Home content underneath speaks for itself.
 - **Contextual Greeting:**
   - When `greeting` is explicitly provided, it renders directly beneath `Home`.
   - When `userName` is provided, Home dynamically derives an appropriate time-of-day greeting:
@@ -495,7 +494,7 @@ Home Items & Canonical Deep-Link Destinations
 - **No Dead-End Content:** If an item exists on Home, it must provide a direct primary action button or interactive target routing to its operational resolution.
 - **Context-Preserving Routing:**
   - `onOpenThread(spaceId, threadId)` is prioritized over broad space landing pages for conversation turns, unresolved input requests, reviews, and recent work.
-  - `onOpenWorkers()` is directly bound to offline workspaces, worker credential faults, and AI model configurations.
+  - `onOpenWorkers()` is directly bound to offline Workers, Worker credential faults, and AI model configurations.
 ---
 
 ## Progressive Loading Strategy & Fault-Isolated Section Rendering (Phase 27)
@@ -541,7 +540,6 @@ Normalized Notification Domain
 ├── 1. Thread   (threadNeedsInput, threadCompleted, threadFailed)
 ├── 2. Workflow Run (workflowRunCompleted, workflowRunFailed, workflowRunNeedsApproval)
 ├── 3. Worker       (workerCredentialProblem, workerInstallFailed)
-├── 4. Worker    (workspaceOffline)
 └── 5. Space      (spaceInvitationReceived)
 ```
 
@@ -550,11 +548,11 @@ Normalized Notification Domain
 - **Accurate Navigation Target Resolution:**
   - `AxNotificationTarget.thread` → Deep-links directly to `AxNavigation.thread(spaceId, threadId)`.
   - `AxNotificationTarget.workflowRun` → Deep-links directly to `AxNavigation.run(spaceId, runId)`.
-  - `AxNotificationTarget.workspace` / `workspaces` → Deep-links to `AxNavigation.workspaces(workspaceId: ...)`.
+  - `AxNotificationTarget.workers` → Opens the Workers page.
   - `AxNotificationTarget.space` → Deep-links to `AxNavigation.space(spaceId)`.
 - **Actionability & Priority Mapping:**
   - High priority: `threadNeedsInput`, `threadFailed`, `workflowRunNeedsApproval`, `workflowRunFailed`, `workerCredentialProblem`.
-  - Normal priority: `workspaceOffline`, `workerInstallFailed`, `spaceInvitationReceived`.
+  - Normal priority: `workerInstallFailed`, `spaceInvitationReceived`.
   - Low priority: `threadCompleted`, `workflowRunCompleted`.
 - **Home Triage Alignment:** `AxHomeAttentionProjector` maps normalized notification events cleanly into `AxHomeAttentionItem` triage rows with primary navigation bound to the whole card, plus explicit invitation decisions.
 
@@ -573,7 +571,7 @@ Authorization Boundary on Home Aggregation
     ├── For You (AxHomeAttentionProjector) ──► Strict exclusion of items referencing revoked/non-member spaces
     ├── Running Now                         ──► Active runs for revoked/non-member spaces are suppressed
     ├── Continue Working (Recent Work)      ──► Only authorized space threads are ordered by recency and rendered
-    └── AI Updates (AxAiCapabilityUpdate)   ──► Filtered strictly against accessible workspace workers & member spaces
+    └── AI Updates (AxAiCapabilityUpdate)   ──► Filtered strictly against accessible Workers & member spaces
 ```
 
 ### 1. Privacy Guarantees
@@ -688,7 +686,7 @@ Realtime Domain Event Flow
 ```
 
 ### 1. Zero-Polling Reactive Architecture
-- `_homeView()` registers merged reactive listeners across `store.spaces`, `store.workspaces`, `store.executionChanges`, `store.invitations`, `store.unreadNotifications`, `store.productUpdateReadStates`, and `store.productUpdatesNotifier`.
+- `_homeView()` registers merged reactive listeners across `store.spaces`, `store.executionChanges`, `store.invitations`, `store.unreadNotifications`, `store.productUpdateReadStates`, and `store.productUpdatesNotifier`.
 - Background WebSocket transport messages invoke `_recordNotification(event)` and `_refreshRealtimeFeatures(type, event: event)`, immediately dispatching state updates to in-memory stores and triggering granular widget rebuilds.
 
 ---
@@ -701,7 +699,7 @@ The Syntila Home surface is formally verified against a 20-point canonical test 
 |---|---|---|---|
 | 1 | **Brand-new account** | Renders `NewUserHome` onboarding hero, "Create your first Space", value cards; suppresses dashboard sections | Verified (`home_page_test.dart`) |
 | 2 | **New user with invitation** | "Join a Space" card takes top priority before "Create your first Space" | Verified (`home_page_test.dart`) |
-| 3 | **Space but no Worker** | Normal Home dashboard renders; no setup warning banner or workspace blocker | Verified (`home_page_test.dart`) |
+| 3 | **Space but no Worker** | Normal Home dashboard renders; no setup warning banner or Worker blocker | Verified (`home_page_test.dart`) |
 | 4 | **Invitation received realtime** | Appears immediately in "For You" with Accept / Decline actions | Verified (`home_page_test.dart`) |
 | 5 | **Invitation accepted** | Invitation item is removed from "For You" and joined Space appears in Continue Working / Spaces | Verified (`home_page_test.dart`) |
 | 6 | **Thread needs input** | Appears in "For You" with direct "Review →" action link to thread conversation | Verified (`home_page_test.dart`) |

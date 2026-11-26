@@ -1,4 +1,4 @@
-export interface WorkspaceReleaseTarget {
+export interface ConnectReleaseTarget {
   readonly platform: "macos" | "windows" | "linux";
   readonly label: string;
   readonly architectures: readonly string[];
@@ -6,26 +6,24 @@ export interface WorkspaceReleaseTarget {
   readonly downloadUrl: string;
 }
 
-export interface WorkspaceReleaseManifest {
+export interface ConnectReleaseManifest {
   readonly productName: string;
-  readonly version: string;
-  readonly targets: readonly WorkspaceReleaseTarget[];
+  readonly targets: readonly ConnectReleaseTarget[];
 }
 
 /**
  * Static distribution metadata. Keep installer URLs here so product surfaces
  * consume one release manifest instead of carrying independent links.
  */
-export const workspaceRelease: WorkspaceReleaseManifest = {
-  productName: "Syntila Workspace",
-  version: "1.0.18",
+export const connectRelease: ConnectReleaseManifest = {
+  productName: "Syntila Connect",
   targets: [
     {
       platform: "macos",
       label: "macOS",
       architectures: ["Apple Silicon", "Intel"],
       installSummary:
-        "Signed release bundle with the service and syntila command, or the Homebrew cask",
+        "Connect release for macOS",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
@@ -33,14 +31,14 @@ export const workspaceRelease: WorkspaceReleaseManifest = {
       label: "Windows",
       architectures: ["x64"],
       installSummary:
-        "Release archive with the service and the syntila command",
+        "Connect release for Windows",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
       platform: "linux",
       label: "Linux",
       architectures: ["x64", "arm64"],
-      installSummary: "Signed APT package, or a standalone release archive",
+      installSummary: "Connect release for Linux",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
   ],

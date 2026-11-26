@@ -194,7 +194,10 @@ void main() {
         // The provider's whole message: its stderr, then the structured error.
         containsPair(
           'providerErrorText',
-          allOf(contains('fixture_stderr_private_marker'), endsWith('Output limit reached')),
+          allOf(
+            contains('fixture_stderr_private_marker'),
+            endsWith('Output limit reached'),
+          ),
         ),
       );
       expect(

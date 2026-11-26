@@ -76,9 +76,9 @@ export const McpToolCallResultSchema = z
 export type McpToolCallResult = z.infer<typeof McpToolCallResultSchema>;
 
 /**
- * Read-only reconciliation of one logical tool step. Cloud asks what the
- * Workspace durably knows about a key; the answer never dispatches anything.
- * `unclaimed` means the Workspace never began the call (still never replayed
+ * Read-only reconciliation of one logical tool step. Cloud asks what
+ * Connect durably knows about a key; the answer never dispatches anything.
+ * `unclaimed` means Connect never began the call (still never replayed
  * automatically: Cloud's own claim stands); `claimed_no_outcome` means it began
  * and no outcome is recorded, so the result stays unknown.
  */

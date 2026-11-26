@@ -74,7 +74,7 @@ class McpRemote {
 class McpServerSpec {
   McpServerSpec({
     required this.serverId,
-    required this.workspaceId,
+    required this.hostScopeId,
     this.launch,
     this.remote,
     this.requireWorkerProfile = false,
@@ -87,7 +87,7 @@ class McpServerSpec {
        );
 
   final String serverId;
-  final String workspaceId;
+  final String hostScopeId;
   final ExternalWorkerLaunch? launch;
   final McpRemote? remote;
 
@@ -132,9 +132,9 @@ class McpServerSpec {
   String get key {
     final l = launch;
     if (l != null) {
-      return '$workspaceId|$serverId|${l.pluginId}@${l.version}|${l.artifactSha256}';
+      return '$hostScopeId|$serverId|${l.pluginId}@${l.version}|${l.artifactSha256}';
     }
-    return '$workspaceId|$serverId|${remote!.endpoint}';
+    return '$hostScopeId|$serverId|${remote!.endpoint}';
   }
 }
 
@@ -155,7 +155,7 @@ class _Entry {
 }
 
 /// Warm pool of MCP client sessions (`MCP_HOST_V1.md`). One session per
-/// `(workspace, server, digest)`; servers are reused until idle for
+/// `(host scope, server, digest)`; servers are reused until idle for
 /// [idleTtl], restarted with backoff when they crash.
 class McpHost {
   McpHost({

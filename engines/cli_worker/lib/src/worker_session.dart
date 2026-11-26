@@ -1,4 +1,4 @@
-/// Workspace-local provider execution state. Native IDs never cross a protocol.
+/// Worker-local provider execution state. Native IDs never cross a protocol.
 class WorkerSession {
   const WorkerSession({
     required this.id,

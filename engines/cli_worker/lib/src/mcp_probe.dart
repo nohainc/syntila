@@ -43,7 +43,7 @@ Future<Map<String, Object?>> runMcpProbe(
       final token = remote['bearerToken'];
       spec = McpServerSpec(
         serverId: 'remote',
-        workspaceId: 'probe',
+        hostScopeId: 'probe',
         requireWorkerProfile: request['requireWorkerProfile'] == true,
         remote: McpRemote(
           endpoint: endpoint,
@@ -62,7 +62,7 @@ Future<Map<String, Object?>> runMcpProbe(
       }
       spec = McpServerSpec(
         serverId: server.name,
-        workspaceId: 'probe',
+        hostScopeId: 'probe',
         requireWorkerProfile: request['requireWorkerProfile'] == true,
         launch: ExternalWorkerLaunch(
           executable: server.command!,

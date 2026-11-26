@@ -352,7 +352,7 @@ transport delivery. Work Request/Step events continue through the shared
 are excluded from generic reconnect revalidation.
 
 Space catalog notifications still refresh the shell's catalog, and unmigrated
-execution/workspace resources retain their existing focused refresh handlers.
+execution resources retain their focused refresh handlers.
 The selected-Space synchronization filter and mutable last-event Space ID
 are removed. Reconnect recovery for migrated queries no longer loads a snapshot
 for a background Space into the selected view. No HTTP or schema changes are
@@ -363,8 +363,7 @@ an entity event are recovered on reconnect or explicit refresh.
 
 Cloud now emits the durable Space, Thread, Discussion and Worker Grant
 signals in the [realtime synchronization contract 1.1](../specifications/REALTIME_SYNCHRONIZATION.md).
-Collaboration has its own Space/user stream identity; `workspaceId` continues
-identifying real Workers on existing execution events only.
+Collaboration and Worker events use their authorized stream identities.
 
 The browser connects and subscribes to user scope without requiring execution
 infrastructure. Transport cursors distinguish stream kinds even when their IDs
@@ -380,7 +379,7 @@ stream-schema alignment; fresh databases use the updated v8 baseline.
 ## Phase 10: Scoped reconnect recovery
 
 `AxSyncScope` resolves the explicit transport scope, falling back to the durable
-stream identity and legacy execution `workspaceId`. A user subscription can
+stream identity. A user subscription can
 therefore recover one Space stream without treating it as a user-wide gap.
 Malformed narrow scopes never trigger broad recovery. Navigation is not an input.
 
@@ -478,7 +477,7 @@ cached results immediately and refreshes stale results in the background.
 Members/invitations use the default one-minute stale interval. Space gap
 recovery recognizes these queries and the audit query alongside existing keys.
 
-Owned Worker inventory (`workspaces`, 30-second stale interval) is ensured
+Owned Worker inventory is ensured
 only when Connect Worker opens. The current Space page has no visible audit
 section, so it no longer fetches audit on entry. `space:<id>:audit` is available
 for an explicit future consumer; membership and Thread writes invalidate it
@@ -848,13 +847,7 @@ membership checks remain enforced; no Space access is granted by an invitation
 notification. Offline recipients recover through their user stream or initial
 invitation loading. Existing pending invitation records need no migration.
 
-Owned Worker inventory uses the shared `ownedWorkersQuery` definition for
-WorkerStore, the Space Connect Worker picker and persisted-cache restore.
-The `workspaces`
-key has a single 30-second freshness policy and immutable list result shape.
-Consumers may register in either order without conflicting query definitions;
-they observe the same cached data and refresh updates. No API or schema change
-is required.
+Worker inventory is shared by the Workers page and Worker picker.
 
 Sidebar Spaces are grouped from the authenticated user's role: `owner` entries
 appear in Your spaces, and other accessible roles in Shared with you. Each
@@ -976,21 +969,7 @@ Thread controls project these Space choices without a second draft or an executi
 override. Authored Thread configuration retains instructions and initial Workflow
 selection. Immutable Run/Step configurations remain independent of live preferences.
 
-Worker selectors share typed `AxWorkflowWorkerSettings` queries at
-`['workflow-workspace', 'user' | spaceId]`, with cache-first navigation and the
-same 45-minute preference freshness. Global/Space selectors filter the shared
-Worker inventory by selected Worker before presenting Profile choices.
-Confirmation cancellation restores the displayed selection. Pending switches
-disable editing; mutation failure retains current preferences.
-
-A confirmed switch updates the Worker query, then refreshes reset preferences.
-Global selection invalidates registered Space preference/Worker queries;
-Space selection only updates that scope. Grant queries refresh after authorization
-changes. Existing `space.updated` events revalidate affected Worker/preference
-queries, including other members' open views; reconnect recovery recognizes the
-same scoped keys. Normal Space/Thread/sidebar navigation does not reload global
-Worker settings. The Space Workers tab and its obsolete connection controls
-are removed, leaving Threads, Members, and Workflows.
+The Thread composer selects a Worker directly; it does not configure a separate execution environment.
 
 ## People directory
 

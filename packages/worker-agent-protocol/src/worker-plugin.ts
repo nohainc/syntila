@@ -3,8 +3,8 @@ import { z } from "zod";
 /**
  * Worker plugin contracts (ADR-027). The manifest is the public, versioned
  * description of a user-imported plugin; it is not a Tool Profile. The
- * entitlement lease is the Cloud-signed, short-lived statement the Workspace
- * Service uses for offline decisions. Cloud scheduling remains authoritative.
+ * legacy entitlement lease schema is retained for existing data; Cloud
+ * checks current entitlement before scheduling.
  */
 
 export const WORKER_PLUGIN_PAID_FEATURE = "workers.custom_plugins" as const;

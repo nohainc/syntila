@@ -106,5 +106,5 @@ if (errors.length)
   throw new Error(`Landing-page release gate failed:\n${errors.join("\n")}`);
 
 console.log(
-  "Landing-page release gate passed: routes, Shared AI Workspace product model, repository privacy posture, terminology, metadata artifacts, and domain redirect contract verified.",
+  "Landing-page release gate passed: routes, Space and Worker product model, repository privacy posture, terminology, metadata artifacts, and domain redirect contract verified.",
 );

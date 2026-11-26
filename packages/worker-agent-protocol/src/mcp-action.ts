@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Service-owned MCP management actions initiated from AX / Cloud.
  *
- * Cloud acts only as an authenticated transport to the Workspace that owns the
+ * Cloud acts only as an authenticated transport to Connect on the computer that owns the
  * local registry; Cloud never receives or stores local command paths, tokens or
  * credentials. All validation, policy decisions, probe executions and registry
  * mutations remain Service-side.

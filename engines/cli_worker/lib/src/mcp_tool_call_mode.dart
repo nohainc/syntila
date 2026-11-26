@@ -14,7 +14,7 @@ import 'external_worker_process_limits.dart';
 const mcpToolCallFlag = '--mcp-tool-call';
 
 /// Internal, one-assignment Engine mode. The caller must independently admit
-/// the Workspace, operation, consent and pins; this is not a management API.
+/// Connect, operation, consent and pins; this is not a management API.
 Future<Map<String, Object?>> runMcpToolCall(
   Map<String, Object?> request, {
   ExternalWorkerProcessHost? pluginHost,
@@ -73,7 +73,7 @@ Future<Map<String, Object?>> runMcpToolCall(
         throw const FormatException('Invalid token');
       spec = McpServerSpec(
         serverId: 'tool-call',
-        workspaceId: 'engine',
+        hostScopeId: 'engine',
         pins: ToolPins(pins),
         remote: McpRemote(
           endpoint: endpoint,
@@ -96,7 +96,7 @@ Future<Map<String, Object?>> runMcpToolCall(
       data = await Directory.systemTemp.createTemp('syntila-mcp-call-');
       spec = McpServerSpec(
         serverId: server.name,
-        workspaceId: 'engine',
+        hostScopeId: 'engine',
         pins: ToolPins(pins),
         launch: ExternalWorkerLaunch(
           executable: server.command!,

@@ -1,195 +1,21 @@
-# ADR-027: Custom Worker plugins (Syntila Plus)
+# ADR-027: Custom Worker plugins
 
-**Status:** Accepted for implementation (2026-11-03, owner approval in-thread: decisions D1-D4 and D13 follow the recommendations in the plan; implementation and acceptance evidence tracked in the plan)
-**Date:** 2026-11-03
-**Amended:** 2026-11-11. Plugins are now **External Workers**: MCP Worker packages only (`kind: "mcp"`, [ADR-028](ADR-028-mcp-integration.md), [MCP Worker profile](../specifications/MCP_WORKER_PROFILE_V1.md)); the NDJSON protocol is unsupported. The CLI is `syntila workers import|inspect|register|enable|disable|remove|show` over the `externalWorkers.*` management IPC. Package export and local signer recognition were removed; signature verification at import remains. Wire names (`pluginId`, `pluginRef`, `plugin-` Worker types, `/api/me/worker-plugins`, `plugin.json`) are unchanged.
-**Amends:** Architecture v8 execution path and the `provider_specific_worker_executable` exclusion
-**Builds on:** ADR-018, ADR-021, [ADR-022](ADR-022-account-plans.md)
-**Details:** [Architecture](../architecture/CUSTOM_WORKER_PLUGINS.md), [Plugin protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), Management IPC, Plan and open decisions
+- **Status:** Accepted; MCP Worker execution is specified by [ADR-041](ADR-041-mcp-workers-on-worker-agents.md)
+- **Date:** 2026-11-03
+- **Details:** [Architecture](../architecture/CUSTOM_WORKER_PLUGINS.md), [Worker Plugin Protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md)
 
-## 1. Context
+## Context
 
-Every executable Worker today is an official Logical Worker: Cloud's
-`worker_catalog` names it, one Cloud-published Profile describes it, and the
-generic CLI Worker Engine runs a provider CLI under that Profile. Users cannot
-add their own Worker (an in-house model gateway, a local-model wrapper, a
-domain tool). Syntila Plus users want to import such Workers as separate
-executables in any language and have them appear in the normal Workers list and
-Work flow.
+Owners need to run a locally approved custom Worker while keeping the generic CLI Worker Engine and Cloud independent of provider and plugin identities. A plugin is executable local code and requires an explicit trust boundary.
 
-Architecture v8 excludes `provider_specific_worker_executable`, and AGENTS.md
-rule 5 forbids introducing provider-specific Worker executables. A plugin is an
-executable that Syntila does not ship, so the exclusion has to be read
-carefully rather than waived.
+## Decision
 
-## 2. Decision
+1. Custom Workers are MCP Worker packages. Connect imports and approves an exact package identity and digest on the owner's computer. The generic CLI Worker Engine hosts the package as a child process; Connect supervises the Engine, and no provider-specific Worker executable is added to Syntila.
+2. Cloud stores account library metadata and Worker pins. A dispatched assignment freezes the selected pin. Connect independently verifies local approval and tool pins before execution. A changed package requires fresh approval. The detailed admission and readiness rules are in ADR-041.
+3. Cloud gates custom Worker execution on the owner's `workers.custom_plugins` entitlement. Library management is available on all plans; local approval does not grant entitlement.
+4. A process boundary is not a sandbox. Plugin code runs with the local user's permissions, and outputs are untrusted. Resource limits do not establish filesystem or network isolation. Claims about enforcement require platform evidence.
+5. Plugin identifiers and pinned digests are data. The Engine, Connect and Cloud do not branch on individual plugin or provider identities. The existing `plugin` wire identifiers remain part of the contract.
 
-1. **A plugin executor path is added below the Engine, not beside it.** The
-   generic CLI Worker Engine gains a second *executor kind*, `plugin`, next to
-   `profile`. The path becomes:
+## Consequences
 
-   ```text
-   AX → Cloud → Workspace Service → CLI Worker Engine
-        ├─ executor=profile → current Worker Profile → provider CLI   (unchanged)
-        └─ executor=plugin  → pinned plugin digest   → plugin process (new)
-   ```
-
-   The Service still spawns only the Engine. The Engine, as the existing
-   separately supervised child, spawns and supervises the plugin process and
-   speaks the [Worker Plugin Protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md)
-   to it, translating to the existing Local Worker Protocol frames
-   (`execute.request`, `progress`, `activity`, `result`, `error`) upward. The
-   Engine reuses its process-tree cleanup, Windows Job Object, environment
-   builder, cancellation and redaction. Local Worker Protocol advances to a
-   backward-compatible 4.2 that adds an optional `executor` object; 4.0 and 4.1
-   peers are unchanged.
-
-2. **Official Workers are untouched.** They keep the shared Engine and the
-   current Worker Profile. There is no Profile editor, no public Profile
-   schema, and no way to express an official Worker as a plugin: plugin type
-   IDs live in a reserved `plugin-` namespace that Profile Lab and the official
-   catalog cannot publish into.
-
-3. **The `syntila` CLI never executes a plugin.** Import, validate, conformance
-   test, register, export, enable/disable and remove are authenticated IPC
-   commands to the Service. The CLI reads and displays results. A plugin file is
-   copied into Service-owned storage by the Service, not by the CLI.
-
-4. **A plugin is data to Syntila, not provider knowledge.** Core, Cloud,
-   Workspace and the Engine contain no branch on any plugin's identity or on a
-   provider. A plugin is identified by `(pluginId, version, digest, origin)`.
-   Cloud schedules it like any Logical Worker through a catalog row, and the
-   assignment snapshot pins its digest.
-
-5. **Plugins are a Syntila Plus feature, gated by Cloud.** A new paid feature
-   `workers.custom_plugins` uses the ADR-022 mechanism (`PAID_FEATURES`,
-   `requirePaidFeature`, `paidOwnerSql`). Cloud decides on import, enablement,
-   assignment admission and Workspace start-up; local state is a UX hint. See
-   [Entitlement design](../architecture/CUSTOM_WORKER_PLUGINS.md#3-entitlement-design).
-
-6. **A process boundary is not a sandbox.** A plugin runs as the logged-in user,
-   under the user's own provider logins and file permissions, like the provider
-   CLIs. Syntila adds consent, digest pinning, limits and best-effort platform
-   isolation. It does not claim containment.
-
-## 3. Why this does not violate the exclusion
-
-The exclusion in v8 §"Architecture contract" exists to keep three properties:
-
-| Property the rule protects | How the plugin path keeps it |
-| --- | --- |
-| Syntila Core, Cloud, Workspace and AX stay provider-independent: no `if (provider == …)` in Syntila code. | No Syntila code names a plugin or provider. Plugin identity is data (`plugin-<slug>`), resolved through the same catalog/inventory/snapshot columns as any Worker. |
-| Provider behaviour is not hard-coded into a bespoke Syntila-shipped binary per provider that bypasses the Profile's permission mapping and event normalisation. | Syntila ships no plugin and no provider adapter. The only Syntila-shipped executables stay the Service and the one generic Engine. The plugin host in the Engine is provider-neutral and has no plugin-specific code path. |
-| One audited execution path with one supervisor, one cancellation story and one place that applies policy. | The Engine remains the single process host. Plugins add an executor kind, not a second runtime. |
-
-What the rule does **not** cover, and this ADR does not claim it does: executables
-authored by the user. The prohibition is therefore kept verbatim and a scoped
-clarification is added when this ADR is accepted:
-
-```yaml
-prohibitions:
-  provider_specific_worker_executable: true # Syntila-authored; see ADR-027 for user-imported plugins
-```
-
-The literal `provider_specific_worker_executable: true` line must remain in
-`ARCHITECTURE_V8.md` because `scripts/verify-v8-architecture.mjs` checks it. On
-acceptance (P1 exit) the only edits to normative text are: this clarification
-beside that line, the second branch in the execution-path diagram, and one
-sentence in AGENTS.md rule 5 ("user-imported plugins run only through the
-Engine's plugin host per ADR-027"). Until acceptance those files are unchanged.
-
-### Honest differences from Profile execution
-
-A plugin has no Profile, so the guarantees a Profile provides do not carry over
-automatically, and the design says so rather than papering over it:
-
-- Profiles map `restricted` / `provider_default` to a CLI's sandbox flags. A
-  plugin has no such mapping. The execution policy is *sent* to the plugin, which
-  must honour it. Syntila enforces it only where the platform isolation tier
-  actually does (§4 of the architecture document). Read-only Steps are scheduled
-  to a plugin only when the Service reports enforced read-only for that plugin on
-  that host.
-- V9 Profiles are authenticated by Cloud authorisation and canonical digest, not
-  signatures. Plugins are user-supplied, so the digest *pin* plus explicit user
-  consent is the baseline trust anchor; signatures are optional and additive.
-
-## 4. Alternatives considered
-
-| Alternative | Verdict |
-| --- | --- |
-| Service spawns the plugin directly | Rejected. Duplicates process supervision, Job Object and cancellation logic in the service process, and puts untrusted-code lifecycle next to Cloud credentials. The Engine already exists to isolate this. |
-| CLI spawns the plugin for `test` | Rejected. Violates "CLI must never execute a plugin". |
-| Plugin as a Tool Profile pointing at the plugin binary | Rejected. Would make the Profile schema user-authored and public, requires a Profile editor, and Profiles allow no arbitrary executables by design. |
-| In-process plugins (Dart isolates, WASM) | Not "any language"; deferred, not excluded. The protocol is transport-neutral enough for a later WASI host. |
-| Cloud-hosted plugin execution | Rejected. Secrets and provider logins are local; Cloud must not run user code or see secrets. |
-
-## 5. Consequences
-
-- Engine gains a plugin host and Local Worker Protocol 4.2 (additive). Engine
-  version bump to 1.4.0 is expected in P2.
-- Cloud gains a plugin library, per-Workspace enablement, catalog `origin` and
-  inventory executor columns, one paid feature, and a scheduler admission branch.
-  Existing official-Worker rows, Profile joins and the Profile registry remain
-  valid because plugin rows are excluded by an explicit `origin` filter. The
-  full list of changed and preserved contracts is in the architecture document.
-- Cloud never stores or sees credentials or secrets; export excludes them.
-- A new class of local risk exists: arbitrary code under the user's account.
-  Consent, pinning, limits and honest isolation reporting are the mitigations;
-  they are not a containment guarantee.
-- Downgrade pauses plugins and never deletes them; exports stay available.
-- Running work behaviour on downgrade follows ADR-022 ("Work already admitted
-  finishes") with a hard cap; see the architecture document.
-- Items that need device evidence before being claimed: per-platform isolation
-  tiers, Job Object memory limits, Windows restricted-token behaviour, macOS
-  `sandbox-exec` availability, and Linux user-namespace availability in
-  containers.
-
-## 6. Out of scope
-
-Plugin marketplace or public registry; Cloud-hosted execution; plugin access to
-Cloud APIs; managed credentials of any kind; a Workspace GUI; a Profile editor;
-changes to the per-installation lock, `service stop` or Disconnect Cloud.
-
-## 7. Implementation status and deviations from the Phase 0 design
-
-Implemented and verified (Engine, Workspace and Cloud validations plus a full
-path acceptance test): the plugin executor path, Local Worker Protocol 4.2, the
-plugin-mode Engine, the conformance suite, the Service store/registry/IPC/CLI,
-the entitlement lease, and Cloud library, pins, scheduling and admission. See
-the [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md) and
-the [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md).
-
-Deliberate differences from the draft, each simpler or safer than what was
-specified:
-
-| Draft | As built | Why |
-| --- | --- | --- |
-| One-time consent tokens | Consent is the **hash of the consent document**; `--accept <hash>` proceeds | The hash covers the digest, so stale or reused consent is impossible; no server-side state to expire |
-| `plugins export <id> --out FILE` | `plugins export <id> <file>` | Positional arguments are what the CLI manifest tests can route |
-| `plugins trust-signer` | Installation-local fingerprint recognition with consent by hash; list and revoke available | No automatic trust propagation or consent bypass; signed updates still require acceptance |
-| New wire error codes | Plugin failures map onto the existing stable issue codes (for example `provider_authentication_required`, `profile_identity_mismatch`) with the plugin code in diagnostics | Avoids changing Cloud's execution-error enums |
-| `readonly`-class scheduling via isolation tier | Same rule, but no tier exists yet, so plugins run **Work only** | Honest default until device evidence exists |
-| Plugin `profileDefinitionId` | Cloud treats the opaque `pluginRef` and revision `1` as the stable identity for frozen step configs and session references | Reuses every Profile-keyed path without a Profile |
-| 24 conformance cases | 21 implemented; see the plan | The rest need host cooperation and are host tests |
-| `quarantine/` directory | Copy goes to an atomic staging directory, then a read-only digest-addressed store entry; entries are inert until enabled | Same guarantee, fewer states |
-
-Known gaps: filesystem/network isolation (every plugin reports tier `none`),
-Installed/signed Windows/Linux release evidence and hard aggregate CPU/handle quotas,
-package publication and deployed Cloud acceptance. The Dart SDK, pack/init tools,
-signing tool and signer recognition are implemented. Resource-limit evidence is
-tracked in [the acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md).
-
-## Amendment (2026-11-04): Cloud-only, usage-time entitlement
-
-The signed entitlement lease, the Workspace-side Plus checks and the 30-minute
-lapse drain are removed. Syntila Plus is enforced only by Cloud and only when
-plugin work is used: scheduler eligibility, thread policy and the atomic
-assignment INSERT (`pluginOwnerEntitledSql`, `pluginAssignmentAdmissionSql`).
-Import, test, register, enable, signer recognition and all other management
-actions are free on every plan. A lapse stops new plugin assignments; running
-work finishes.
-
-**Why:** Cloud already refuses unentitled plugin work, and an offline Workspace
-receives no assignments, so the lease added a second trust root, key
-provisioning and failure modes (`no_lease`) without protecting anything Cloud
-did not already protect.
+The owner is responsible for trusting a package and its local access. Signed Profile execution and MCP Worker execution share the generic Engine boundary. Installed release, device and real-provider acceptance remain separate from automated unit and integration tests.

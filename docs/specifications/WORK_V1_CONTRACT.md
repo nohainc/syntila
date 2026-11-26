@@ -141,13 +141,7 @@ other Steps remain request-scoped. Fresh retries get
 distinct keys. This changes no persisted schema; previously rejected colon-based
 keys never created usable Engine sessions.
 
-AX exposes explicit repository read, repository write, and shell execution
-choices when connecting a Worker. Worker owners can edit an active or
-suspended Space grant through `PATCH /api/workspace-space-grants/:id` with
-`allowedPermissions`; the existing permission validator, ownership check, and
-terminal-state restrictions apply. Omitted permissions remain unchanged.
-Work (`direct`) requires `repository:read` and `repository:write`; Test also requires
-`shell:execute`. AX never widens permissions merely because a run was denied.
+Cloud derives assignment permissions from current Space rights, the selected Worker's eligibility and the Workflow's capabilities. Connect enforces local permissions before execution.
 Run admission errors are selectable and have a copy action for the full message.
 
 This is the single authoritative catalog and semantic definition for Work v1.
@@ -919,88 +913,7 @@ rebootstrapped rather than upgraded through a compatibility layer.
 
 ## Thread Work configuration
 
-### Work execution path
-
-Work Requests selecting Work use the configured `direct` Worker binding and hold a
-Thread runtime lease for the request because Work contains the stateful
-`implement` Step. Cloud dispatches the assignment to
-the selected Worker's Worker; the Worker starts the generic CLI Worker
-Engine, which resolves the signed Tool Profile and starts the provider CLI.
-Work Requests, step progress, logical Worker and Engine/Profile/provider CLI attribution,
-timing, and final results are available to AX through the Thread history
-API. The timeline reconstructs from Cloud after page reload or browser restart,
-and each Run retains its original request text. Work requests use the same
-assignment dispatcher and Worker execution path as Workflow Steps.
-
-Work lifecycle changes publish durable Cloud realtime events: `work_request`
-creation/start/completion/failure/cancellation and Step
-queued/running/completion/failure/cancellation.
-AX subscribes to the current Thread and refreshes the persisted timeline on
-each matching event. Reconnect gaps trigger a full history refresh. The Run card
-shows product Step names and states such as `running`, `done`, and `waiting`;
-assignment identifiers and lease details remain out of the user-facing card.
-
-Cancellation is available for queued and running Work Requests. For an active
-assignment, Cloud waits for the Worker runtime to acknowledge cancellation
-after terminating the Worker and its provider process tree. If the Worker
-does not confirm termination, cancellation fails and the Run remains active so
-the user can retry. On confirmation, the current Step and queued downstream
-Steps become cancelled; completed earlier Step results remain available in Run
-details. The timeline identifies the interrupted Step (for example, `Cancelled
-during Implement`). A Work Request is not marked cancelled while its active
-Worker process may still be running.
-
-Each Thread stores one constrained `ThreadWorkConfig`:
-
-```ts
-interface ThreadWorkConfig {
-  defaultWorkflowId: WorkflowId;
-  threadInstructions?: string;
-  bindings: Partial<Record<
-    "direct" | StepKind,
-    {
-      workerId?: string;
-      workerLabel?: { displayName: string; workspaceName: string };
-      model?: string;
-      fallbackWorkerId?: string;
-      fallbackWorkerLabel?: { displayName: string; workspaceName: string };
-      additionalInstructions?: string;
-    }
-  >>;
-}
-```
-
-The binding IDs are fixed to `chat`, `direct`, `research`, `plan`, `implement`,
-`test`, and `verify`. AX displays them in that order as **Chat**, **Work**,
-**Research**, **Plan**, **Implement**, **Test**, and **Verify**. `chat` configures
-Chat independently; `direct` remains the stable internal binding for Work
-(and historical Direct). Each may select its own dynamic Worker, model,
-additional instructions, and fallback; neither restricts the provider. Other
-IDs configure the corresponding canonical Step across built-in Workflows. A
-missing binding fails closed when that Step is scheduled. Cloud considers the
-selected logical Worker and, if present, its one fallback Worker. Model and
-additional instructions are optional and remain attached to the selected
-binding. No arbitrary role names, role-specific concurrency values, or
-fallback-to-any policy are part of this contract.
-
-Worker label fields are bounded presentation snapshots only. If a selected
-Worker becomes unavailable, AX keeps its Worker ID and shows the saved label
-with an explicit unavailable state and a user-controlled replacement choice.
-Fallback Workers follow the same rule. Cloud may retain an unchanged stale
-binding so unrelated Thread edits do not erase user intent; current
-catalog, grant, and readiness checks still determine whether it can execute.
-
-`threadInstructions` is an optional Thread-wide text field, bounded to
-4,000 characters. Space instructions remain in Space settings, and each
-Step may have additional instructions in its Worker binding. These three
-user-editable instruction levels are appended after Syntila's immutable
-StepKind guidance. The run-specific request remains a separate labeled input;
-handoff data continues to be selected and supplied by Syntila.
-
-AX may offer a one-click suggested setup using Ready Workers available through
-Space Worker grants. The mixed ChatGPT/Gemini suggestion and single-Worker
-suggestions are UI conveniences only: they do not constrain the catalog or
-execution model, and users may edit every binding afterward.
+The Thread owns its default Workflow, optional Thread instructions and per-Step additional instructions. Execution preferences belong to the requester. The composer selects an eligible Worker and sends its `workerId`, with model and reasoning effort when selected. Cloud validates Worker eligibility and snapshots the accepted execution configuration. See `ThreadWorkConfig` in `packages/core/src/thread.ts` and [ADR-035](../decisions/ADR-035-worker-targeted-execution.md).
 
 ## Explicit non-goals for v1
 

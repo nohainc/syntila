@@ -14,7 +14,7 @@
 #   --probes N         Accepted for existing invocations; transport is skipped
 #   --chats N          Sequential real requests in Scenario C (default 1)
 #   --workflow MODE    chat (default) or stateful work
-#   --allow-offline    Allow a request before the Workspace reconnects
+#   --allow-offline    Allow a request before the Worker reconnects
 #   --model ID         Select a model supported by the chosen Worker
 #   --json <file>      Write full JSON report (commit, machine info, metrics) to <file>
 #   --thresholds <f>   Override threshold file (default scripts/perf-thresholds.json)

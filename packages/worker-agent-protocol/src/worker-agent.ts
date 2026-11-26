@@ -106,7 +106,7 @@ export const DIAGNOSTIC_PROBE_ECHO_MAX_CHARS = 65_536;
 
 /**
  * What a Service reports about a plugin Worker. Cloud freezes the digests into
- * the assignment snapshot and requires them to equal the Workspace pin.
+ * the assignment snapshot and requires them to equal the Worker pin.
  */
 export const PluginInventoryExecutorSchema = z
   .object({
@@ -250,7 +250,7 @@ export const assignmentStartupPayload = z
 export type AssignmentStartupPayload = z.infer<typeof assignmentStartupPayload>;
 const executionErrorCode = z.enum(EXECUTION_ERROR_CODES);
 
-/** Canonical execution permissions carried from Cloud to Workspace. */
+/** Canonical execution permissions carried from Cloud to Connect. */
 export const EXECUTION_PERMISSION_IDS = EXECUTION_PERMISSIONS;
 const executionPermission = z.enum(EXECUTION_PERMISSIONS);
 const workerActivityPayload = z
@@ -278,7 +278,7 @@ export const WorkerTypeIdSchema = nonEmptyString
   .max(128)
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/)
   .refine((id) => id !== "codex" && id !== "antigravity", {
-    message: "legacy package IDs are not Workspace product Worker Types",
+    message: "legacy package IDs are not product Worker Types",
   });
 
 const DiscoveredModelCatalogV1Schema = z
@@ -484,7 +484,7 @@ export type WorkerAllowedFolder = z.infer<
 export const WorkerInventoryPayloadSchema = z
   .object({
     workers: z.array(WorkerInventoryEntrySchema).max(500),
-    // Workspace-wide parallel execution slots, shared by all Workers. Optional
+    // Connect-wide parallel execution slots, shared by all Workers. Optional
     // so older Services remain valid; they report it per Worker only.
     parallelSlots: z.number().int().min(1).max(1024).optional(),
     // The complete Allowed Folders list. Optional so older Services remain
@@ -1007,7 +1007,7 @@ export function parseWorkerAgentMessage(
   const message = workerAgentEnvelopeSchema.parse(input);
   if (message.type === "worker.inventory") {
     if (message.protocolVersion !== "5.1") {
-      throw new Error("worker.inventory requires Workspace protocol 5.1");
+      throw new Error("worker.inventory requires Worker Agent protocol 5.1");
     }
     WorkerInventoryPayloadSchema.parse(message.payload);
   }

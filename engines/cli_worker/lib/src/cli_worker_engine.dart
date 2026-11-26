@@ -219,7 +219,7 @@ class CliWorkerEngine {
         WorkerErrorFrame(
           requestId: request.requestId,
           code: WorkerIssueCode.engineVersionMismatch,
-          message: 'Engine version does not match Workspace admission',
+          message: 'Engine version does not match Worker admission',
         ),
       );
       return;
@@ -231,12 +231,12 @@ class CliWorkerEngine {
         WorkerErrorFrame(
           requestId: request.requestId,
           code: WorkerIssueCode.profileIdentityMismatch,
-          message: 'Engine Profile identity does not match Workspace admission',
+          message: 'Engine Profile identity does not match Worker admission',
         ),
       );
       return;
     }
-    // Workspace supplies the immutable resolved revision. Older direct
+    // Connect supplies the immutable resolved revision. Older direct
     // Engine callers may still send an opaque Profile release token; retain
     // that input for protocol compatibility while using the Profile's
     // declared integer only as a local fallback.
@@ -1011,7 +1011,7 @@ class CliWorkerEngine {
 
   /// Loads the model catalog an assignment is validated against. Execution
   /// sends the prompt straight to the CLI: it reads the catalog saved by
-  /// Workspace readiness (a file read, so a refreshed catalog is picked up)
+  /// Connect readiness (a file read, so a refreshed catalog is picked up)
   /// and runs the version and discovery commands only when no catalog exists
   /// for this Profile at all. Keeping the CLI unchanged between readiness
   /// checks is the user's responsibility.
@@ -2527,7 +2527,7 @@ class CliWorkerEngine {
     final candidates = _stringList(tool['executableCandidates']);
     // Resolve the executable against the same bounded Profile environment used
     // to launch it. This keeps discovery and execution consistent when a
-    // Workspace supplies an approved runtime PATH (for example, a bundled
+    // Connect supplies an approved runtime PATH (for example, a bundled
     // Dart or Node runtime used by a fixture or packaged Worker).
     final discoveryEnvironment = _environment();
     if (discovery['allowPathSearch'] != true) {
@@ -3226,8 +3226,7 @@ class CliWorkerEngine {
     } on Object {
       return text;
     }
-    String scalar(Object? value) =>
-        value is String ? value : jsonEncode(value);
+    String scalar(Object? value) => value is String ? value : jsonEncode(value);
     String line(Object? item) => item is Map
         ? item.entries.map((e) => '${e.key}: ${scalar(e.value)}').join(', ')
         : scalar(item);

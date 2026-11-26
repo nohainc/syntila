@@ -14,7 +14,7 @@ void main() {
 
   McpServerSpec spec([ToolPins? pins]) => McpServerSpec(
     serverId: 'remote',
-    workspaceId: 'workspace',
+    hostScopeId: 'host',
     pins: pins,
     remote: McpRemote(endpoint: fake.endpoint, allowInsecureLoopback: true),
   );

@@ -65,7 +65,7 @@ try {
     const user = new User(base, await mint(`baseline-${run}-${i}`));
     const { spaceId, threadId } = await user.spaceWithThread(`Baseline ${run} ${i}`);
     const live = user.realtime([spaceId]);
-    await live.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
+    await live.waitFor("subscription", (f) => f.type === "subscription.ready", 30_000);
     users.push({ user, spaceId, threadId, live });
     cleanup.push(() => user.api("PATCH", `/api/spaces/${spaceId}`, { archived: true }));
     cleanup.push(() => live.close());
@@ -82,7 +82,7 @@ try {
   });
   const readyAt: number[] = [];
   await Promise.all(idle.map((live) =>
-    live.waitFor("socket ready", (f) => f.type === "subscription.confirmed", 60_000)
+    live.waitFor("socket ready", (f) => f.type === "subscription.ready", 60_000)
       .then(() => readyAt.push(performance.now() - opened0), () => {})));
   const openAtStart = idle.filter((l) => l.state.opens > 0).length;
   memory.withSocketsMb = await rssMb();

@@ -78,10 +78,9 @@ there is no complete historical replay promise. Ready/user recovery refreshes ob
 current-state queries and the Space catalog, including creations/deletions
 missed while disconnected. Narrow Space gaps recover the Space entity and
 its Thread list; Thread gaps recover forward Discussion cursors and
-active Work Requests. Execution Workspace gaps recover Workspace state and
-Worker inventory. Cached data remains visible, immutable older pages are not
+active Work Requests. Worker gaps recover the affected Worker state. Cached data remains visible, immutable older pages are not
 refetched, and no reconnect frame loads a bootstrap AX snapshot. See
-[AX server state](../architecture/AX_SERVER_STATE.md#phase-10-scoped-reconnect-recovery). Event rows/idempotency keys retain the existing 90-day
+[AX server state](../architecture/AX_SERVER_STATE.md#phase-10-scoped-reconnect-recovery). Event rows/idempotency keys retain the seven-day
 window; cursors survive retention cleanup.
 
 AX routes Space/Thread signals to keyed caches. `discussion.created`

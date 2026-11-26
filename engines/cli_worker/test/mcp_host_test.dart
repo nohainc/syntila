@@ -18,7 +18,7 @@ final plugins = ExternalWorkerProcessHost();
 McpServerSpec spec(String mode, {ToolPins? pins, bool worker = false}) =>
     McpServerSpec(
       serverId: 'echo-$mode',
-      workspaceId: 'ws1',
+      hostScopeId: 'ws1',
       requireWorkerProfile: worker,
       pins: pins,
       launch: ExternalWorkerLaunch(
@@ -140,7 +140,7 @@ void main() {
     final good = spec('normal');
     final bad = McpServerSpec(
       serverId: good.serverId,
-      workspaceId: good.workspaceId,
+      hostScopeId: good.hostScopeId,
       launch: ExternalWorkerLaunch(
         executable: good.launch!.executable,
         arguments: good.launch!.arguments,

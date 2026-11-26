@@ -28,12 +28,10 @@ WAL archiving (pgBackRest/WAL-G → R2) for point-in-time recovery.
 - journald capped at 2 GB / 30 days; Caddy rolls its access log (50 MB × 5);
   PostgreSQL logs use Ubuntu's logrotate.
 - Swap file (2–4 GB, swappiness 10) if none existed.
-- `run-resilience-test.sh`: with a temporary signing key (removed afterwards),
-  runs `apps/backend/scripts/resilience.ts` for a graceful restart and a
-  SIGKILL crash — user and Workspace sockets must be closed, reconnect,
-  the user must resync events committed while offline, the in-flight AI task
-  must be redelivered and its result stored exactly once — and checks that the
-  backend survives a PostgreSQL restart without restarting itself.
+- `run-resilience-test.sh` is disabled until Worker reconnect acceptance uses
+  a current Connect client. It exits before changing keys or restarting services.
+  The separate local two-node test checks database and outbox recovery; it is
+  not a replacement for production-device reconnect acceptance.
 
 External uptime: monitor `https://api.syntila.app/health/ready` from outside
 (UptimeRobot, Better Stack). An on-server monitor cannot report its own death.

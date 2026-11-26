@@ -20,7 +20,7 @@ final plugins = ExternalWorkerProcessHost();
 McpServerSpec spec(String mode, {ToolPins? pins, bool secret = false}) =>
     McpServerSpec(
       serverId: 'echo-$mode',
-      workspaceId: 'ws1',
+      hostScopeId: 'ws1',
       requireWorkerProfile: true,
       pins: pins,
       launch: ExternalWorkerLaunch(

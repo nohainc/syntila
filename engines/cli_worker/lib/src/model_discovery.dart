@@ -860,7 +860,7 @@ class ModelDiscoveryCache {
 
   /// The cached catalog for this Profile regardless of the CLI version it was
   /// discovered with. Used by execution, which does not run the CLI just to
-  /// re-check its version: Workspace readiness owns that check.
+  /// re-check its version: Connect readiness owns that check.
   Future<DiscoveredModelCatalog?> loadForProfile(String digest) async {
     try {
       if (await file.length() > 128 * 1024) return null;

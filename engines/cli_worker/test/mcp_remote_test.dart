@@ -23,7 +23,7 @@ void main() {
     bool insecure = true,
   }) => McpServerSpec(
     serverId: 'remote',
-    workspaceId: 'ws1',
+    hostScopeId: 'ws1',
     requireWorkerProfile: worker,
     pins: pins,
     remote: McpRemote(

@@ -95,7 +95,7 @@ const expected = {
     heading: "Privacy follows the same boundaries as the product.",
     content: [
       "Human identity and Spaces",
-      "Workspaces and local execution",
+      "Workers and local execution",
       "AI Accounts",
       "Data we collect",
       "Your rights",
@@ -104,7 +104,7 @@ const expected = {
   "/downloads/": {
     title: "Install — Syntila",
     heading: "Run Syntila Workers on your computer.",
-    content: ["Syntila Workspace", "Download", "macOS", "Windows", "Linux"],
+    content: ["Syntila Connect", "Download", "macOS", "Windows", "Linux"],
   },
   "/faq/": {
     title: "FAQ — Syntila",
@@ -119,7 +119,7 @@ const expected = {
     title: "Terms — Syntila",
     heading: "Terms of Service",
     content: [
-      "Connected Workspaces",
+      "Connected computers",
       "Third-party AI providers",
       "Work outputs",
       "Governing law",
@@ -174,6 +174,10 @@ for (const [route, file] of routes) {
     if (!visibleText.includes(phrase))
       errors.push(`${route}: required content missing: ${phrase}`);
   }
+  if (/\bworkspaces?\b/i.test(visibleText) || /\bworkspaces?\b/i.test(description))
+    errors.push(`${route}: retired product terminology appears in public copy`);
+  if (route === "/downloads/" && !visibleText.includes("syntila-connect pair --pairing-code-stdin"))
+    errors.push(`${route}: current Connect pairing instructions are missing`);
   if (/conclave/i.test(visibleText))
     errors.push(`${route}: the hosting domain must not appear in visible copy`);
   if (/secure vault/i.test(visibleText))

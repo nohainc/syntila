@@ -174,7 +174,7 @@ final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec(String baseUrl, {ToolPins? pins}) => McpServerSpec(
   serverId: 'ollama-worker',
-  workspaceId: 'ws1',
+  hostScopeId: 'ws1',
   requireWorkerProfile: true,
   pins: pins,
   launch: ExternalWorkerLaunch(

@@ -17,7 +17,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <li><a href="#who-we-are">1. Who we are</a></li>
             <li><a href="#data-we-collect">2. Data we collect</a></li>
             <li><a href="#human-identity">3. Human identity &amp; Spaces</a></li>
-            <li><a href="#workspaces-execution">4. Workspaces &amp; execution</a></li>
+            <li><a href="#workspaces-execution">4. Workers &amp; execution</a></li>
             <li><a href="#ai-accounts">5. AI Accounts</a></li>
             <li><a href="#third-parties">6. AI providers &amp; MCP servers</a></li>
             <li><a href="#how-we-use">7. How we use data</a></li>
@@ -44,8 +44,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <ul>
             <li><strong>Account data:</strong> your email address, display name, sign-in and session records, and your plan.</li>
             <li><strong>Space content:</strong> Spaces, Threads, messages, prompts, AI answers, attached and generated files, and Space settings that you or other members create.</li>
-            <li><strong>Workspace data:</strong> the name and status of computers you connect, the Workers available on them, and the permissions you give to Spaces.</li>
-            <li><strong>Execution records:</strong> who sent a request, which Workspace, Worker, and model handled it, timing, results, and usage reported by the provider.</li>
+            <li><strong>Worker data:</strong> the name and status of computers you connect, the Workers available on them, and the permissions you give to Spaces.</li>
+            <li><strong>Execution records:</strong> who sent a request, which Worker and model handled it, timing, results, and usage reported by the provider.</li>
             <li><strong>Technical data:</strong> diagnostic logs and security events needed to run and protect the service.</li>
           </ul>
           <p>We do not collect your AI provider passwords, API keys, or provider sessions. Content sent in requests, results, or attachments may include information from files on a connected computer.</p>
@@ -54,8 +54,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <p>Syntila Cloud signs people in and applies Space membership and role checks to shared content. Access to content depends on its sharing settings and the member’s role. Joining a Space does not give another member access to your connected computer or your AI Accounts.</p>
           <p>If you choose Google or GitHub sign-in when available, the selected provider processes your sign-in and shares account information with Syntila. See the <a href="https://policies.google.com/privacy">Google Privacy Policy</a> and <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
 
-          <h2 id="workspaces-execution">4. Workspaces and local execution</h2>
-          <p>A Workspace is a computer that its owner has connected. A Space can use it only when the owner allows it. Work runs on that computer, in a folder for the Space. A Worker can access files under the host user’s permissions; information it includes in requests, results, or attachments may be sent to providers or stored as content.</p>
+          <h2 id="workspaces-execution">4. Workers and local execution</h2>
+          <p>Syntila Connect runs Workers on a computer connected by its owner. People can use a Worker only when authorized. Work runs on that computer, in a folder for the Space. A Worker can access files under the host user’s permissions; information it includes in requests, results, or attachments may be sent to providers or stored as content.</p>
 
           <h2 id="ai-accounts">5. AI Accounts</h2>
           <p>AI Accounts are your accounts with external AI providers. You sign in to them on your own computer, in the provider's own tool. The credentials stay there and are not sent to Syntila Cloud or to other members. Allowing a Space to use a Worker lets its members send requests; it does not reveal your credentials.</p>
@@ -70,7 +70,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <p>Account data, Space content, and execution records are stored in Syntila Cloud. We use Hetzner Online GmbH for hosting on a server in Nuremberg, Germany, and Cloudflare, Inc. for services including content delivery and email delivery. Hetzner’s data-protection contact is <a href="mailto:data-protection@hetzner.com">data-protection@hetzner.com</a>; Cloudflare’s is <a href="mailto:dpo@cloudflare.com">dpo@cloudflare.com</a>. For questions about Syntila’s processing, contact us below. [OTHER PRODUCTION PROVIDERS, PROCESSING LOCATIONS, AND INTERNATIONAL-TRANSFER SAFEGUARDS REQUIRE CONFIRMATION BEFORE PUBLICATION.]</p>
 
           <h2 id="retention">9. Retention and deletion</h2>
-          <p>We keep account data while your account exists, and Space content until it is deleted by someone permitted to do so or the Space is deleted. When an account is deleted, shared Spaces and their history may be preserved for other participants. Some security and Workspace ownership records are retained for service operation and recovery. We do not currently maintain backups. [DELETION TIMING AND SECURITY AND AUDIT RETENTION REQUIRE CONFIRMATION BEFORE PUBLICATION.] To request account deletion, contact us below.</p>
+          <p>We keep account data while your account exists, and Space content until it is deleted by someone permitted to do so or the Space is deleted. When an account is deleted, shared Spaces and their history may be preserved for other participants. Some security and Worker ownership records are retained for service operation and recovery. We do not currently maintain backups. [DELETION TIMING AND SECURITY AND AUDIT RETENTION REQUIRE CONFIRMATION BEFORE PUBLICATION.] To request account deletion, contact us below.</p>
 
           <h2 id="your-rights">10. Your rights</h2>
           <p>Depending on where you live, you may have the right to access, correct, delete, or export your personal data, to restrict or object to its processing, and to withdraw consent where we rely on it. If you are in the European Economic Area or the United Kingdom, you can also complain to your data protection authority. To exercise these rights, write to <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
@@ -79,7 +79,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <p>Syntila is not intended for children under 16. Do not create an account for, or invite, a person below that age.</p>
 
           <h2 id="public-website">12. Public website</h2>
-          <p>This website sets no cookies and loads no third-party scripts. If enabled, it records only an event name, the public page path, and a timestamp, without a visitor identifier in the event payload; hosting providers may receive technical data such as IP addresses. It does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+          <p>This website sets no cookies and loads no third-party scripts. If enabled, it records only an event name, the public page path, and a timestamp, without a visitor identifier in the event payload; hosting providers may receive technical data such as IP addresses. It does not provide a place to submit AI credentials, private repository content, or Worker secrets.</p>
 
           <h2 id="changes">13. Changes to this policy</h2>
           <p>We may update this policy as the service changes. We will change the effective date above and, for significant changes, tell you in the app or by email.</p>

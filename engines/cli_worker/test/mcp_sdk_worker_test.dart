@@ -24,7 +24,7 @@ final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec({ToolPins? pins}) => McpServerSpec(
   serverId: 'sdk-echo',
-  workspaceId: 'ws1',
+  hostScopeId: 'ws1',
   requireWorkerProfile: true,
   pins: pins,
   launch: ExternalWorkerLaunch(

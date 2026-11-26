@@ -14,7 +14,7 @@ import 'external_worker_process_host.dart';
 import 'external_worker_process_limits.dart';
 
 /// Options for the plugin-mode Engine (`syntila-agent --plugin ...`). It has
-/// no Tool Profile: the Workspace Service passes the verified plugin identity
+/// no Tool Profile: the Connect passes the verified plugin identity
 /// in `initialize.request` (protocol 4.2) and re-asserts it on every execute.
 class ExternalWorkerEngineOptions {
   ExternalWorkerEngineOptions({
@@ -227,7 +227,7 @@ class ExternalWorkerEngine {
         WorkerErrorFrame(
           requestId: request.requestId,
           code: WorkerIssueCode.engineVersionMismatch,
-          message: 'Engine version does not match Workspace admission',
+          message: 'Engine version does not match Worker admission',
         ),
       );
     }
@@ -386,7 +386,7 @@ class ExternalWorkerEngine {
     }
   }
 
-  /// The NDJSON conformance suite is gone. The Workspace inspects MCP Worker
+  /// The NDJSON conformance suite is gone. Connect inspects MCP Worker
   /// tools itself (`syntila workers inspect`), so this request is refused.
   Future<void> _conformance(ConformanceRequest request, IOSink sink) async {
     if (_admitted == null) {

@@ -15,8 +15,7 @@
  * PGHOST/PGUSER/PGPASSWORD/PGDATABASE (outbox age, lock waits, connections).
  * Thresholds (ADR-039 gate): REST p99 < 150 ms, fan-out p99 < 250 ms. Exit 1 when missed.
  *
- * NOT covered here, needs separate tooling: Agent sockets at 1-2 events/s (use scripts/load.ts's
- * FakeWorkspace until the unified-protocol Agent client exists), slow readers (Bun's WebSocket client
+ * NOT covered here, needs separate tooling: Agent sockets at 1-2 events/s (a current Agent load client is still needed), slow readers (Bun's WebSocket client
  * always reads), event-loop lag inside the server (read it from the server's own metrics).
  */
 import { SQL } from "bun";
@@ -68,7 +67,7 @@ async function connectAll(count: number): Promise<number[]> {
       const { spaceId, threadId } = await user.spaceWithThread(`Scale ${run} ${i}`);
       const t0 = performance.now();
       const live = user.realtime([spaceId]);
-      await live.waitFor("subscription", (f) => f.type === "subscription.confirmed", 60_000);
+      await live.waitFor("subscription", (f) => f.type === "subscription.ready", 60_000);
       times.push(performance.now() - t0);
       socks.push({ user, spaceId, threadId, live });
     }));

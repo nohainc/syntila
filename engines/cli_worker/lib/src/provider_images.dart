@@ -3,7 +3,7 @@ import 'dart:io';
 
 /// Images a Worker produces for the user are left in
 /// `.syntila/outputs/<assignment-id>/` under the working directory; the
-/// Workspace uploads them with the assignment result. Workers save there
+/// Connect uploads them with the assignment result. Workers save there
 /// themselves; providers that keep generated images elsewhere are copied in.
 const maxCapturedImages = 10;
 const maxCapturedImageBytes = 20 * 1024 * 1024;
