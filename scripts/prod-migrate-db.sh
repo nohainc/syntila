@@ -20,9 +20,12 @@ remote_env='set -a; . /etc/syntila/backend.env; set +a; export PGPASSWORD="$(cat
 case "$cmd" in
   status)
     say "Applied on production (asks for the sudo password)"
-    # ssh -t keeps the password prompt on the terminal; stdout is captured.
-    applied=$(ssh -t "$PROD_VPS" 'sudo -u postgres psql -XAtq -d syntila -c "SELECT version FROM schema_migrations ORDER BY version"' 2>/dev/null \
-      | tr -d '\r' | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort || true)
+    # With stdout captured, sudo's password prompt would be captured too. So the
+    # sudo step writes a file in the syntila home (prompt stays visible), and a
+    # second ssh reads and removes it.
+    ssh -t "$PROD_VPS" 'sudo -u postgres psql -XAtq -d syntila -c "SELECT version FROM schema_migrations ORDER BY version" > ~/.applied-migrations.txt' || true
+    applied=$(ssh -o BatchMode=yes "$PROD_VPS" 'cat ~/.applied-migrations.txt; rm -f ~/.applied-migrations.txt' 2>/dev/null \
+      | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort || true)
     if [ -z "$applied" ]; then
       echo "Could not read schema_migrations."
     else

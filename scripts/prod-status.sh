@@ -20,6 +20,7 @@ http "Site" "$PROD_APP_URL/"
 say "Backend migrations"
 echo "pending (this checkout vs production):"
 pending_migrations | sed 's/^/  /' || true
+echo "  (for the exact list run scripts/prod-migrate-db.sh status; it asks for the sudo password)"
 say "Auth D1 migrations"
 if command -v pnpm >/dev/null 2>&1 && [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then d1_pending | tail -15 || true
 else echo "(skipped: needs pnpm and CLOUDFLARE_API_TOKEN)"; fi
