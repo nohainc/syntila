@@ -13,8 +13,8 @@
  * --pid enables the memory figures (read with `ps`, so it must run on the
  * backend's machine or its pid must be visible). Without it memory is reported
  * as null. The JSON result goes to _perf/baseline-<UTC timestamp>.json (the
- * folder `scripts/perf-report.mjs` also uses; it is not committed). Record the
- * run, the git commit and the machine in docs/operations/WORKER_FIRST_BASELINE.md.
+ * folder `scripts/perf-report.mjs` also uses; it is not committed). Note the
+ * git commit and the machine alongside the result.
  * Rate limits must be off for the run (SYNTILA_RATE_LIMIT_PER_MINUTE=0 and
  * SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE=0), as for scripts/load.ts.
  */

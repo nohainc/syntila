@@ -7,14 +7,16 @@ file, not archived.
 
 ## Now
 
-1. **Remove the legacy Workspace path.** Delete `apps/workspace`,
-   `apps/workspace_gui`, the Workspace gateway, runtime routes and protocol
-   bridge, Space-to-Workspace grants, the legacy human realtime frames, and the
-   Worker-first feature flags; make `worker_instance_id` required. The Worker
-   path becomes the only execution path, and the web app renders the canonical
-   timeline only.
-2. **Product wording.** No user-facing text says "Workspace"; it is Connect and
-   Workers.
+Release setup (the `prod-*.sh` scripts, Windows Connect on GitHub) is done;
+what remains before the first release:
+
+1. **Production rehearsal.** Install the Profile signing key on the VPS, run
+   `scripts/prod-deploy-all.sh --site`, then the smoke test and the resilience
+   test in [Production provisioning](docs/operations/PRODUCTION_PROVISIONING.md#first-release-rehearsal).
+2. **Windows Connect check.** Install the release on a Windows computer, pair a
+   Worker to production and run a Chat.
+3. **Finish the cleanup.** Leftover "Workspace" wording in code and old
+   records in `docs/`; no user-facing text says "Workspace".
 
 ## Before the first test release
 

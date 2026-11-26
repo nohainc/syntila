@@ -78,3 +78,9 @@ revokes the share; it takes effect at the next admission and dispatch check.
   Thread queue are not counted until they dispatch.
 - A share is not removed when the people connection ends; the owner revokes
   it.
+
+## Plan requirement
+
+Creating or changing a Person Share needs the Plus feature `worker.sharing`
+(ADR-022); revoking a share stays free. When the owner's plan lapses, the
+person cannot use the Worker until the owner is paid again; the share is kept.

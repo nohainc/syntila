@@ -101,3 +101,11 @@ The Space owner's Workers are the Space's AI. A member no longer needs a `worker
 - **Enforcement:** `acceptWorkerTarget` admits a non-owner without a row when the Worker's owner owns the Space. Without a row the mode ceiling is `work+shell`, so the Space Work right governs Work. An explicit row still applies: `enabled = false` refuses (`execute_not_permitted`) and its `mode` caps the member. Workers of other members still need a row. Personal (direct) Spaces accept only the requester's own Workers.
 - **Discovery:** `handleListEligibleWorkers` includes the Space owner's Workers. `GET /api/spaces/:spaceId/workers` lists them to a member with a Chat or Work right (empty for the owner, personal and support Spaces), leaving out ones the member is explicitly disabled for, with `executionOptions` narrowed to the allowed models and efforts. This closes the picker gap noted above.
 - **App:** the Thread page passes these as shared Workers to `workersFromInstances` in shared Spaces.
+
+## Plan requirement
+
+Giving members access to a Worker needs the Plus feature `worker.sharing`
+(`requirePaidFeature`, ADR-022). Turning access off stays free. When the
+owner's plan lapses, member access is refused at dispatch until the owner is
+paid again; the stored access is kept. A Worker that belongs to the Space
+follows Space rights and is not affected.

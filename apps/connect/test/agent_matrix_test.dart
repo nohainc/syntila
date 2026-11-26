@@ -1,5 +1,5 @@
-// The crash and reconnect matrix from WORKER_AGENT_RUNTIME_V1.md section 5, and
-// the P4 exit gate: independent Agents, separate journals, no Engine ever
+// The crash and reconnect matrix and
+// the exit gate: independent Agents, separate journals, no Engine ever
 // started twice, and no Workspace anywhere.
 import 'dart:io';
 

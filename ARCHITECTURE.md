@@ -163,6 +163,8 @@ Lifecycle details: [Execution lifecycle](docs/specifications/EXECUTION_LIFECYCLE
 | Space member | Use a Worker the owner made available in that Space, with the owner's mode (Chat, Work, Work with shell) and model allow-list | [ADR-042](docs/decisions/ADR-042-worker-space-member-access.md) |
 | Person Share | Chat only, read-only, in the person's own Threads and Spaces, with concurrency and monthly run-time limits | ADR-043 |
 
+Space member access and Person Shares need the Plus feature `worker.sharing` on the Worker's owner. Free accounts can still turn access off and revoke; when a plan lapses, shares pause (they are not deleted).
+
 Reading a Thread never grants the right to execute. Direct Spaces never grant
 access to the other person's Worker.
 
