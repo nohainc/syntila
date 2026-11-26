@@ -27,6 +27,7 @@ import {
   type Jwk,
 } from "../apps/backend/scripts/lib/clients";
 import { summarize } from "./latency-baseline.mjs";
+import { finalizeBenchmarkSpace } from "./perf-local-cleanup.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV_EMAIL = process.env.SYNTILA_DEV_EMAIL ?? "vitalii@nohainc.com";
@@ -248,6 +249,7 @@ async function runScenarioC(
   const totals: number[] = [];
   const admission: number[] = [], serviceWait: number[] = [], delivery: number[] = [], startup: number[] = [];
   let errors = 0;
+  let completedSuccessfully = false;
   try {
     for (let i = 0; i < chatsCount; i++) {
       const start = performance.now();
@@ -297,17 +299,23 @@ async function runScenarioC(
       startPermitToRunningMs: roundStat(summarize(startup)),
     };
     for (const [name, stat] of Object.entries(intervals)) console.log(formatStatLine(name, stat));
+    completedSuccessfully = errors === 0;
     return { requests: chatsCount, errors, totalMs, intervals, workflow, workerId };
   } finally {
-    // Delete only after no request is active; retain timed-out runs for inspection.
+    // Preserve active or failed runs so diagnostics are not lost.
     const [active] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM work_requests WHERE thread_id = ${threadId} AND status NOT IN ('completed', 'failed', 'cancelled')`;
-    if (!active?.count) {
-      const deleted = await user.api("DELETE", `/api/spaces/${spaceId}`);
-      if (deleted.status >= 300) throw new Error(`Could not clean up benchmark Space ${spaceId}: HTTP ${deleted.status}`);
-      createdSpaceIds.delete(spaceId);
-    } else {
-      createdSpaceIds.delete(spaceId);
-      console.warn(`  Preserved benchmark Space ${spaceId}: ${active.count} request(s) still active`);
+    if (!active) throw new Error(`Could not check benchmark Space ${spaceId}; it was preserved`);
+    const outcome = await finalizeBenchmarkSpace({
+      activeCount: active.count,
+      succeeded: completedSuccessfully,
+      remove: async () => {
+        const deleted = await user.api("DELETE", `/api/spaces/${spaceId}`);
+        if (deleted.status >= 300) throw new Error(`Could not clean up benchmark Space ${spaceId}: HTTP ${deleted.status}`);
+      },
+    });
+    createdSpaceIds.delete(spaceId);
+    if (outcome !== "deleted") {
+      console.warn(`  Preserved benchmark Space ${spaceId}: ${outcome === "active" ? `${active.count} request(s) still active` : "the scenario failed"}`);
     }
   }
 }
@@ -384,7 +392,7 @@ async function cleanupRun(
   createdUserIds: Set<string>, createdSpaceIds: Set<string>,
 ): Promise<CleanupReport> {
   // Never delete a Space here: the workflow path deletes it only after terminal
-  // completion, and intentionally preserves a timed-out request for inspection.
+  // completion, and intentionally preserves active or failed runs for inspection.
   const userIds = [...createdUserIds];
   const spaceIds = [...createdSpaceIds];
   const [users] = userIds.length ? await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM users WHERE id IN ${sql(userIds)}` : [{ count: 0 }];
