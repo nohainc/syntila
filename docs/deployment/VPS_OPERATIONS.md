@@ -30,8 +30,10 @@ WAL archiving (pgBackRest/WAL-G → R2) for point-in-time recovery.
 - Swap file (2–4 GB, swappiness 10) if none existed.
 - `run-resilience-test.sh` is disabled until Worker reconnect acceptance uses
   a current Connect client. It exits before changing keys or restarting services.
-  The separate local two-node test checks database and outbox recovery; it is
-  not a replacement for production-device reconnect acceptance.
+  The local `worker-agent-live` test checks a real Connect reconnect and newer
+  session epoch after a backend restart. The separate two-node test checks
+  database and outbox recovery. Neither replaces production-device reconnect
+  acceptance or verifies an in-flight provider request across a restart.
 
 External uptime: monitor `https://api.syntila.app/health/ready` from outside
 (UptimeRobot, Better Stack). An on-server monitor cannot report its own death.

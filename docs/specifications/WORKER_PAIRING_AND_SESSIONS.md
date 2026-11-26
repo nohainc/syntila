@@ -70,7 +70,7 @@ Moving a Worker to another computer is an explicit transfer (ADR-034 decision 6)
 
 Connect opens `/api/worker-agent/gateway` for the paired Worker and its current session using the bearer session token. The gateway authenticates the Worker and checks its session fence on relevant writes. Hello, heartbeat, synchronization and assignment messages travel over the unified messaging transport; see [ADR-038](../decisions/ADR-038-unified-realtime-transport.md).
 
-`apps/backend/test/domain/worker-agent-live.test.ts` exercises pairing and reconciliation between the real Connect runtime and backend with local PostgreSQL and Dart. Its unconfigured Engine does not establish provider execution or installed-device acceptance.
+`apps/backend/test/domain/worker-agent-live.test.ts` exercises pairing, reconciliation and a backend restart between the real Connect runtime and backend with local PostgreSQL and Dart. It verifies that reconnecting creates a newer session epoch. Its unconfigured Engine does not establish provider execution or installed-device acceptance.
 
 ## Audit (`worker_audit_log`)
 

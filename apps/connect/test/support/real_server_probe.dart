@@ -76,9 +76,17 @@ Future<void> main() async {
       baseDelay: const Duration(milliseconds: 50),
       stepTimeout: const Duration(seconds: 4),
     );
+    var readyCount = 0;
+    final subscription = runtime.connection.phases.listen((phase) {
+      if (phase == ConnectionPhase.ready && ++readyCount > 1) {
+        stdout.writeln('AGENT_RECONNECTED');
+      }
+    });
     await runtime.start();
     await runtime.connection.whenReady(timeout: const Duration(seconds: 12));
     stdout.writeln('AGENT_READY');
+    if (input['keepAlive'] == true) await stdin.drain<void>();
+    await subscription.cancel();
   } finally {
     await runtime?.stop();
     await root.delete(recursive: true);
