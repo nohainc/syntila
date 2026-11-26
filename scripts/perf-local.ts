@@ -3,11 +3,11 @@
  * Local performance runner for Syntila.
  *
  * Usage:
- *   scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
+ *   scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
  *
  * Scenarios:
  *   A "transport": retired; no Worker Agent delivery probe exists.
- *   C "workflows": sequential requests on the developer’s Worker.
+ *   C "workflows": bounded concurrent requests on the developer’s Worker.
  *
  * Cleanup preserves active requests and only checks resources created by this run.
  * Never logs or prints tokens, keys, or message bodies.
@@ -28,6 +28,7 @@ import {
 } from "../apps/backend/scripts/lib/clients";
 import { summarize } from "./latency-baseline.mjs";
 import { finalizeBenchmarkSpace } from "./perf-local-cleanup.mjs";
+import { runWorkerLoad } from "./perf-worker-load.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEV_EMAIL = process.env.SYNTILA_DEV_EMAIL ?? "vitalii@nohainc.com";
@@ -39,6 +40,7 @@ interface CliOptions {
   allowOffline: boolean;
   model: string | null;
   chats: number;
+  parallel: number;
   jsonPath: string | null;
   thresholdsPath: string;
   checkThresholds: boolean;
@@ -52,6 +54,7 @@ function parseCli(argv: string[]): CliOptions {
     allowOffline: false,
     model: null,
     chats: 1,
+    parallel: 1,
     jsonPath: null,
     thresholdsPath: DEFAULT_THRESHOLDS_PATH,
     checkThresholds: true,
@@ -76,6 +79,10 @@ function parseCli(argv: string[]): CliOptions {
     };
     if (arg === "--probes") opts.probes = nextInt();
     else if (arg === "--chats") opts.chats = nextInt();
+    else if (arg === "--parallel") {
+      opts.parallel = nextInt();
+      if (opts.parallel < 1 || opts.parallel > 8) throw new Error("--parallel must be between 1 and 8");
+    }
     else if (arg === "--workflow") {
       const value = next();
       if (value !== "chat" && value !== "work") throw new Error("--workflow must be chat or work");
@@ -88,7 +95,7 @@ function parseCli(argv: string[]): CliOptions {
     else if (arg === "--no-thresholds") opts.checkThresholds = false;
     else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--thresholds file.json] [--no-thresholds]",
+        "Usage: scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--thresholds file.json] [--no-thresholds]",
       );
       process.exit(0);
     } else {
@@ -233,9 +240,9 @@ async function runScenarioA(_base: string, _sql: SQL, _mint: ReturnType<typeof t
 
 async function runScenarioC(
   base: string, sql: SQL, mint: ReturnType<typeof tokenMinter>, runId: string,
-  chatsCount: number, workflow: "chat" | "work", allowOffline: boolean, model: string | null, createdUserIds: Set<string>, createdSpaceIds: Set<string>,
+  chatsCount: number, parallel: number, workflow: "chat" | "work", allowOffline: boolean, model: string | null, createdUserIds: Set<string>, createdSpaceIds: Set<string>,
 ) {
-  console.log(`\n== Scenario C: real Worker ${workflow} workflow (${chatsCount} sequential requests)`);
+  console.log(`\n== Scenario C: real Worker ${workflow} workflow (${chatsCount} requests, up to ${parallel} concurrent)`);
   if (chatsCount === 0) return { requests: 0, errors: 0, totalMs: roundStat(summarize([])) };
   const dev = await resolveDeveloperIdentity(sql, base, mint, `${runId}-workflow`, createdUserIds);
   if (!dev.token || !dev.worker) throw new Error(`An enabled Worker for ${DEV_EMAIL} is required`);
@@ -243,6 +250,8 @@ async function runScenarioC(
     throw new Error("The selected Worker is offline or not ready (or use --allow-offline for a readiness test)");
   }
   const workerId = dev.worker.id;
+  const [busy] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM worker_assignments WHERE worker_instance_id = ${workerId} AND status IN ('created', 'dispatched', 'acknowledged', 'running', 'revocation_pending', 'reconciling')`;
+  if (busy?.count) console.warn(`  WARN: selected Worker already has ${busy.count} active assignment(s); admission and startup may be delayed`);
   const user = new User(base, dev.token);
   const { spaceId, threadId } = await user.spaceWithThread(`perf-${runId}-real-workflow`);
   createdSpaceIds.add(spaceId);
@@ -251,16 +260,24 @@ async function runScenarioC(
   let errors = 0;
   let completedSuccessfully = false;
   try {
-    for (let i = 0; i < chatsCount; i++) {
+    const threadIds = [threadId];
+    for (let lane = 1; lane < Math.min(parallel, chatsCount); lane++) {
+      const response = await user.api("POST", `/api/spaces/${spaceId}/threads`, { name: `Load lane ${lane + 1}` });
+      const id = response.body?.thread?.id ?? response.body?.id;
+      if (response.status >= 300 || !id) throw new Error(`Could not create benchmark Thread: HTTP ${response.status}`);
+      threadIds.push(String(id));
+    }
+    await runWorkerLoad(chatsCount, parallel, async (i: number, lane: number) => {
+      const selectedThreadId = threadIds[lane]!;
       const start = performance.now();
-      const submit = await user.api("POST", `/api/threads/${threadId}/work-requests`, {
+      const submit = await user.api("POST", `/api/threads/${selectedThreadId}/work-requests`, {
         workflowId: workflow === "work" ? "direct" : "chat", objective: "Reply with the single word: pong. Do not use tools or modify any files.",
         workerId, ...(model ? { model } : {}),
       });
       if (submit.status >= 300 || !submit.body?.workRequest?.id) {
         console.error(`  request ${i + 1} rejected: HTTP ${submit.status} ${JSON.stringify(submit.body)}`);
         errors++;
-        continue;
+        return;
       }
       const requestId = String(submit.body.workRequest.id);
       const done = await waitFor("real workflow completion", async () => {
@@ -289,7 +306,7 @@ async function runScenarioC(
           }
         }
       }
-    }
+    });
     const totalMs = roundStat(summarize(totals));
     console.log(formatStatLine("real request -> completed result (includes polling)", totalMs));
     const intervals = {
@@ -303,7 +320,7 @@ async function runScenarioC(
     return { requests: chatsCount, errors, totalMs, intervals, workflow, workerId };
   } finally {
     // Preserve active or failed runs so diagnostics are not lost.
-    const [active] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM work_requests WHERE thread_id = ${threadId} AND status NOT IN ('completed', 'failed', 'cancelled')`;
+    const [active] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM work_requests WHERE thread_id IN (SELECT id FROM threads WHERE space_id = ${spaceId}) AND status NOT IN ('completed', 'failed', 'cancelled')`;
     if (!active) throw new Error(`Could not check benchmark Space ${spaceId}; it was preserved`);
     const outcome = await finalizeBenchmarkSpace({
       activeCount: active.count,
@@ -487,6 +504,7 @@ async function main() {
       mint,
       runId,
       opts.chats,
+      opts.parallel,
       opts.workflow,
       opts.allowOffline,
       opts.model,
@@ -551,6 +569,7 @@ async function main() {
     parameters: {
       probes: opts.probes,
       chats: opts.chats,
+      parallel: opts.parallel,
       workflow: opts.workflow,
       allowOffline: opts.allowOffline,
       model: opts.model,

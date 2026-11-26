@@ -2,7 +2,7 @@
 # Local performance runner for real user actions on the local Syntila stack.
 #
 # Usage:
-#   scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
+#   scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
 #
 # Prerequisite:
 #   Run `pnpm start:local` so the local backend (:8788) and PostgreSQL are up.
@@ -12,7 +12,8 @@
 #
 # Options:
 #   --probes N         Accepted for existing invocations; transport is skipped
-#   --chats N          Sequential real requests in Scenario C (default 1)
+#   --chats N          Real requests in Scenario C (default 1)
+#   --parallel N       Maximum concurrent requests on separate Threads (1–8, default 1)
 #   --workflow MODE    chat (default) or stateful work
 #   --allow-offline    Allow a request before the Worker reconnects
 #   --model ID         Select a model supported by the chosen Worker
