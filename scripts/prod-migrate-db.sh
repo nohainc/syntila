@@ -2,13 +2,13 @@
 # Production database migrations, separate from a release.
 #
 # Migrations normally run automatically when the backend is deployed
-# (scripts/prod-deploy-backend.sh): the service applies them before it starts,
-# after a verified dump. Use this script when you want to see the state, or to
+# (scripts/prod-deploy-backend.sh): the service applies them before it starts.
+# Use this script when you want to see the state, or to
 # apply a schema change ahead of the code (expand migrations only: forward-only
 # changes that the running release ignores).
 #
 #   scripts/prod-migrate-db.sh status          applied and pending migrations, schema drift check
-#   scripts/prod-migrate-db.sh apply [--yes]   dump, then apply the pending migrations of this checkout
+#   scripts/prod-migrate-db.sh apply [--yes]   apply the pending migrations of this checkout
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
 cmd="${1:-status}"; shift || true
@@ -30,12 +30,11 @@ case "$cmd" in
     pending=$(pending_migrations || true)
     [ -n "$pending" ] || { echo "No pending migrations."; exit 0; }
     case "$pending" in unknown*) echo "$pending" >&2; echo "Refusing to apply blind; run \"status\" on the VPS first." >&2; exit 1;; esac
-    confirm "Apply these migrations to PRODUCTION now (a dump is taken first):
+    confirm "Apply these migrations to PRODUCTION now:
 $pending"
     stage_backend
-    say "Dump and migrate on the VPS (asks for the sudo password)"
+    say "Migrate on the VPS (asks for the sudo password)"
     ssh -t "$PROD_VPS" "set -e
-      sudo /usr/local/lib/syntila/syntila-dump.sh
       sudo -u syntila bash -c '$remote_env; /home/syntila/.bun/bin/bun \$HOME/$PROD_STAGE/backend/dist/migrate.js'
       sudo -u syntila bash -c '$remote_env; /home/syntila/.bun/bin/bun \$HOME/$PROD_STAGE/backend/dist/migrate.js --verify'"
     ;;

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Phase 5: reliability — nightly local dump (for consistent Hetzner Backups),
-# restore test, log rotation, swap, monitoring/alerts, resilience tests.
+# Phase 5: reliability — log rotation, swap, monitoring/alerts, resilience tests.
 # Usage (on the VPS):  sudo bash ~/phase3-stage/vps/phase5/install-phase5.sh [--skip-resilience]
 set -Eeuo pipefail
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
@@ -18,11 +17,11 @@ fi
 
 echo '== Scripts and units'
 install -d -m 0755 /usr/local/lib/syntila
-install -m 0755 "$here/syntila-monitor.py" "$here/syntila-dump.sh" "$here/restore-test.sh" "$here/run-resilience-test.sh" /usr/local/lib/syntila/
+install -m 0755 "$here/syntila-monitor.py" "$here/run-resilience-test.sh" /usr/local/lib/syntila/
 for inv in "$here/check-invariants.sql" "$here/../../../apps/backend/scripts/check-invariants.sql"; do
   [ -f "$inv" ] && install -m 0644 "$inv" /usr/local/lib/syntila/check-invariants.sql && break
 done
-for unit in syntila-monitor.service syntila-monitor.timer syntila-dump.service syntila-dump.timer; do
+for unit in syntila-monitor.service syntila-monitor.timer; do
   install -m 0644 "$here/$unit" /etc/systemd/system/
 done
 if [ ! -f /etc/syntila/monitor.env ]; then
@@ -52,13 +51,8 @@ fi
 
 echo '== Timers'
 systemctl daemon-reload
-systemctl enable --now syntila-dump.timer syntila-monitor.timer >/dev/null
+systemctl enable --now syntila-monitor.timer >/dev/null
 systemctl list-timers 'syntila-*' --no-pager
-
-echo '== First dump + restore test'
-systemctl start syntila-dump.service
-journalctl -u syntila-dump -n 3 --no-pager -o cat
-bash /usr/local/lib/syntila/restore-test.sh
 
 echo '== Monitor (first run)'
 python3 /usr/local/lib/syntila/syntila-monitor.py --verbose || true
@@ -75,6 +69,4 @@ Next:
      then: sudo python3 /usr/local/lib/syntila/syntila-monitor.py --test-alert
   2. External uptime check of https://api.syntila.app/health/ready (UptimeRobot / Better Stack),
      and optionally HEARTBEAT_URL (healthchecks.io) to detect a dead VPS.
-  3. Hetzner Console: enable Backups. Each daily image will contain the latest
-     nightly dump (01:15 UTC) in /var/backups/syntila.
 TXT

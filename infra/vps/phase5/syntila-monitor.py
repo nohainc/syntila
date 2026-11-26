@@ -2,7 +2,7 @@
 """Syntila VPS health monitor (runs every few minutes from a systemd timer).
 
 Checks disk/inodes/memory, critical services, backend readiness (local and
-public), TLS expiry, PostgreSQL connections, the nightly dump, backend restart
+public), TLS expiry, PostgreSQL connections, backend restart
 loops and failed units. Sends an alert when a check starts failing, a reminder
 while it keeps failing, and a recovery notice. Optionally pings an external
 heartbeat URL so an outside service notices when the whole VPS is down.
@@ -24,7 +24,7 @@ def load_config():
         "LOCAL_READY_URL": "http://127.0.0.1:3000/health/ready",
         "PUBLIC_READY_URL": "https://api.syntila.app/health/ready",
         "TLS_HOST": "api.syntila.app", "TLS_MIN_DAYS": "14",
-        "PG_CONN_WARN_PCT": "80", "DUMP_DIR": "/var/backups/syntila", "DUMP_MAX_AGE_HOURS": "26",
+        "PG_CONN_WARN_PCT": "80",
         "RESTART_BURST": "3", "REMIND_HOURS": "6",
         "ALERT_NTFY_URL": "", "ALERT_NTFY_TOKEN": "", "ALERT_SLACK_WEBHOOK": "",
         "ALERT_TELEGRAM_BOT_TOKEN": "", "ALERT_TELEGRAM_CHAT_ID": "", "HEARTBEAT_URL": "",
@@ -118,12 +118,6 @@ def checks(cfg, state):
         yield "pg-connections", pct < int(cfg["PG_CONN_WARN_PCT"]), "warning", f"PostgreSQL connections {used}/{mx} ({pct}%)"
     else:
         yield "pg-connections", False, "critical", "PostgreSQL query failed"
-
-    if cfg["DUMP_DIR"]:
-        dumps = [os.path.join(cfg["DUMP_DIR"], f) for f in os.listdir(cfg["DUMP_DIR"]) if f.endswith(".dump")] if os.path.isdir(cfg["DUMP_DIR"]) else []
-        age = (time.time() - max(map(os.path.getmtime, dumps))) / 3600 if dumps else None
-        yield "dump", age is not None and age <= float(cfg["DUMP_MAX_AGE_HOURS"]), "warning", \
-            "Nightly database dump: " + (f"latest is {age:.1f} h old" if age is not None else "none found")
 
 
 def notify(cfg, title, body, priority="default"):

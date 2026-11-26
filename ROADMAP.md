@@ -23,8 +23,7 @@ file, not archived.
 - Real provider runs end to end: Chat, Work with a Space folder, files,
   artifact handoff between two computers, crash and reconnect.
 - Security review checklist ([Worker-first security review](docs/security/WORKER_FIRST_SECURITY_REVIEW.md)).
-- Backup and restore exercise, and a baseline of idle and active load, before
-  production.
+- A baseline of idle and active load before production.
 
 ## Later
 

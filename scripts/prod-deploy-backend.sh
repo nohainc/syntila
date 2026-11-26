@@ -6,8 +6,7 @@
 #   scripts/prod-deploy-backend.sh [--yes] [--skip-tests]
 #
 # What happens: tests, build, upload, then on the VPS (infra/vps/deploy-backend.sh):
-# a verified pre-migration dump when migrations are pending, a new release
-# directory, restart (the service applies pending migrations before it starts),
+# a new release directory, restart (the service applies pending migrations before it starts),
 # a readiness check with automatic rollback to the previous release, and a
 # schema.lock drift check.
 set -euo pipefail

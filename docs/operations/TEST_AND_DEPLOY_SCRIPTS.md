@@ -68,21 +68,21 @@ Common to every deploy script:
 | `scripts/prod-deploy-frontend.sh` | Public site (`apps/site`, Astro): `check`, `test`, `build`, `check:release`, then `wrangler deploy --config wrangler.production.jsonc`. |
 | `scripts/prod-deploy-all.sh [--site]` | Backend, then web app; with `--site` also the public site. Flags are passed on to each script. |
 | `scripts/prod-migrate-db.sh status` | Read-only: the last applied migrations on production and the ones in this checkout that are not applied. |
-| `scripts/prod-migrate-db.sh apply` | Builds, shows the pending migrations, asks, uploads, takes a dump (`syntila-dump.sh`) and applies them without a release. |
+| `scripts/prod-migrate-db.sh apply` | Builds, shows the pending migrations, asks, uploads and applies them without a release. |
 
 ### What the backend deploy does on the VPS
 
 `infra/vps/deploy-backend.sh` (run as root):
 
 1. Refuses PostgreSQL older than 16.
-2. If migrations are pending: takes a verified dump first (`/var/backups/syntila`) and stops if the dump fails.
+2. Lists the pending migrations.
 3. Creates `/opt/syntila/releases/<timestamp>`, switches the `current` link, restarts `syntila-backend`. The service applies pending migrations in `ExecStartPre` before it starts.
 4. Waits for `/health/ready`; if it never becomes ready, prints the logs and rolls back to the previous release.
 5. Runs `migrate.js --verify` (live schema against `migrations/schema.lock`; drift is a warning), checks that an unauthenticated API call gives 401, and keeps the last 5 releases.
 
 ### Migrations: with the deploy or separately?
 
-With the backend deploy, normally. Code and schema ship together, the dump and the rollback are part of that deploy, and migrations are forward-only (expand/contract). Use `prod-migrate-db.sh` to look at the state (`status`) or to apply a schema change ahead of the code (`apply`), which is only safe for expand-style changes that the running release ignores. A migration cannot be undone by switching the code back; the restore command is printed by the deploy (`pg_restore --clean --if-exists -d syntila <dump>`).
+With the backend deploy, normally. Code and schema ship together, the code rollback is part of that deploy, and migrations are forward-only (expand/contract). Use `prod-migrate-db.sh` to look at the state (`status`) or to apply a schema change ahead of the code (`apply`), which is only safe for expand-style changes that the running release ignores. A migration cannot be undone by switching the code back; there are no backups, so fix a bad migration forward or reset the database.
 
 ### Typical sequences
 

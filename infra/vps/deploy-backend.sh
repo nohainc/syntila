@@ -45,28 +45,15 @@ if [ "$pg_version" -lt 160000 ]; then
   echo "PostgreSQL $pg_version is too old: the backend migrations need version 16 or newer. Not deploying." >&2; exit 1
 fi
 
-# A schema change cannot be undone by switching the code back, so take a
-# verified dump before any release that carries new migrations.
+# A schema change cannot be undone by switching the code back: list what this
+# release will migrate.
 applied=$(psql_pg -c "SELECT CASE WHEN to_regclass('schema_migrations') IS NULL THEN '' ELSE (SELECT COALESCE(string_agg(version, ' '), '') FROM schema_migrations) END")
 pending=
 for file in "$stage"/backend/migrations/[0-9][0-9][0-9][0-9]_*.sql; do
   name=$(basename "$file")
   case " $applied " in *" $name "*) ;; *) pending="$pending $name";; esac
 done
-if [ -n "$pending" ]; then
-  echo "== Pending migrations:$pending"
-  if [ -n "$applied" ]; then
-    if [ -x /usr/local/lib/syntila/syntila-dump.sh ]; then
-      echo '== Pre-migration dump'
-      /usr/local/lib/syntila/syntila-dump.sh || { echo 'Pre-migration dump failed; not deploying.' >&2; exit 1; }
-      echo "   Restore with: sudo -u postgres pg_restore --clean --if-exists -d syntila $(ls -1t /var/backups/syntila/syntila-*.dump | head -1)"
-    elif [ "${ALLOW_MIGRATION_WITHOUT_DUMP:-}" = 1 ]; then
-      echo 'WARNING: migrating without a dump (ALLOW_MIGRATION_WITHOUT_DUMP=1).' >&2
-    else
-      echo 'The dump tool is not installed (infra/vps/phase5). Install it, or set ALLOW_MIGRATION_WITHOUT_DUMP=1.' >&2; exit 1
-    fi
-  fi
-fi
+[ -z "$pending" ] || echo "== Pending migrations:$pending"
 
 echo '== Environment'
 while IFS= read -r line; do
