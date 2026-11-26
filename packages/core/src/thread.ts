@@ -193,7 +193,7 @@ export interface ThreadWorkConfig {
 
 export type WorkflowExecutionMode = "stateless_read" | "stateful_thread";
 /** Versioned Workflow snapshots persist this execution-class value. */
-export type WorkflowExecutionClass = "analysis" | "workspace_action";
+export type WorkflowExecutionClass = "analysis" | "worker_action";
 export const WORKFLOW_CAPABILITIES = [
   "authorized_context_read",
   "thread_write",
@@ -316,7 +316,7 @@ const builtinStep = (
   executionClass:
     kind === "chat" || kind === "research" || kind === "plan"
       ? "analysis"
-      : "workspace_action",
+      : "worker_action",
   requiredCapabilities:
     kind === "chat" || kind === "research"
       ? ["authorized_context_read"]
@@ -495,7 +495,7 @@ export function toolChatWorkflowV2(): BuiltinWorkflowDefinition {
         kind: "tool_call",
         order: 0,
         executionMode: "stateless_read",
-        executionClass: "workspace_action",
+        executionClass: "worker_action",
         requiredCapabilities: [],
         readWritePolicy: "read_only",
         timeoutMs: 15 * 60 * 1000,

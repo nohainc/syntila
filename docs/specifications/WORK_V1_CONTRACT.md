@@ -255,7 +255,7 @@ interface BuiltinWorkflowStep {
   kind: StepKind;
   order: number;
   executionMode: "stateless_read" | "stateful_thread";
-  executionClass: "analysis" | "workspace_action";
+  executionClass: "analysis" | "worker_action";
   requiredCapabilities: WorkflowCapability[];
   readWritePolicy: "read_only" | "write_thread";
   timeoutMs: number;
@@ -306,9 +306,9 @@ The v1 step policy is:
 | `chat` | `analysis` | `authorized_context_read` | `read_only` | `conversation_response` |
 | `research` | `analysis` | `authorized_context_read` | `read_only` | `evidence_summary` |
 | `plan` | `analysis` | `authorized_context_read` | `read_only` | `implementation_plan` |
-| `implement` | `workspace_action` | `thread_write` | `write_thread` | `thread_changes` |
-| `test` | `workspace_action` | `authorized_context_read`, `test_execution` | `read_only` | `test_report` |
-| `verify` | `workspace_action` | `authorized_context_read`, `independent_verification` | `read_only` | `verification_report` |
+| `implement` | `worker_action` | `thread_write` | `write_thread` | `thread_changes` |
+| `test` | `worker_action` | `authorized_context_read`, `test_execution` | `read_only` | `test_report` |
+| `verify` | `worker_action` | `authorized_context_read`, `independent_verification` | `read_only` | `verification_report` |
 
 Chat has a single `chat` Step with `executionMode: stateless_read`, prompt profile
 `chat:v1`, and no dependencies or upstream inputs. It has its own `chat` binding;

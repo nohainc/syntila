@@ -29,10 +29,10 @@ describe("observability", () => {
 
   it("never emits human or runtime credentials from credential-shaped fields", () => {
     const humanCredential = "syntila_dhs_human-secret";
-    const runtimeCredential = "syntila_workspace_tok_runtime-secret";
+    const runtimeCredential = "syntila_agent_tok_runtime-secret";
     const record = structuredLogRecord(
       "info",
-      "workspace.auth",
+      "agent.auth",
       {},
       {
         humanCredential,
@@ -49,12 +49,10 @@ describe("observability", () => {
     const record = structuredLogRecord("info", "assignment.completed", {
       requestId: "request-1",
       eventId: "event-1",
-      workspaceId: "workspace-1",
       runId: "run-1",
       taskId: "task-1",
       attemptId: "attempt-1",
       assignmentId: "assignment-1",
-      workspaceRuntimeId: "host-1",
       workerId: "worker-1",
     });
 
@@ -121,7 +119,7 @@ describe("observability", () => {
 
   it("uses Cloudflare's generated Ray ID to correlate forwarded requests", () => {
     const request = new Request(
-      "https://app.syntila.test/api/workspace-gateway/connect",
+      "https://app.syntila.test/api/worker-agent/gateway",
       { headers: { "cf-ray": "ray-123-lhr" } },
     );
     expect(requestIdFor(request)).toBe("ray-123-lhr");

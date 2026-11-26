@@ -382,10 +382,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
     required String invitationId,
   }) async {}
 
-  Future<void> revokeWorkspaceSpaceGrant({
-    required String grantId,
-  }) async {}
-
   @override
   Future<AxAccountSecurity> loadAccountSecurity() async =>
       const AxAccountSecurity(
@@ -419,7 +415,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
           {required String intentId}) async =>
       const AxDesktopAuthIntentStatus(
         status: 'pending',
-        clientName: 'Syntila Workspace',
+        clientName: 'Syntila Connect',
         audience: 'syntila.desktop.management',
       );
 
@@ -452,22 +448,6 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
     }
     return space.copyWith(threads: const []);
   }
-
-  Future<List<Map<String, dynamic>>> loadSpaceWorkflowWorkspaceGrants({
-    required String spaceId,
-  }) async =>
-      const [];
-
-  Future<void> createWorkspaceSpaceGrant({
-    required String spaceId,
-    required String workspaceId,
-    List<String> allowedPermissions = const [],
-  }) async {}
-
-  Future<void> updateWorkspaceSpacePermissions({
-    required String grantId,
-    required List<String> allowedPermissions,
-  }) async {}
 
   @override
   Future<List<AxThread>> loadSpaceThreads({
@@ -572,11 +552,11 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   }) async {}
 }
 
-/// Stateful fixture used by the empty-workspace onboarding test. It mirrors
+/// Stateful fixture used by the empty-Worker onboarding test. It mirrors
 /// the production API flow closely enough to verify the shell, space
 /// creation and subsequent data refresh together.
-class EmptyWorkspaceFixtureDataSource extends AxFixtureDataSource {
-  EmptyWorkspaceFixtureDataSource() : super();
+class EmptyWorkerFixtureDataSource extends AxFixtureDataSource {
+  EmptyWorkerFixtureDataSource() : super();
 
   bool hasSpace = false;
 

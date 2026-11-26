@@ -4,8 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('AX parses Cloud-composed Worker metadata with local Worker state', () {
     final worker = AxWorker.fromJson({
-      'id': 'workspace-worker-dynamic',
-      'workspaceId': 'workspace-1',
+      'id': 'worker-dynamic',
       'workerTypeId': 'dynamic-test-worker',
       'displayName': 'Dynamic Test Worker',
       'description': 'Catalog-created acceptance Worker.',

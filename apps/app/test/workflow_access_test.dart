@@ -36,7 +36,7 @@ void main() {
     expect(cache.has('workflow.research'), isFalse);
     cache.plan = AxAccountPlan.fromJson({
       'tier': 'paid',
-      'features': ['workspace.sharing', 'workflow.research'],
+      'features': ['worker.sharing', 'workflow.research'],
     });
     expect(cache.has('workflow.research'), isTrue);
     cache.plan = AxAccountPlan.fromJson({'tier': 'free', 'features': []});

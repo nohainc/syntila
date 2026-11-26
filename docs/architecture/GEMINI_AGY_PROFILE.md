@@ -76,7 +76,7 @@ Connect Runtime Protocol 5.1 inventory and Local Worker Protocol 4.0 probe
 results carry an optional versioned `modelCatalog` object. Older Profiles remain
 valid. The new Profile requires Engine 1.2.0 so it cannot accidentally run under
 an older implementation. Cloud stores bounded public discovery metadata in
-`workspace_worker_inventory.model_catalog_json`; public options identify the
+`worker_inventory.model_catalog_json`; public options identify the
 source as `provider_catalog`. Cloud requires the same published release digest
 and CLI version and applies the Profile's discovery prefix again. Private CLI arguments,
 credential settings, local paths, and profile digests are not exposed in model
@@ -102,7 +102,7 @@ model or effort Auto value: the UI requires both selections, and the Engine
 does not send a separate `--effort` argument. A missing or unresolved native
 variant stays unavailable rather than being guessed.
 
-AGY documentation explicitly says workspace file writes can be auto-allowed in
+AGY documentation explicitly says file writes can be auto-allowed in
 headless mode. `--sandbox` restricts terminal activity and `--mode plan` is not
 an independently verified filesystem boundary. Syntila therefore treats Chat
 versus Work as a Cloud workflow decision, while the signed Profile selects the

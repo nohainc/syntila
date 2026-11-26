@@ -690,7 +690,7 @@ void main() {
       expect(cursor.line, 99);
     });
 
-    test('parses relative workspace paths and known project files', () {
+    test('parses relative paths and known project files', () {
       final rel1 = parseCodeOrFileLink('apps/app/lib/main.dart:15');
       expect(rel1, isNotNull);
       expect(rel1!.filePath, 'apps/app/lib/main.dart');

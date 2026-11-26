@@ -13,14 +13,14 @@ points are ordinary diagnostic events with `stage: "trace"` and a closed
 | T1    | `web_submitted`             | Web `ax_work_latency_trace.dart`    | User submits the Work request                         |
 | T2    | `cloud_accepted`            | `routes/work-creation.ts`           | Submission durably persisted                          |
 | T3    | `workflow_dispatch_started` | `workflow.ts`                       | Workflow step begins dispatching the task             |
-| T4    | `gateway_queued`            | `workspace-gateway.ts`              | `assignment.start` written to WebSocket or HTTP queue |
+| T4    | `gateway_queued`            | `worker-gateway.ts`              | `assignment.start` written to WebSocket or HTTP queue |
 | T5    | `service_received`          | `cloud_connection.dart`             | Service reads the command off the transport           |
 | T6    | `service_accepted`          | `cloud_connection.dart`             | Admission `assignment.ack` written                    |
-| T7    | `profile_resolved`          | `workspace_runtime.dart`            | Tool Profile resolved and its execution file located  |
-| T8    | `slot_reserved`             | `workspace_runtime.dart`            | Local Worker execution slot reserved                  |
+| T7    | `profile_resolved`          | `runtime.dart`            | Tool Profile resolved and its execution file located  |
+| T8    | `slot_reserved`             | `runtime.dart`            | Local Worker execution slot reserved                  |
 | T9    | `engine_process_created`    | `cli_worker_engine_supervisor.dart` | Engine OS process exists                              |
 | T10   | `provider_started`          | `cloud_connection.dart`             | Provider CLI start evidence                           |
-| T11   | `terminal_persisted`        | `workspace-gateway.ts`              | Terminal outcome written to D1                        |
+| T11   | `terminal_persisted`        | `worker-gateway.ts`              | Terminal outcome written to D1                        |
 | T12   | `web_received`              | Web `ax_work_latency_trace.dart`    | Web receives the final update                         |
 
 Auxiliary stages are not numbered: `cloud_ack_received` (command round trip
@@ -46,7 +46,7 @@ synchronization deferral, so time spent waiting for the Service to reach
   runtime/attempt; a restart preserves runtime identity but resets the clock.
 - Cross-machine intervals use event `timestamp` values corrected by
   `clockOffsetMs` (Cloud minus Service). The Service estimates it NTP-style
-  from `workspace.hello` and `workspace.heartbeat` acknowledgements
+  from `agent.hello` and `agent.heartbeat` acknowledgements
   (`serverTime`), keeping the lowest-round-trip sample of the last eight.
   `clockRttMs` bounds the error at half its value. Never subtract Mac and
   Cloud timestamps directly.
@@ -57,8 +57,8 @@ synchronization deferral, so time spent waiting for the Service to reach
 
 ## Delivery probe
 
-`POST /api/workspaces/:workspaceId/delivery-probe` (allowed for the Connect
-owner only, requiring `workspace:manage`) calls the Worker gateway's
+`POST /api/workers/:workerId/delivery-probe` (allowed for the Connect
+owner only, requiring `worker:manage`) calls the Worker gateway's
 `diagnostic-probe`, which sends `diagnostic.probe` over the Connect's live
 transport and waits up to 5 s for `diagnostic.probe.ack`. No assignment,
 Worker, Engine or provider process is involved. Probes and their acknowledgements
@@ -75,7 +75,7 @@ default 0) and `payloadBytes` (0–49152, default 0) configure the probe run.
 With `count > 1`, probes run sequentially and return
 `{ results: [...], summary: { n, ok, timeouts, minMs, p50Ms, p95Ms, maxMs } }`.
 When `payloadBytes > 0`, the gateway requires the connected Service to have
-advertised `workspace.probe_payload.v1` in `workspace.hello` (otherwise
+advertised `agent.probe_payload.v1` in `agent.hello` (otherwise
 returning 409) and attaches a random base64 `echo` string (up to 65 536 ASCII
 characters) to `diagnostic.probe`, verifying that `diagnostic.probe.ack` echoes
 it verbatim (`outcome: "echo_mismatch"` if not). At most one probe batch may be

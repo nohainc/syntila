@@ -14,7 +14,7 @@ const allowedEvents = [
   "cta.download",
   "navigation.downloads",
   "navigation.how_it_works",
-  "section.workspace_reached",
+  "section.downloads_reached",
   "section.workers_reached",
 ];
 const forbiddenPayloadFields = [

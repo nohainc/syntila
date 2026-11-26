@@ -219,10 +219,10 @@ void main() {
     expect(unavailable.status, 'unavailable');
 
     final denied = await read(
-        http.Response(jsonEncode({'error': 'Workspace not found'}), 404));
+        http.Response(jsonEncode({'error': 'Computer not found'}), 404));
     expect(denied.status, 'error');
     expect(denied.errorMessage, contains('Worker owner'));
-    expect(denied.errorMessage, isNot(contains('Workspace')));
+    expect(denied.errorMessage, isNot(contains('Computer not found')));
 
     Uri? requested;
     final connectWorker = await AxApiClient(

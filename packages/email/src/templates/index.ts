@@ -417,9 +417,9 @@ function renderWelcome(input: WelcomeInput): RenderedEmailContent {
       title: "Congratulations! Your account is ready",
       intro: `Congratulations, ${recipientName}! Your Syntila account has been created and your email address is verified.`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Your workspace for AI collaboration and execution is ready. Create or join a Space, connect a Workspace, and start your first conversation.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Your place for AI collaboration and execution is ready. Create or join a Space, connect a Worker, and start your first conversation.</p>',
       bodyText:
-        "Congratulations! Your Syntila account has been created and your email address is verified.\n\nYour workspace for AI collaboration and execution is ready. Create or join a Space, connect a Workspace, and start your first conversation.",
+        "Congratulations! Your Syntila account has been created and your email address is verified.\n\nYour place for AI collaboration and execution is ready. Create or join a Space, connect a Worker, and start your first conversation.",
       action: { label: "Open Syntila", url: appUrl },
       securityNotice:
         "You are receiving this email because a new Syntila account was created with this email address.",

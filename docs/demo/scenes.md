@@ -93,7 +93,7 @@ remains subject to the approval checklist, regardless of rehearsal results.
 ## Execution preparation and review
 
 Scenes 3–5 require the separately isolated demo Connect and user-controlled
-provider setup in the [Connect guide](README.md#separate-demo-workspace-and-worker-setup).
+provider setup in the [Connect guide](README.md#separate-demo-connect-and-worker-setup).
 Record actual Worker/model names and readiness at setup, not in advance. For
 Chat, select a Worker whose current Profile is admitted for read-only execution;
 for Work, verify the Connect and Space authorization. Review the real scene 5

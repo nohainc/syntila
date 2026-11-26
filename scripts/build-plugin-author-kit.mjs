@@ -108,7 +108,7 @@ and key ID, and writes plugin.sig. Keep private keys outside the package.
 
 A passing conformance result proves protocol behavior only, not safety. A plugin
 runs as its installing user. Production testing, registration and enablement go
-through Workspace Service and require Plus and explicit consent. Standalone
+through Connect and require Plus and explicit consent. Standalone
 conformance does not register or enable anything.
 
 MANIFEST.sha256 records archive source contents. This is a local distribution

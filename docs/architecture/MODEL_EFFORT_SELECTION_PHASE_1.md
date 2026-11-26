@@ -34,8 +34,8 @@ execution or account-entitlement test.
 | Module | Observed behavior |
 | --- | --- |
 | `engines/cli_worker/lib/src/model_discovery.dart` | Generic TSV: exact ID/name, optional effort list/default; signed prefix filtering. Codex app-server: ID, displayName, per-model efforts/default, hidden filtering, bounded pagination. No grouping or native/logical mapping. Cache keyed by Profile digest and CLI version. |
-| `apps/workspace/lib/local_worker_registry.dart` | Serializes/restores optional `DiscoveredModelCatalog` on LocalWorker. Does not interpret model suffixes. `copyWith` uses null coalescing, so null alone does not clear an existing catalog. |
-| `apps/workspace/lib/worker_inventory_projection.dart` | Publishes catalog only with eligible matching Worker/Profile, available Engine, exact digest and CLI-version match. Readiness/activation remain separate. |
+| `apps/connect/lib/local_worker_registry.dart` | Serializes/restores optional `DiscoveredModelCatalog` on LocalWorker. Does not interpret model suffixes. `copyWith` uses null coalescing, so null alone does not clear an existing catalog. |
+| `apps/connect/lib/worker_inventory_projection.dart` | Publishes catalog only with eligible matching Worker/Profile, available Engine, exact digest and CLI-version match. Readiness/activation remain separate. |
 | `apps/cloud/src/worker-execution-options.ts` | Requires matching discovered catalog, reapplies signed prefix, excludes unavailable entries; exposes Listed/Verified badges and per-model effort. Public schema is v1, discovery source is provider_catalog; no private invocation data. |
 | `apps/app/lib/src/ax/worker_execution_options.dart` | Parses public v1; looks up selected/default model effort, otherwise global effort. Reconciliation clears invalid overrides to null. No provider mapping. |
 | `apps/app/lib/src/ax/workflow_configuration_options.dart` | Selected-Worker model/effort lists and validation; unchanged unavailable intent may be retained; Cloud is authoritative. No default inference or effort-count limit. |

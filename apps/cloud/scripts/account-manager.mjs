@@ -182,7 +182,7 @@ export async function handle(input, query = executeSQL, fetcher = fetch, backend
       message:
         plan === "paid"
           ? "Paid membership enabled. Takes effect on the user's next request."
-          : "Paid membership disabled. Paid features and Workspace sharing are paused.",
+          : "Paid membership disabled. Paid features and Worker sharing are paused.",
     };
   }
   if (input.action === "reset") {

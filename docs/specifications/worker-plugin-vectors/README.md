@@ -20,6 +20,6 @@ A `kind: "mcp"` manifest (ADR-028) and its expected pin. The same manifest witho
 `kind` key has the long-standing NDJSON digest `1bb61d41...`, so this vector proves the new
 key is part of the canonical form. Cloud (`apps/cloud/test/worker-plugins.test.ts`), the Dart SDK
 (`packages/syntila_external_worker_sdk/test/manifest_digest_vector_test.dart`) and the Connect
-(`apps/workspace/test/plugin_manifest_digest_vector_test.dart`) each compute the digest and
+(`apps/connect/test/plugin_manifest_digest_vector_test.dart`) each compute the digest and
 must equal the file.
 

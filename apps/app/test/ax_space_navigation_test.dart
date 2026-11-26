@@ -27,10 +27,7 @@ const w = AxThread(
 class NavigationSource extends AxFixtureDataSource {
   final details = <String, List<Completer<AxSpace>>>{};
   final collections = <String, List<Completer<List<AxThread>>>>{};
-  int bootstrapCalls = 0,
-      sessionCalls = 0,
-      workspaceCalls = 0,
-      catalogCalls = 0;
+  int bootstrapCalls = 0, sessionCalls = 0, workerCalls = 0, catalogCalls = 0;
   @override
   Future<AxSpace> loadSpace({required String spaceId}) {
     final request = Completer<AxSpace>();

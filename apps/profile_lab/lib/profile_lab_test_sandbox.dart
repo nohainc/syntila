@@ -908,7 +908,7 @@ class ProfileLabTestSandbox {
 }
 
 /// The host PATH plus the directories the Connect service launch agent puts
-/// on PATH (`com.syntila.workspace.service.plist`). A Finder-launched
+/// on PATH. A Finder-launched
 /// Profile Lab only gets `/usr/bin:/bin:/usr/sbin:/sbin`, so provider CLIs
 /// that call helpers such as `gh` for login (Copilot `--headless`) would
 /// otherwise behave differently in Profile Lab than in Connect.

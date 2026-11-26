@@ -40,7 +40,7 @@ export default {
       return env.LEGACY_AUTH.fetch(request);
     }
 
-    const appPaths = ["/login", "/spaces", "/space", "/thread", "/run", "/people", "/notes", "/files", "/archived-spaces", "/workspaces", "/settings", "/search", "/desktop-auth", "/reset", "/verify"];
+    const appPaths = ["/login", "/spaces", "/space", "/thread", "/run", "/people", "/notes", "/files", "/archived-spaces", "/settings", "/search", "/desktop-auth", "/reset", "/verify"];
     const legacyInvitation = url.pathname === "/" && ["invitation", "person_invitation"].some((key) => url.searchParams.has(key));
     if (url.hostname === CANONICAL_HOST && (legacyInvitation || appPaths.some((path) => url.pathname === path || url.pathname.startsWith(`${path}/`)))) {
       url.hostname = "app.syntila.app";

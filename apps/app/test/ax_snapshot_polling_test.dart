@@ -10,9 +10,9 @@ import 'ax_fixture_snapshot.dart';
 import 'ax_space_navigation_test.dart' show HistoryNavigation;
 
 class PollingSource extends AxFixtureDataSource {
-  int bootstraps = 0, sessions = 0, spaces = 0, workspaces = 0;
+  int bootstraps = 0, sessions = 0, spaces = 0, legacyLists = 0;
   final details = <String>[];
-  List<int> get broadCounts => [bootstraps, sessions, spaces, workspaces];
+  List<int> get broadCounts => [bootstraps, sessions, spaces, legacyLists];
   @override
   Future<AxSnapshot> loadBootstrapState({String? spaceId}) async {
     bootstraps++;
@@ -84,13 +84,13 @@ void main() {
     expect(source.broadCounts, counts);
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets('startup reuses the bootstrap Workspace list', (tester) async {
+  testWidgets('startup reuses the bootstrap Worker list', (tester) async {
     final source = PollingSource();
     final realtime = TestRealtime();
     await mount(tester, source, realtime);
     expect(source.bootstraps, 1);
     // The bootstrap snapshot carries Workers; no separate list read.
-    expect(source.workspaces, 0);
+    expect(source.legacyLists, 0);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -110,7 +110,6 @@ void main() {
     ]) {
       realtime.controller.add({
         'type': type,
-        'workspaceId': 'workspace',
         'payload': {
           'workRequestId': type,
           'threadId': 'thread-auth',
@@ -124,7 +123,6 @@ void main() {
     expect(source.broadCounts, counts);
     realtime.controller.add({
       'type': 'run.completed',
-      'workspaceId': 'workspace',
       'payload': {'runId': 'legacy-run'}
     });
     await tester.pumpAndSettle();

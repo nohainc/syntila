@@ -235,7 +235,7 @@ refreshes the synchronized editor state.
 
 An authenticated, non-revoked Connect runtime MAY fetch a catalog Worker's
 current published Profile before configuring that Worker locally. The read
-endpoint MUST NOT require a `workspace_worker_inventory` row: Profile sync
+endpoint MUST NOT require a `worker_inventory` row: Profile sync
 precedes local setup and inventory publication. Runtime authentication and
 published Profile identity, schema and digest checks remain required. Profile
 download alone does not configure, enable, or authorize execution of a Worker.
@@ -462,7 +462,7 @@ reference this specification and agree on these facts:
 V8 lifecycle documents and retained audit/event records are historical
 references only. They do not describe a supported runtime API. The cleanup
 removes release definitions, release rows, channel pointers, promotion
-evidence, and workspace channel assignments after the V9 readers and writers
+evidence, and channel assignments after the V9 readers and writers
 are deployed. It preserves `worker_catalog`, current/history snapshots,
 diagnostic event history, security audit records, local test scenarios, and the
 Profile Lab sandbox boundary for unpublished candidates.

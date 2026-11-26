@@ -11,4 +11,4 @@ dart test
 dart run bin/syntila_connect.dart help
 ```
 
-The package depends only on `crypto`, `cryptography` and `path`. It does not import `apps/workspace`.
+The package depends only on `crypto`, `cryptography` and `path`.

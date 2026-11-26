@@ -25,7 +25,7 @@ import { connectRelease } from "../data/connect-release";
       </div>
 
       <p class="downloads-release-version">{connectRelease.productName}</p>
-      <div class="downloads-grid" data-downloads-platforms data-site-event="section.workspace_reached">
+      <div class="downloads-grid" data-downloads-platforms data-site-event="section.downloads_reached">
         {connectRelease.targets.map((target) => (
           <article class="downloads-card" data-platform={target.platform}>
             <div class="downloads-card__header">

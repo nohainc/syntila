@@ -80,7 +80,7 @@ returns active, visible stable Workers with their active Profile Definitions.
 It contains no local readiness or Profile release payload.
 
 Connect has a separate runtime catalog API at
-`GET /api/workspace-runtime/workers/catalog`. It reads the Connect's
+`GET /api/worker-agent/workers/catalog`. It reads the Connect's
 selected Profile channel and returns every active, visible Worker with an
 active Profile Definition eligible for that channel:
 
@@ -199,7 +199,7 @@ The authenticated human Worker inventory API composes catalog `displayName`
 and `description`, plus the Connect name, into each local inventory record.
 AX reads these fields directly alongside readiness, capability, Engine,
 Profile, and provider-tool details; Thread Worker choices render
-`displayName · workspaceName` and retain the local Worker ID as the selection
+`displayName · workerName` and retain the local Worker ID as the selection
 value. AX does not join a separate catalog response or infer a display name
 from the Worker Type ID.
 
@@ -321,11 +321,11 @@ Architecture v8 permits a new approved logical Worker (such as `claude` or arbit
 3. **Evidence Capture & Signed Publication:** Profile Lab collects a verified `ToolProfileEvidenceContract` artifact and submits it to Cloud (`POST /api/admin/workers/definitions/:id/releases`). Cloud verifies evidence, signs the profile payload using Ed25519, and creates an immutable `tool_profile_releases` row.
 4. **Channel Promotion:** The maintainer promotes the release to the `testing` channel (`POST /api/admin/workers/definitions/:id/channels/testing`).
 5. **Dynamic Connect & AX Discovery:**
-   - **Connect:** On next periodic catalog sync (`GET /api/workspace-runtime/workers/catalog`), Connect dynamically discovers the new `WorkerDescriptor`, downloads the signed Tool Profile (`ToolProfileReleaseAdmission`), configures the local Worker slot, verifies local provider CLI readiness, and syncs safe readiness to Cloud.
+   - **Connect:** On next periodic catalog sync (`GET /api/worker-agent/workers/catalog`), Connect dynamically discovers the new `WorkerDescriptor`, downloads the signed Tool Profile (`ToolProfileReleaseAdmission`), configures the local Worker slot, verifies local provider CLI readiness, and syncs safe readiness to Cloud.
    - **Syntila:** On next catalog fetch (`GET /api/workers/catalog`), AX automatically renders the new Worker in Workers inventory, and Threads can bind task roles to it immediately.
    - **Execution:** When AX dispatches a Thread step to the new Worker, Cloud schedules the task to the ready Connect, and Connect executes it using the generic CLI Worker Engine (`engines/cli_worker`) configured by the signed Tool Profile.
 
-Zero lines of application source code in `apps/workspace` or `apps/app` contain hardcoded Worker Type identities.
+Zero lines of application source code in `apps/connect` or `apps/app` contain hardcoded Worker Type identities.
 
 ## Development/testing scalability proof
 
@@ -364,4 +364,4 @@ reuses the existing local Worker record.
 
 ## Demo setup
 
-The [Northstar demo guide](../demo/README.md#separate-demo-workspace-and-worker-setup) records the current V9 Profile and readiness prerequisites, provider-owned sign-ins, model selection and fallback. Catalog presence alone does not establish readiness or read-only Chat eligibility.
+The [Northstar demo guide](../demo/README.md#separate-demo-connect-and-worker-setup) records the current V9 Profile and readiness prerequisites, provider-owned sign-ins, model selection and fallback. Catalog presence alone does not establish readiness or read-only Chat eligibility.

@@ -28,7 +28,7 @@ describe("WorkerDescriptor", () => {
     });
   });
 
-  it("rejects Workspace-local state in the Cloud descriptor", () => {
+  it("rejects computer-local state in the Cloud descriptor", () => {
     expect(() =>
       parseWorkerDescriptor({
         workerTypeId: "claude",

@@ -57,7 +57,7 @@ for (const file of sourceFiles) {
     axRuntimeProtocolPattern.test(contents)
   ) {
     violations.push(
-      `${file}: AX source references the Workspace Runtime Protocol`,
+      `${file}: AX source references the Worker Agent protocol`,
     );
   }
 
@@ -90,5 +90,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "Protocol boundary architecture check passed: endpoint ownership is explicit, and Cloud assignments, AX, Workspace, and the CLI Worker Engine use their owned protocol boundaries.",
+  "Protocol boundary architecture check passed: endpoint ownership is explicit, and Cloud assignments, AX, Connect, and the CLI Worker Engine use their owned protocol boundaries.",
 );

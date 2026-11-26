@@ -22,7 +22,7 @@ Requests may carry an `id`; the reply (`ack`, `sync` or `error`) echoes it.
 | `event` | `threadId, seq, type, data, actorId, at` | **persistent** thread event |
 | `sync` | `id, threadId, since, events[], headSeq, more` | events with `seq > since` (max 500) |
 | `transient` | `threadId, taskId, kind, data, at` | AI progress; no `seq`, not stored |
-| `space` | `spaceId, type, data` | space notice: `thread.created`, `thread.updated`, `space.updated`, `member.updated`, `member.removed`, `workspace.linked` |
+| `space` | `spaceId, type, data` | space notice: `thread.created`, `thread.updated`, `space.updated`, `member.updated`, `member.removed`, `worker.linked` |
 | `revoked` | `spaceId` | caller lost access; its subscriptions in that space were dropped |
 | `pong` | `id, at` | reply to `ping` |
 
@@ -64,7 +64,7 @@ and in `sync`, or live before `sync`; the rules above make that harmless.
 
 ## Connect service ↔ server
 
-Server → workspace: `{"t":"task.assign","task":{…,"input":{body,options,references,attachments}},"redelivery":bool}`
+Server → Connect: `{"t":"task.assign","task":{…,"input":{body,options,references,attachments}},"redelivery":bool}`
 and `{"t":"task.cancel","taskId"}`. On connect all open tasks are sent;
 unacknowledged tasks are re-sent every 30 s. De-duplicate by `task.id`.
 
@@ -79,14 +79,14 @@ Connect → server:
 ```
 
 `task.progress` is fire-and-forget (no ack, silently shed under rate limits).
-`task.ack`, `task.status`, `task.result` are acknowledged; the workspace must
+`task.ack`, `task.status`, `task.result` are acknowledged; Connect must
 keep the result in durable local storage and retry (WS or
-`POST /v1/workspace/tasks/:id/result`) until it gets an `ack`. A result for a
+`POST /v1/worker/tasks/:id/result`) until it gets an `ack`. A result for a
 cancelled task is acknowledged but does not create an answer.
 
 ## Limits
 
 1 MB per frame, 500 subscriptions per socket, 20 frames/s (burst 60) per user
-socket, 400 frames/s (burst 1000) per workspace socket, 64 KB per progress
+socket, 400 frames/s (burst 1000) per Connect socket, 64 KB per progress
 payload, 120 s idle timeout with automatic pings, 4 MB send backlog before a
 slow consumer is disconnected.

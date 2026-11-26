@@ -706,7 +706,7 @@ session on first use.
 Conversation-associated mappings also record explicit Conversation/Worker ownership,
 last successful model/effort, and synchronized context revision. Model/effort are
 not part of the session partition. Native handles stay in local state and are never
-returned in protocol results. See [Worker Sessions](CONVERSATION_CONTINUITY_V1.md#phase-6--workspace-owned-worker-sessions)
+returned in protocol results. See [Worker Sessions](CONVERSATION_CONTINUITY_V1.md#phase-6--connect-owned-worker-sessions)
 for format versions, Profile compatibility, and synchronization limits.
 
 ## 19. Model mapping
@@ -958,7 +958,7 @@ promotion API requires this artifact and retains it as immutable release
 evidence. Normal CI must not enable real acceptance or consume provider
 allowance.
 
-Run one controlled profile from `apps/workspace` with:
+Run one controlled profile from `apps/connect` with:
 
 ~~~sh
 SYNTILA_TEST_REAL_PROFILE_CHATGPT=1 \
@@ -1194,7 +1194,7 @@ A Profile may declare a top-level `usage` object:
   runs, not that it is signed in.
   See the local Copilot verification
   for captured statistics, model/effort limits, and the framing distinction.
-- Cloud relays on demand: `POST /api/workspaces/:workspaceId/workers/:workerId/usage`
+- Cloud relays on demand: `POST /api/workers/:workerId/workers/:workerId/usage`
   (Connect owner only) sends `worker.usage.request`; the Service replies with
   `worker.usage.result`. Results are never stored in Cloud or posted to a Thread.
 - AX exposes it as `Usage` in the composer `+` menu and as the `/usage` command.

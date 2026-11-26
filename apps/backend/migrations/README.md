@@ -77,7 +77,7 @@ The backend runs without a global writer lock (project doc
   quotas) takes a lock on what it counts first, in the same transaction:
   `tx.lock(scope, id)` or `lockStatement(db, scope, id)` as the first
   statement of a batch (`src/platform/tx-env.ts`). Existing scopes:
-  `syntila.space_members`, `syntila.workspaces_of`, `syntila.execution_slots`,
+  `syntila.space_members`, `syntila.spaces_of`, `syntila.execution_slots`,
   `syntila.storage`, `syntila.spaces_of`, `syntila.pins`, `syntila.user`,
   `syntila.queue`.
 - Prove a new write path with a scenario in `test/concurrency.test.ts`, run

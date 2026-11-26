@@ -18,8 +18,6 @@ class SelectiveSource extends AxFixtureDataSource {
             in await super.loadSpaces(includeArchived: includeArchived))
           space.copyWith(settings: {...space.settings, 'showAiHistory': true}),
       ];
-
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => workers;
 }
 
 void main() {
@@ -205,7 +203,6 @@ void main() {
           (_) => [
                 AxWorker.fromJson({
                   'id': 'new-worker',
-                  'workspaceId': 'workspace-fixture',
                   'displayName': 'Fresh Worker',
                   'readinessState': 'ready'
                 })

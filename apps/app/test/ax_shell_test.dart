@@ -865,18 +865,18 @@ void main() {
         expect(
           ctx.isNavActive(const AxNavigation.workers()),
           isFalse,
-          reason: '$nav should NOT activate Workspaces',
+          reason: '$nav should NOT activate Workers',
         );
       }
 
       // Workers route
-      const workspaceCtx = AxShellContext(
+      const workersCtx = AxShellContext(
         navigation: AxNavigation.workers(),
         spaces: [],
       );
-      expect(workspaceCtx.isNavActive(const AxNavigation.workers()), isTrue);
-      expect(workspaceCtx.isNavActive(const AxNavigation.spaces()), isFalse);
-      expect(workspaceCtx.isNavActive(const AxNavigation.home()), isFalse);
+      expect(workersCtx.isNavActive(const AxNavigation.workers()), isTrue);
+      expect(workersCtx.isNavActive(const AxNavigation.spaces()), isFalse);
+      expect(workersCtx.isNavActive(const AxNavigation.home()), isFalse);
 
       // Profile & Security route
       const profileCtx = AxShellContext(

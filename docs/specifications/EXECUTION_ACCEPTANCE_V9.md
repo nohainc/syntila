@@ -24,7 +24,7 @@ the same assignment ID and attempt ID through these stages:
 | `terminal_acknowledgement` | Cloud/Service | Cloud persisted the outcome and acknowledged delivery |
 
 Every record includes a schema version, event ID, timestamp and the available
-workspace, runtime, Worker, run, task, assignment and attempt identities.
+Connect, runtime, Worker, run, task, assignment and attempt identities.
 Diagnostic metadata is bounded and excludes prompts, credentials, provider
 content, unrestricted tool input/output and internal reasoning.
 

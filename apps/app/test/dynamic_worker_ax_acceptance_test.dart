@@ -7,9 +7,7 @@ void main() {
       () {
     const workerTypeId = 'phase-13-unknown-provider';
     final worker = AxWorker.fromJson({
-      'id': 'workspace-worker-phase13',
-      'workspaceId': 'workspace-phase13',
-      'workspaceName': 'Acceptance Workspace',
+      'id': 'worker-phase13',
       'workerTypeId': workerTypeId,
       'displayName': 'Phase 13 Unknown Worker',
       'catalogLifecycleState': 'active',

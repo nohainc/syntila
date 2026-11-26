@@ -24,11 +24,9 @@ Map<String, dynamic> activityEvent({
       'timestamp': DateTime.utc(2026, 10, 12, 18)
           .add(Duration(seconds: activitySequence))
           .toIso8601String(),
-      'workspaceId': 'workspace-1',
       'threadId': 'thread-1',
       'attemptId': attemptId,
       'assignmentId': 'assignment-1',
-      'workspaceRuntimeId': 'runtime-1',
       'sequence': streamSequence,
       'payload': {
         'entityId': 'assignment-1',
@@ -107,8 +105,6 @@ void main() {
         activitySequence: 1,
         type: 'tool.started',
         status: 'running')
-      ..remove('workspaceId')
-      ..remove('workspaceRuntimeId')
       ..['version'] = '1.1'
       ..['spaceId'] = 'space-1'
       ..['stream'] = {'kind': 'space', 'id': 'space-1'};

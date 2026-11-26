@@ -229,7 +229,7 @@ Local Draft → Cloud Qualification → Published Release → Testing Channel �
                                      Rollback         Revocation
 ```
 
-- **Channel Pointers:** Cloud maintains channel pointers (`workspace_tool_profile_channels`) pointing to release versions (`testing`, `beta`, `stable`).
+- **Channel Pointers:** Cloud maintains channel pointers (`tool_profile_channels`) pointing to release versions (`testing`, `beta`, `stable`).
 - **Channel Promotion:** Promoting a release moves a pointer forward. The underlying profile payload and signature remain 100% immutable.
 - **Rollback:** Pointing a channel backward to an earlier immutable release version instantly restores a known-good configuration.
 - **Revocation:** Marking a release as revoked (`revoked_at` timestamp) causes Cloud and Workers to immediately refuse execution for that release version across all channels.
@@ -264,7 +264,7 @@ Profile Lab's `SYNTILA_RELEASE_TRUST_KEYS_JSON` build define contains public Ed2
 Profile Lab enforces strict security boundaries verified by automated repository guards (`verify-v8-architecture.mjs`):
 
 1. **Zero Direct D1 Access:** Profile Lab communicates exclusively via HTTPS REST endpoints (`ProfileAdminApiClient`). Direct database bindings (`D1Database`, raw SQL) are strictly prohibited.
-2. **Zero Signing Seeds:** Signing private key seeds (`SYNTILA_WORKSPACE_ED25519_SEED`, `Ed25519PrivateKey`) are forbidden in Profile Lab code. Signature generation belongs solely to Cloud.
+2. **Zero Signing Seeds:** Signing private key seeds (`a signing seed`, `Ed25519PrivateKey`) are forbidden in Profile Lab code. Signature generation belongs solely to Cloud.
 3. **Secret Redaction:** Test output logs and diagnostic summaries undergo strict secret redaction preventing provider keys or desktop tokens from being stored in logs or evidence artifacts.
 4. **Process Isolation:** Provider CLI processes run under bounded deadlines with full process tree termination upon completion or cancellation.
 
@@ -382,7 +382,7 @@ development Connect to Testing in the Lab and run a real task. The Connect launc
 uses a separate DevelopmentState directory so existing production registration
 is not reused. It now defaults to signed Cloud releases. Explicitly set
 `SYNTILA_DEVELOPMENT_PROFILE_DIRECTORY` to opt into unsigned local Draft execution;
-that exception remains loopback-only. `SYNTILA_WORKSPACE_DEVELOPMENT_DATA_DIR`
+that exception remains loopback-only. `SYNTILA_WORKER_DATA_DIR`
 overrides development state.
 
 `scripts/setup-local-profile-signing.mjs` generates and validates a local
@@ -419,7 +419,7 @@ With no published releases, the view offers Draft & Test. Overview always shows 
 
 ### Connect rollout and Activity presentation
 
-Workers shows a compact rollout heading, Testing/Beta/Stable counts, search, and a table with Connect, Host, App version, Connection, and Channel. Connection reflects the latest `execution_workspaces.status` reported to Cloud; absent status is Unknown, not inferred from runtime registration. Rollout help is available through an info control. Selecting another channel opens a confirmation describing the old/new assignment and effect on subsequent Profile resolution. Cancel leaves the assignment unchanged; existing authorization and Stable passkey verification remain enforced. Running sessions retain their pinned release.
+Workers shows a compact rollout heading, Testing/Beta/Stable counts, search, and a table with Connect, Host, App version, Connection, and Channel. Connection reflects the latest status the Worker reported to Cloud; absent status is Unknown, not inferred from runtime registration. Rollout help is available through an info control. Selecting another channel opens a confirmation describing the old/new assignment and effect on subsequent Profile resolution. Cancel leaves the assignment unchanged; existing authorization and Stable passkey verification remain enforced. Running sessions retain their pinned release.
 
 Activity defaults to all events and offers an optional current-Worker filter. Event summaries lead with Worker name, version, lifecycle action, and actor name. Raw IDs, reasons, provenance, and full details remain expandable. Global and definition audit responses add nullable `actorDisplayName` and `workerDisplayName`, resolved through existing user/catalog records; these are current display labels, not historical snapshots. Missing identities are shown as System or an operator while retaining raw IDs in details. No schema migration is required.
 

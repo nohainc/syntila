@@ -76,28 +76,13 @@ class PermissionSource extends AxFixtureDataSource {
       ];
 }
 
-AxWorker _worker(String id, String workspaceId, {bool shared = false}) =>
-    AxWorker(
-        id: id,
-        workerTypeId: 'chatgpt',
-        displayName: 'ChatGPT',
-        status: 'ready',
-        readinessState: 'ready',
-        localConcurrencyLimit: 1,
-        shared: shared);
-
-/// Space Connect "space-ws"; the viewer owns "own-ws" and borrows "lent-ws".
+/// A source for a viewer who owns Workers and borrows shared ones.
 class OwnWorkersSource extends PermissionSource
     implements AxSpaceWorkflowConfigurationDataSource {
   @override
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
           String spaceId) async =>
       const [];
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => [
-        _worker('space-worker', 'space-ws', shared: true),
-        _worker('own-worker', 'own-ws'),
-        _worker('lent-worker', 'lent-ws', shared: true),
-      ];
 }
 
 Widget page(PermissionSource source, {AxSpace space = ownerSpace}) =>

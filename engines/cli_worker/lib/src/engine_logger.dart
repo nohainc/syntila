@@ -28,8 +28,6 @@ class EngineLogger {
       'throughSequence',
       'requestId',
       'assignmentId',
-      'workspaceId',
-      'workspaceRuntimeId',
       'workerId',
       'runId',
       'taskId',

@@ -491,7 +491,7 @@ void main() {
       'NewUserHome renders collaborative onboarding and value cards when no invitations exist',
       (tester) async {
     var spaceCreated = false;
-    var workspaceOpened = false;
+    var workersOpened = false;
 
     await tester.pumpWidget(scaffold(HomePage(
       historicalUpdates: const [],
@@ -500,7 +500,7 @@ void main() {
       invitations: const [],
       run: null,
       openFindingCount: 0,
-      onOpenWorkers: () => workspaceOpened = true,
+      onOpenWorkers: () => workersOpened = true,
       onOpenSpace: (_) {},
       onOpenRun: (_, __) {},
       onCreateSpace: () => spaceCreated = true,
@@ -546,14 +546,14 @@ void main() {
 
     await tester.ensureVisible(find.text('Connect Worker →'));
     await tester.tap(find.text('Connect Worker →'));
-    expect(workspaceOpened, isTrue);
+    expect(workersOpened, isTrue);
   });
 
   testWidgets(
       'NewUserHome prioritizes Join a Space card when user has 0 spaces but has pending invitations',
       (tester) async {
     var spaceCreated = false;
-    var workspaceOpened = false;
+    var workersOpened = false;
     AxSpaceInvitation? acceptedInvite;
     AxSpaceInvitation? declinedInvite;
 
@@ -564,7 +564,7 @@ void main() {
       invitations: const [testInvite1, testInvite2],
       run: null,
       openFindingCount: 0,
-      onOpenWorkers: () => workspaceOpened = true,
+      onOpenWorkers: () => workersOpened = true,
       onOpenSpace: (_) {},
       onOpenRun: (_, __) {},
       onCreateSpace: () => spaceCreated = true,
@@ -595,7 +595,7 @@ void main() {
     expect(find.text('Private credentials'), findsOneWidget);
     expect(find.text('Shared conversations'), findsOneWidget);
 
-    // Advanced workspace connection
+    // Advanced Worker connection
     expect(find.text('Want to use AI or tools running on your computer?'),
         findsOneWidget);
     expect(
@@ -616,10 +616,10 @@ void main() {
     await tester.tap(find.text('Create Space →'));
     expect(spaceCreated, isTrue);
 
-    // Test connect workspace
+    // Test connect Worker
     await tester.ensureVisible(find.text('Connect Worker →'));
     await tester.tap(find.text('Connect Worker →'));
-    expect(workspaceOpened, isTrue);
+    expect(workersOpened, isTrue);
   });
 
   testWidgets(
@@ -767,7 +767,7 @@ void main() {
         kind: AxAttentionKind.workerProblem,
         categoryLabel: 'Worker needs attention',
         title: 'ChatGPT Worker authentication expired',
-        subtitle: 'Workspace: MacBook',
+        subtitle: 'Worker: MacBook',
         timestampDisplay: '30 min ago',
         actionLabel: 'Fix →',
       ),
@@ -783,10 +783,10 @@ void main() {
         threadId: 'ws-auth',
       ),
       const AxHomeAttentionItem(
-        id: 'workspace-prob-1',
+        id: 'worker-prob-1',
         kind: AxAttentionKind.workerOffline,
         categoryLabel: 'Worker offline',
-        title: "Workspace Mac-Mini went offline",
+        title: "Worker Mac-Mini went offline",
         subtitle: 'Re-connect to enable workers',
         timestampDisplay: '45 min ago',
         actionLabel: 'Connect →',
@@ -841,7 +841,7 @@ void main() {
 
     // Priority 5: Worker offline (present - total 5 items reached)
     expect(find.text('Worker offline'), findsNothing);
-    expect(find.text("Workspace Mac-Mini went offline"), findsNothing);
+    expect(find.text("Worker Mac-Mini went offline"), findsNothing);
 
     // Priority 6 & lower items past limit of 5:
     // 'Gemini finished reviewing Landing Page' (Priority 6) and 'Lower priority extra notification' (Priority 7) should be cut off
@@ -1378,8 +1378,8 @@ void main() {
 
     final update4Dismissed = AxProductUpdate(
       id: 'up-4',
-      slug: 'workspace-sync',
-      title: 'Workspace Sync',
+      slug: 'worker-sync',
+      title: 'Worker Sync',
       summary: 'Local process execution.',
       category: AxProductUpdateCategory.worker,
       publishedAt: now.subtract(const Duration(days: 2)),
@@ -2135,7 +2135,7 @@ void main() {
       id: 'att-1',
       type: AxHomeAttentionType.workerOffline,
       title: 'MacBook Pro is disconnected',
-      description: 'MacBook Pro workspace disconnected',
+      description: 'MacBook Pro Worker disconnected',
       actionLabel: 'Reconnect →',
     );
 
@@ -2389,7 +2389,7 @@ void main() {
       id: 'att-1',
       type: AxHomeAttentionType.workerOffline,
       title: 'MacBook Pro is disconnected',
-      description: 'MacBook Pro workspace disconnected',
+      description: 'MacBook Pro Worker disconnected',
       actionLabel: 'Reconnect →',
     );
 
@@ -2573,7 +2573,7 @@ void main() {
       (tester) async {
     String? openedSpace;
     String? openedThread;
-    var openedWorkspaces = false;
+    var openedWorkers = false;
     AxProductUpdate? openedUpdate;
     AxAiCapabilityUpdate? openedAiUpdate;
 
@@ -2593,7 +2593,7 @@ void main() {
         id: 'att-ws-problem',
         type: AxHomeAttentionType.workerOffline,
         title: 'Mac Studio is offline',
-        description: 'Reconnect Workspace to resume execution',
+        description: 'Reconnect Worker to resume execution',
         actionLabel: 'Connect →',
         isUnread: true,
         isActionable: true,
@@ -2660,7 +2660,7 @@ void main() {
           aiUpdates: aiUpdates,
           run: null,
           openFindingCount: 0,
-          onOpenWorkers: () => openedWorkspaces = true,
+          onOpenWorkers: () => openedWorkers = true,
           onOpenSpace: (pId) => openedSpace = pId,
           onOpenThread: (pId, wsId) {
             openedSpace = pId;
@@ -2683,7 +2683,7 @@ void main() {
     // 2. Connect problem -> exact Workers deep-link
     await tester.ensureVisible(find.text('Mac Studio is offline'));
     await tester.tap(find.text('Mac Studio is offline'));
-    expect(openedWorkspaces, isTrue);
+    expect(openedWorkers, isTrue);
 
     // 3. Continue Working -> exact Thread deep-link
     openedSpace = null;
@@ -3176,7 +3176,7 @@ void main() {
         final notification = notificationFromRealtimeEvent(event);
         expect(notification, isNotNull, reason: 'Failed to parse $eventType');
 
-        var workspacesOpened = false;
+        var workersOpened = false;
         final rawItem = AxHomeAttentionItem(
           id: notification!.id,
           kind: AxHomeAttentionType.workerProblem,
@@ -3191,13 +3191,13 @@ void main() {
           rawAttentionItems: [rawItem],
           openFindingCount: 0,
           spaces: const [space],
-          onOpenWorkers: () => workspacesOpened = true,
+          onOpenWorkers: () => workersOpened = true,
         );
 
         expect(items, hasLength(1));
         expect(items.first.primaryAction?.label, isIn(['Fix →', 'Connect →']));
         items.first.primaryAction?.onPerform();
-        expect(workspacesOpened, isTrue);
+        expect(workersOpened, isTrue);
       }
     });
 
@@ -3290,7 +3290,7 @@ void main() {
 
     // 3. Scenario: Space but no Connect -> Expected: Normal Home, not setup warning
     testWidgets(
-        'Scenario: Space but no Workspace -> Expected: Normal Home, not setup warning',
+        'Scenario: Space but no Worker -> Expected: Normal Home, not setup warning',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
         historicalUpdates: const [],
@@ -4311,7 +4311,7 @@ void main() {
     });
 
     testWidgets(
-        'New user Home uses Space-first onboarding and omits old workspace-first dashboard',
+        'New user Home uses Space-first onboarding and omits old Worker-first dashboard',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
         historicalUpdates: const [],

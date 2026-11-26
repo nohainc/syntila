@@ -148,8 +148,8 @@ void main() {
             stepId: 'tool',
             status: 'failed',
             workerId: null,
-            errorCode: 'workspace_not_granted',
-            errorMessage: 'Workspace grant expired or was revoked',
+            errorCode: 'grant_not_granted',
+            errorMessage: 'Grant expired or was revoked',
             elapsedMs: 500,
           ),
         ],
@@ -168,8 +168,7 @@ void main() {
           find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
       expect(find.text('Connected Tool Call · Failed'), findsOneWidget);
       // Initially expanded for failed steps:
-      expect(
-          find.text('Workspace grant expired or was revoked'), findsOneWidget);
+      expect(find.text('Grant expired or was revoked'), findsOneWidget);
     });
   });
 }

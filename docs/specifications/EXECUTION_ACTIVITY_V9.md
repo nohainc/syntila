@@ -9,7 +9,7 @@ timeline.
 ## Contract
 
 An activity has a stable source event ID and a strictly increasing per-execution
-sequence. The assignment envelope supplies Cloud correlation (`workspaceId`,
+sequence. The assignment envelope supplies Cloud correlation (`workerId`,
 `threadId`, `workRequestId`, `runId`, `taskId`, `attemptId`, and
 `assignmentId`); the Engine frame supplies `executionId`, `workerId`, and the
 provider observation identity. Cloud assigns the realtime stream cursor.

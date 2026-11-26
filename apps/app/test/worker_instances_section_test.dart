@@ -38,7 +38,7 @@ void main() {
     expect(find.text('Workspaces'), findsNothing);
   });
 
-  testWidgets('Workers breadcrumb also covers old Workspace detail links',
+  testWidgets('Workers breadcrumb also covers old Worker detail links',
       (tester) async {
     final source = _UxSource();
     await tester.pumpWidget(MaterialApp(

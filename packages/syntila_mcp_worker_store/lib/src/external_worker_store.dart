@@ -391,7 +391,7 @@ class ExternalWorkerStore {
     if (negotiateExternalWorkerProtocol(manifest) == null) {
       throw const ExternalWorkerException(
         'plugin_protocol_unsupported',
-        'This External Worker supports no protocol version the Workspace offers.',
+        'This External Worker supports no protocol version Connect offers.',
       );
     }
     final platformKey = hostPlatform;
@@ -542,7 +542,7 @@ class ExternalWorkerStore {
     if (!directory.existsSync()) {
       throw const ExternalWorkerException(
         'plugin_not_found',
-        'That External Worker version is not installed on this Workspace.',
+        'That External Worker version is not installed on this computer.',
       );
     }
     final installed = await _verifyStaged(

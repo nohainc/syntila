@@ -57,11 +57,11 @@ export class AuthenticationError extends Error {
 
 export type ClientType = "web" | "desktop" | "cli" | "api";
 
-export const DESKTOP_WORKSPACE_AUDIENCE = "syntila.desktop.management" as const;
+export const DESKTOP_MANAGEMENT_AUDIENCE = "syntila.desktop.management" as const;
 export const DESKTOP_PROFILE_LAB_AUDIENCE =
   "syntila.profile-lab.management" as const;
 export const SUPPORTED_DESKTOP_AUDIENCES = [
-  DESKTOP_WORKSPACE_AUDIENCE,
+  DESKTOP_MANAGEMENT_AUDIENCE,
   DESKTOP_PROFILE_LAB_AUDIENCE,
 ] as const;
 export type DesktopAudience = (typeof SUPPORTED_DESKTOP_AUDIENCES)[number];

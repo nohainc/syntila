@@ -24,7 +24,7 @@ Claude outputs/
 # Native account manager build cache.
 apps/account_manager/.build/
 
-# Work Request inputs the Workspace copies into a Space folder (user files).
+# Work Request inputs Connect copies into a Space folder (user files).
 .syntila/inputs/
 
 # Scratch area for files awaiting deletion; do not add new files here.
@@ -33,8 +33,6 @@ _to_delete/
 # Flutter-generated macOS files, recreated on every pub get / build.
 **/Flutter/GeneratedPluginRegistrant.swift
 
-# Local gui-manifest checkout (see apps/workspace_gui/README.md).
-apps/workspace_gui/pubspec_overrides.yaml
 
 # Local migration scratch
 _debug/

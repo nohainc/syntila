@@ -75,7 +75,6 @@ Map<String, dynamic> event(String type,
     {
       'type': type,
       if (sequence != null) 'sequence': sequence,
-      'workspaceId': 'workspace',
       'payload': <String, dynamic>{
         'workRequestId': id,
         'threadId': ws,
@@ -370,13 +369,11 @@ void main() {
     expect(source.gets, ['r']);
     expect(cache.request('w', 'r')!.status, 'completed');
   });
-  test('a Space stream has its own sequence after a Workspace stream',
-      () async {
+  test('a Space stream has its own sequence after a legacy stream', () async {
     await seed();
     await sync
         .handle(event('work_request.started', status: 'running', sequence: 20));
     final completion = event('work_request.completed', sequence: 1)
-      ..remove('workspaceId')
       ..['stream'] = {'kind': 'space', 'id': 'space-1'};
     await sync.handle(completion);
     expect(cache.request('w', 'r')!.status, 'completed');

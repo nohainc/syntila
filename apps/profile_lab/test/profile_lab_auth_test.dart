@@ -35,7 +35,7 @@ void main() {
     });
 
     test(
-        'strictly rejects workspace session audience syntila.desktop.management',
+        'strictly rejects the Connect session audience syntila.desktop.management',
         () {
       final expiresAt = DateTime.now().toUtc().add(const Duration(days: 30));
       expect(

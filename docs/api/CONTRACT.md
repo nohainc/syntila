@@ -58,7 +58,7 @@ Per caller (the credential, or the client address when there is none):
 3000 requests and 600 mutating requests per minute, with a burst of a
 quarter of that. Over the limit: `429`, code `rate_limited`, a
 `retry-after` header and `retryAfterSeconds` in the body. Connected
-Connect traffic (`/api/workspace-runtime/*`) and the realtime socket are
+Connect traffic (`/api/worker-agent/*`) and the realtime socket are
 exempt. Configure with `SYNTILA_RATE_LIMIT_PER_MINUTE` and
 `SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE` (0 disables).
 
@@ -104,7 +104,7 @@ registration routes and the plugin routes keep their own error JSON (`code` such
 as `invalid_installation_id`, or the plugin route codes) because the desktop
 client reads them.
 
-The one free-form body is `POST /api/workspaces/:id/mcp-action`: an object
+The one free-form body is `POST /api/workers/:id/mcp-action`: an object
 forwarded verbatim to the Connect gateway, which owns that contract. The
 guard in `apps/backend/test/domain/request-body-guard.test.ts` allows no other
 route to read a body without a schema.

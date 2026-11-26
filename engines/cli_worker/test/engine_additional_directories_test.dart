@@ -7,7 +7,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('passes Workspace-verified folders through the Profile slot', () async {
+  test('passes Connect-verified folders through the Profile slot', () async {
     final repository = Directory.current.parent.parent.path;
     final state = await Directory.systemTemp.createTemp('syntila-dirs-');
     addTearDown(() => state.delete(recursive: true));

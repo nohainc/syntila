@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
-import 'tool_profile_release.dart';
 
 /// Public verification roots shipped with Connect and Profile Lab.
 /// Values are base64 raw Ed25519 public keys, keyed by publisher and explicit key ID.
@@ -67,35 +66,7 @@ class WorkerTrustPolicy {
       publisher: publisher,
       signingKeyId: signingKeyId,
       signature: signature,
-      message: utf8.encode('syntila-workspace-release-v1\n$digest'),
-    );
-  }
-
-  Future<bool> verifyWorkspaceRelease({
-    required String publisher,
-    required String signingKeyId,
-    required String digest,
-    required String signature,
-    required Map<String, Object?> metadata,
-  }) async {
-    if (_revokedDigests.contains(digest) ||
-        _revokedPublishers.contains(publisher) ||
-        _revokedKeyIds.contains(signingKeyId) ||
-        _revokedReleaseIds.contains('workspace@${metadata['version']}')) {
-      return false;
-    }
-    final payload = 'syntila-workspace-release-metadata-v1\n'
-        '${canonicalJson({
-          ...metadata,
-          'publisher': publisher,
-          'signingKeyId': signingKeyId,
-          'packageDigest': digest
-        })}';
-    return _verifySignature(
-      publisher: publisher,
-      signingKeyId: signingKeyId,
-      signature: signature,
-      message: utf8.encode(payload),
+      message: utf8.encode('syntila-worker-release-v1\n$digest'),
     );
   }
 

@@ -7,7 +7,7 @@ import {
 } from "../auth/index.js";
 import {
   DESKTOP_PROFILE_LAB_AUDIENCE,
-  DESKTOP_WORKSPACE_AUDIENCE,
+  DESKTOP_MANAGEMENT_AUDIENCE,
   SUPPORTED_DESKTOP_AUDIENCES,
   type DesktopAudience,
   extractBearerToken,
@@ -170,7 +170,7 @@ export async function handleSessionLogout(
 
 export {
   DESKTOP_PROFILE_LAB_AUDIENCE,
-  DESKTOP_WORKSPACE_AUDIENCE,
+  DESKTOP_MANAGEMENT_AUDIENCE,
   SUPPORTED_DESKTOP_AUDIENCES,
   type DesktopAudience,
 };
@@ -358,7 +358,7 @@ export async function handleCreateDesktopAuthIntent(
   const audience =
     typeof body.audience === "string"
       ? (body.audience.trim() as DesktopAudience)
-      : DESKTOP_WORKSPACE_AUDIENCE;
+      : DESKTOP_MANAGEMENT_AUDIENCE;
   if (!SUPPORTED_DESKTOP_AUDIENCES.includes(audience)) {
     throw new HttpError(
       400,

@@ -7,13 +7,11 @@ import {
 export interface CorrelationContext {
   requestId?: string;
   eventId?: string;
-  workspaceId?: string;
   runId?: string;
   taskId?: string;
   attemptId?: string;
   assignmentId?: string;
   runtimeId?: string;
-  workspaceRuntimeId?: string;
   workerId?: string;
 }
 
@@ -164,8 +162,6 @@ export function tryLogDiagnosticEvent(
 export interface TraceEventInput {
   traceStage: NonNullable<DiagnosticContext["traceStage"]>;
   requestId?: string;
-  workspaceId?: string;
-  workspaceRuntimeId?: string;
   runId?: string;
   taskId?: string;
   attemptId?: string;

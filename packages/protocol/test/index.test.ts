@@ -160,10 +160,10 @@ describe("collaboration streams", () => {
     expect(isDurableRealtimeEventType("discussion.created")).toBe(true);
   });
   it.each([
-    { ...event, workspaceId: "same-id" },
+    { ...event, legacyId: "same-id" },
     { ...event, stream: undefined },
     { ...event, stream: { kind: "space", id: "wrong-space" } },
-    { ...event, stream: { kind: "execution_workspace", id: "same-id" } },
+    { ...event, stream: { kind: "execution_stream", id: "same-id" } },
     { ...event, version: "1.0" },
     {
       ...event,

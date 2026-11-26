@@ -15,8 +15,10 @@ what remains before the first release:
    test in [Production provisioning](docs/operations/PRODUCTION_PROVISIONING.md#first-release-rehearsal).
 2. **Windows Connect check.** Install the release on a Windows computer, pair a
    Worker to production and run a Chat.
-3. **Finish the cleanup.** Leftover "Workspace" wording in code and old
-   records in `docs/`; no user-facing text says "Workspace".
+3. **Remove the last legacy database names.** Old migrations still name
+   Workspace tables (they are immutable); nothing else in the repository
+   uses the word except provider flags, guard tests and Cloudflare
+   migration history.
 
 ## Before the first test release
 

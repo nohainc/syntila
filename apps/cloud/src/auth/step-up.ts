@@ -1,5 +1,5 @@
 export const SENSITIVE_OPERATIONS = {
-  workspaceOwnershipTransfer: "workspace.ownership.transfer",
+  workerOwnershipTransfer: "worker.ownership.transfer",
   billingSecurityChange: "billing.security.change",
   toolProfileStablePromotion: "tool_profile.stable_promotion",
   toolProfileRollback: "tool_profile.rollback",
@@ -27,7 +27,7 @@ export const STEP_UP_REQUIREMENTS: Record<
   SensitiveOperation,
   StepUpRequirement
 > = {
-  [SENSITIVE_OPERATIONS.workspaceOwnershipTransfer]: {
+  [SENSITIVE_OPERATIONS.workerOwnershipTransfer]: {
     maxAgeMs: 10 * 60 * 1000,
     methods: ["passkey", "totp"],
   },

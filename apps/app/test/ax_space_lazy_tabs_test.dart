@@ -21,13 +21,6 @@ class TabSource extends AxFixtureDataSource {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> loadSpaceWorkflowWorkspaceGrants(
-      {required String spaceId}) async {
-    count('grants');
-    return [];
-  }
-
-  @override
   Future<List<AxSpaceMember>> loadSpaceMembers(
       {required String spaceId}) async {
     count('members');

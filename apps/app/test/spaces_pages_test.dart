@@ -3172,7 +3172,7 @@ void main() {
     addTearDown(() => tester.binding.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null));
     const message =
-        'Cannot run Work\n• The Space Workspace grant does not allow the access this Step needs.';
+        'Cannot run Work\n• The Space grant does not allow the access this Step needs.';
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: SizedBox(
@@ -5178,18 +5178,6 @@ class _DuplicateTestDataSource extends AxFixtureDataSource {
   final VoidCallback? onInviteMember;
 
   @override
-  Future<List<Map<String, dynamic>>> loadSpaceWorkflowWorkspaceGrants({
-    required String spaceId,
-  }) async =>
-      [
-        {
-          'id': 'grant-1',
-          'workspaceId': 'ws-1',
-          'workspaceName': 'MacBook Pro',
-        }
-      ];
-
-  @override
   Future<List<AxSpaceMember>> loadSpaceMembers({
     required String spaceId,
   }) async =>
@@ -5209,7 +5197,6 @@ class _DuplicateTestDataSource extends AxFixtureDataSource {
     required String name,
     String? brief,
     String? lead,
-    String? primaryWorkspace,
     String? idempotencyKey,
   }) async {
     onCreateThread?.call();
@@ -5511,25 +5498,6 @@ class _WorkFormDataSource extends AxFixtureDataSource {
 
 class _GenericWorkerConfigDataSource extends _WorkFormDataSource {
   Map<String, dynamic>? savedWorkConfig;
-
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [
-        AxWorker(
-          id: 'local-worker-dynamic-test',
-          workerTypeId: 'dynamic-test-worker',
-          displayName: 'Dynamic Test Worker',
-          description: 'Catalog-created acceptance Worker.',
-          status: 'ready',
-          readinessState: 'ready',
-          localConcurrencyLimit: 1,
-        ),
-      ];
-  @override
-  Future<List<Map<String, dynamic>>> loadSpaceWorkflowWorkspaceGrants({
-    required String spaceId,
-  }) async =>
-      [
-        {'workspaceId': 'workspace-1', 'workspaceName': 'Ignored grant label'},
-      ];
 
   @override
   Future<AxThread> updateThread({
@@ -5981,32 +5949,6 @@ class _ModelSelectionTestDataSource extends _GenericWorkerConfigDataSource {
             {'kind': 'research', 'order': 0},
           ],
         }),
-      ];
-
-  @override
-  Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [
-        AxWorker(
-          id: 'w-chatgpt',
-          workerTypeId: 'chatgpt',
-          displayName: 'ChatGPT',
-          status: 'ready',
-          readinessState: 'ready',
-          localConcurrencyLimit: 1,
-          modelOptions: {
-            'catalog': [
-              {
-                'id': 'gpt-4o',
-                'name': 'GPT-4o',
-                'supportedReasoningEfforts': []
-              },
-              {
-                'id': 'o3',
-                'name': 'o3',
-                'supportedReasoningEfforts': ['low', 'high']
-              },
-            ]
-          },
-        ),
       ];
 }
 

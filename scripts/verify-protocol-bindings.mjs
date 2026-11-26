@@ -13,7 +13,7 @@ const [
   workerAgentIndex,
   dartIndex,
   workerPackage,
-  workspaceDart,
+  connectDart,
 ] = await Promise.all([
   read("packages/protocol/src/generated.ts"),
   read("packages/worker-agent-protocol/src/generated.ts"),
@@ -80,7 +80,7 @@ for (const code of schema["x-execution-error-codes"]) {
 for (const type of schema["x-worker-agent-protocol"].messageTypes) {
   if (!workerAgentTs.includes(JSON.stringify(type))) {
     throw new Error(
-      `generated Workspace protocol bindings are missing ${type}`,
+      `generated Connect protocol bindings are missing ${type}`,
     );
   }
 }
@@ -101,7 +101,7 @@ if (
     "worker.remove",
     "worker.status",
     "credential.status",
-  ].some((message) => workspaceDart.includes(`'${message}'`)) ||
+  ].some((message) => connectDart.includes(`'${message}'`)) ||
   !workerPackage.includes("localWorkerProtocolVersion = '4.1'")
 ) {
   throw new Error(

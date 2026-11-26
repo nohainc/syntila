@@ -4,7 +4,7 @@ import 'package:syntila_profile_lab/profile_lab_test_sandbox.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Finder PATH gains the Workspace Service provider directories', () {
+  test('Finder PATH gains the Connect service provider directories', () {
     final path = providerSearchPath({'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'});
     if (Platform.isMacOS) {
       expect(

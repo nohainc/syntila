@@ -527,9 +527,8 @@ void main() {
       'eligible': false,
       'issues': [
         {
-          'code': 'space_workspace_grant_missing',
-          'message':
-              'Work: select this Worker\'s Workspace in the Space Workflows tab.'
+          'code': 'space_grant_missing',
+          'message': 'Work: select this Worker in the Space Workflows tab.'
         }
       ]
     }, statusCode: 422);
@@ -538,7 +537,7 @@ void main() {
     expect(
         await api.validateWorkRequestEligibility(
             threadId: 'thread', workflowId: 'direct'),
-        ['Work: select this Worker\'s Workspace in the Space Workflows tab.']);
+        ['Work: select this Worker in the Space Workflows tab.']);
   });
 
   test('single Work Request details retain identity and authored result',
@@ -754,7 +753,6 @@ void main() {
     final inventory = <String, dynamic>{
       'workerId': 'worker-chatgpt',
       'workerTypeId': 'chatgpt',
-      'workspaceId': 'workspace-test',
       'displayName': 'ChatGPT',
       'activationState': 'enabled',
       'readinessState': 'ready'
@@ -928,7 +926,6 @@ void main() {
     final client = _JsonClient({
       'space': {
         'id': 'space-created',
-        'workspaceId': 'workspace-1',
         'name': 'Authentication redesign',
         'description': 'Improve the sign-in flow',
         'updatedAt': '2026-09-23T00:00:00Z',
@@ -995,7 +992,7 @@ void main() {
     expect(space.instructions, 'Use the team conventions.');
   });
 
-  test('composes AX state from current Space and Workspace APIs', () async {
+  test('composes AX state from current Space APIs', () async {
     final client = _ApiResponseClient({
       '/api/session': {
         'authenticated': true,
@@ -1027,7 +1024,6 @@ void main() {
             'lead': 'Owner',
             'status': 'active',
             'brief': 'Improve authentication.',
-            'primaryWorkspace': 'Workspace One',
             'queueStatus': 'Idle',
           },
         ],
@@ -1067,9 +1063,8 @@ void main() {
     expect(worker.attentionReasonCode, isNull);
   });
 
-  test('does not send obsolete Workspace security headers', () async {
+  test('does not send obsolete security headers', () async {
     final client = _JsonClient({
-      'workspaceId': 'workspace-2',
       'spaces': [],
       'workspaces': [],
       'tasks': [],

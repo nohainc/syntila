@@ -40,7 +40,7 @@ final class CliWorkerEngineSupervisor {
   /// Slot admission is one Worker-wide pool: every Worker draws from the
   /// same [_pool] entry, so the limit is total parallel executions regardless
   /// of which Worker runs them. Per-Worker views are derived for telemetry.
-  static const _pool = 'workspace';
+  static const _pool = 'computer';
   final Map<String, int> _activeByWorker = {};
   final Map<String, List<_QueuedEngineAssignment>> _waitersByWorker = {};
   final Map<String, _QueuedEngineAssignment> _queuedAssignments = {};

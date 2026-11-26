@@ -8,13 +8,13 @@ const schema = JSON.parse(
     "utf8",
   ),
 );
-const workspaceRuntime = schema["x-worker-agent-protocol"];
+const workerAgentSchema = schema["x-worker-agent-protocol"];
 const realtime = schema["x-realtime-events"];
 const errorCodes = schema["x-execution-error-codes"];
 const errorMessages = schema["x-execution-error-messages"];
 
 if (
-  !workspaceRuntime ||
+  !workerAgentSchema ||
   !realtime ||
   !Array.isArray(errorCodes) ||
   !errorMessages ||
@@ -48,7 +48,7 @@ ${realtimeTsConstants(realtime)}
 
 const workerAgentTs = `// GENERATED FILE. Do not edit by hand.
 
-${workerAgentTsConstants(workspaceRuntime)}
+${workerAgentTsConstants(workerAgentSchema)}
 `;
 
 const dartProtocol = `// GENERATED FILE. Do not edit by hand.
@@ -60,7 +60,7 @@ const executionErrorMessages = <String, String>{
 ${errorCodes.map((code) => `  '${code}': '${String(errorMessages[code]).replaceAll("'", "\\'")}',`).join("\n")}
 };
 
-${workerAgentDartConstants(workspaceRuntime)}
+${workerAgentDartConstants(workerAgentSchema)}
 ${realtimeDartConstants(realtime)}
 `;
 

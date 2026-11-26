@@ -90,13 +90,13 @@ describe("current authorization model", () => {
       authorizeProfileAdmin(profileLabDesktopContext, ["user-1"]),
     ).not.toThrow();
 
-    const workspaceDesktopContext: SecurityContext = {
+    const desktopContext: SecurityContext = {
       ...context,
       clientType: "desktop",
       audience: "syntila.desktop.management",
     };
     expect(() =>
-      authorizeProfileAdmin(workspaceDesktopContext, ["user-1"]),
+      authorizeProfileAdmin(desktopContext, ["user-1"]),
     ).toThrow(AuthorizationError);
 
     const unspecifiedDesktopContext: SecurityContext = {
@@ -130,7 +130,7 @@ describe("current authorization model", () => {
     expect(resolved.clientType).toBe("web");
     expect(resolved.audience).toBeUndefined();
     expect(resolved).not.toHaveProperty("authorizationModel");
-    expect(resolved).not.toHaveProperty("workspaceRole");
+    expect(resolved).not.toHaveProperty("legacyRole");
     expect(resolved).not.toHaveProperty("organizationId");
 
     const desktopResolved = await resolveSpaceSecurityContextFromIdentity(
