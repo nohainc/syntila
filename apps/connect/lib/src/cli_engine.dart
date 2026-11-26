@@ -10,6 +10,7 @@ import 'folders.dart';
 import 'journal.dart';
 import 'mcp_worker_runner.dart';
 import 'output_images.dart';
+import 'server_api.dart';
 
 /// Finds the pinned Profile for an assignment. Null means it is not available
 /// locally, and the assignment fails instead of running with another Profile.
@@ -371,6 +372,17 @@ class CliEngineLauncher
             'errorCode': 'execution_failed',
             'message':
                 'The files for this request could not be prepared: $error',
+            // Only a bounded, path-free description crosses the network.
+            'providerFailure': {
+              'schemaVersion': 1,
+              'source': 'agent',
+              'providerErrorText':
+                  error is ServerRefusal &&
+                      error.status >= 400 &&
+                      error.status <= 599
+                  ? 'The request’s attachment could not be downloaded (HTTP ${error.status}).'
+                  : 'The request’s attached files could not be prepared on this Worker.',
+            },
             'retryable': true,
           }),
         );

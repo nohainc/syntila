@@ -123,6 +123,10 @@ directory, and, right before the Engine starts, copies them to
 `.syntila/inputs/<work-request-id>/file-NNN` in the working directory (the
 assignment scratch folder or the Space folder). A copy the store lost is
 downloaded again. After three failed downloads the input fails the request.
+If input placement fails before the provider starts, the Agent sends a safe,
+path-free failure description (including the HTTP status when available) for
+the Worker failure shown in the thread. The detail follows the encrypted
+failure storage and authorized-read rules in ADR-036.
 
 ## Security
 

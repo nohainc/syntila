@@ -536,6 +536,7 @@ class AxDiscussionMessage {
     this.eventType,
     this.workRequestId,
     this.workerDisplayName,
+    this.workerFailure,
     this.replyTo,
   });
 
@@ -556,6 +557,9 @@ class AxDiscussionMessage {
   final String? eventType;
   final String? workRequestId;
   final String? workerDisplayName;
+
+  /// Authorized failure detail returned with a failed Worker timeline item.
+  final Map<String, dynamic>? workerFailure;
 
   /// The message this one replies to (Reply v1).
   final AxReplyReference? replyTo;
@@ -579,6 +583,7 @@ class AxDiscussionMessage {
           eventType: eventType,
           workRequestId: workRequestId,
           workerDisplayName: workerDisplayName,
+          workerFailure: workerFailure,
           replyTo: replyTo);
 
   factory AxDiscussionMessage.fromJson(
@@ -643,6 +648,9 @@ class AxDiscussionMessage {
           : 'message',
       workRequestId: json['workRequestId'] as String?,
       workerDisplayName: json['workerDisplayName'] as String?,
+      workerFailure: json['workerFailure'] is Map
+          ? Map<String, dynamic>.from(json['workerFailure'] as Map)
+          : null,
       replyTo: AxReplyReference.fromJson(json['replyTo']),
     );
   }

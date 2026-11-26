@@ -90,3 +90,19 @@ export function decryptProviderFailure(
   }
   return null;
 }
+
+/** Decrypt only for an already-authorized response; never persist the result. */
+export function extractProviderFailure(
+  assignmentError: Record<string, unknown>,
+  assignmentId: unknown,
+  env: { SYNTILA_PROVIDER_FAILURE_KEY?: string; SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS?: string },
+): { providerFailure: ProviderFailureDetails | null; providerFailureUnavailable?: boolean } {
+  const encrypted = assignmentError.providerFailureEncrypted;
+  if (!encrypted) return { providerFailure: null, ...(assignmentError.providerFailureUnavailable === true ? { providerFailureUnavailable: true } : {}) };
+  const value = typeof assignmentId === "string"
+    ? decryptProviderFailure(encrypted, assignmentId, [
+        ...[providerFailureKey(env.SYNTILA_PROVIDER_FAILURE_KEY)].filter((key): key is Buffer => key !== null),
+        ...previousProviderFailureKeys(env.SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS),
+      ]) : null;
+  return { providerFailure: value, ...(!value ? { providerFailureUnavailable: true } : {}) };
+}

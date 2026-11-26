@@ -18,6 +18,15 @@
 6. Execution evidence and the `ai_request`/`ai_answer` items can't be edited like ordinary chat messages.
 7. **Context continuity:** the server's canonical turns plus artifact references are the context shared across Workers. A provider's native session is reused only by the same Worker Instance.
 8. Display: show the current name, falling back to the snapshot for removed or tombstoned Workers.
+9. A failed Worker assignment remains a System-authored outcome in storage, but
+   authorized timeline reads attach the assigned Worker's identity and its
+   error details. The app presents these as that Worker's failure, including
+   the sanitized provider or Worker Agent error and partial response when available.
+   The app hides timestamped diagnostic log lines when the error also contains
+   readable text, retaining the diagnostic when it is the only error text. Provider
+   failure details stay encrypted at rest and are never copied into the
+   plaintext timeline body. Failures without a Worker assignment remain System
+   notices; missing or undecryptable details use the safe canonical error.
 
 ## Consequences
 

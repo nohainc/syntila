@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import 'package:syntila_connect/syntila_connect.dart';
+import 'package:syntila_connect/src/server_api.dart';
 import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 import 'package:test/test.dart';
 
@@ -158,6 +159,41 @@ void main() {
       expect(text, startsWith('fixture echo: hello'));
       expect(text, contains('/assignment-test/outputs'));
       expect(activity, contains('execution.started'));
+
+      final failingLauncher = CliEngineLauncher(
+        supervisor: supervisor,
+        engineExecutable: dart,
+        resolveProfile: (_) async =>
+            (candidate: candidate, profileFile: profileFile),
+        workerId: 'worker-test',
+        stateDirectory: Directory('${dir.path}/state'),
+        workRoot: Directory('${dir.path}/work'),
+        placeInputs: (_, __) async =>
+            throw ServerRefusal(404, '/private/secret'),
+      );
+      final failedInput = await failingLauncher.launch(
+        const EngineRequest(
+          assignmentId: 'assignment-input-failed',
+          attemptId: 'attempt-input-failed',
+          payload: {
+            'snapshot': {'sessionPolicy': 'stateless', 'objective': 'hello'},
+            'input': {'prompt': 'hello'},
+          },
+        ),
+      );
+      final failure = await failedInput.outcome;
+      expect(failure.kind, TerminalKind.failed);
+      expect(
+        await (failedInput as EngineStartEvidence).providerStarted,
+        isFalse,
+      );
+      final failureDetails = failure.payload['providerFailure'] as Map;
+      expect(failureDetails['source'], 'agent');
+      expect(
+        failureDetails['providerErrorText'],
+        'The request’s attachment could not be downloaded (HTTP 404).',
+      );
+      expect(failureDetails.toString(), isNot(contains('/private/secret')));
 
       // A Person Share (another person's Chat) is always read-only: it is
       // not offered a place to save files, whatever the snapshot says.

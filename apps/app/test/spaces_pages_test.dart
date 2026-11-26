@@ -22,6 +22,73 @@ import 'package:syntila_app/src/features/common/markdown_composer.dart';
 
 void main() {
   tearDown(ThreadPage.resetWorkQueues);
+  testWidgets(
+      'canonical failed answer shows the Worker error and partial response',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'stream-1',
+          spaceId: 'space-1',
+          name: 'Thread',
+          lead: '',
+          status: 'active',
+          brief: '',
+          queueStatus: ''),
+      dataSource: _CanonicalFailureDataSource(),
+      currentUserId: 'user-owner',
+      onBackToSpace: _noop,
+      onArchive: _noop,
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('ChatGPT'), findsOneWidget);
+    expect(find.text('Usage limit reached. Try again at 4:47 AM.'),
+        findsOneWidget);
+    expect(find.text('Partial work was completed.'), findsOneWidget);
+    expect(find.textContaining('This request did not finish.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Worker failure without provider detail shows its safe error',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'stream-1',
+          spaceId: 'space-1',
+          name: 'Thread',
+          lead: '',
+          status: 'active',
+          brief: '',
+          queueStatus: ''),
+      dataSource: _CanonicalFailureDataSource(includeDetails: false),
+      currentUserId: 'user-owner',
+      onBackToSpace: _noop,
+      onArchive: _noop,
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text("The provider's usage limit has been reached."),
+        findsOneWidget);
+    expect(find.text('Provider details are unavailable.'), findsOneWidget);
+    expect(find.text('ChatGPT'), findsOneWidget);
+  });
   for (final role in ['owner', 'member']) {
     testWidgets(
         'failed Worker Work shows provider error and response for $role',
@@ -5359,6 +5426,57 @@ class _ArchivedAiDiscussionDataSource extends AxFixtureDataSource {
           'workerDisplayName': 'ChatGPT',
         }, currentUserId: 'user-owner'),
       ];
+}
+
+class _CanonicalFailureDataSource extends _WorkFormDataSource {
+  _CanonicalFailureDataSource({this.includeDetails = true});
+  final bool includeDetails;
+  @override
+  Future<List<AxDiscussionMessage>> discussionRows(
+          {required String threadId}) async =>
+      [
+        AxDiscussionMessage(
+            id: 'request',
+            threadId: threadId,
+            authorUserId: 'user-owner',
+            body: 'Do work',
+            createdAt: '2026-10-06T00:00:00Z',
+            kind: 'ai_request',
+            workRequestId: 'failure'),
+        AxDiscussionMessage.fromJson({
+          'id': 'answer',
+          'threadId': threadId,
+          'authorUserId': 'user-owner',
+          'body': 'This request did not finish.',
+          'createdAt': '2026-10-06T00:01:00Z',
+          'kind': 'ai_answer',
+          'eventType': 'work_failed',
+          'workRequestId': 'failure',
+          'workerDisplayName': 'Work',
+          'workerFailure': {
+            'workerId': 'worker-a',
+            'workerName': 'ChatGPT',
+            'workerTypeId': 'chatgpt',
+            'errorCode': 'quota_exhausted',
+            'errorMessage': "The provider's usage limit has been reached.",
+            'providerFailureUnavailable': !includeDetails,
+            'providerFailure': includeDetails
+                ? {
+                    'schemaVersion': 1,
+                    'source': 'structured_error',
+                    'providerErrorText':
+                        'Usage limit reached. Try again at 4:47 AM.',
+                    'failedRunResponse': 'Partial work was completed.'
+                  }
+                : null,
+          },
+        }),
+      ];
+
+  @override
+  Future<List<AxWorkRequest>> workRequestRows(
+          {required String threadId, bool activeOnly = false}) async =>
+      [];
 }
 
 class _OverlappingAiDiscussionDataSource

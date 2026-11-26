@@ -9,6 +9,14 @@ import {
 } from "../src/index.js";
 
 describe("ProviderFailureDetails contract", () => {
+  it("accepts a safe Worker Agent failure", () => {
+    const parsed = ProviderFailureDetailsSchema.parse({
+      schemaVersion: 1,
+      source: "agent",
+      providerErrorText: "The request’s attachment could not be downloaded (HTTP 404).",
+    });
+    expect(parsed.source).toBe("agent");
+  });
   it("accepts valid providerFailure with both error and response", () => {
     const parsed = ProviderFailureDetailsSchema.parse({
       schemaVersion: PROVIDER_FAILURE_SCHEMA_VERSION,

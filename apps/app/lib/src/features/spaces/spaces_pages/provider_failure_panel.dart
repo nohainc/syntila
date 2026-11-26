@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../ax/ax_work_models.dart';
 import '../../common/syntila_markdown_body.dart';
 
-/// Shows why a Work step failed: the provider's own error text exactly as it
-/// came (in the error color), or the generic message when there is none, plus
+/// Shows why a Work step failed: the readable provider error, or its technical
+/// diagnostic when no readable error is available, plus
 /// any native code and response returned with the failed run.
 class ProviderFailurePanel extends StatefulWidget {
   const ProviderFailurePanel({
@@ -22,13 +22,28 @@ class ProviderFailurePanel extends StatefulWidget {
   final bool providerFailureUnavailable;
   final TextStyle? canonicalStyle;
 
+  // Provider stderr can contain timestamped internal logs followed by a
+  // separate user-facing error. Keep logs if they are the only information.
+  static String _displayError(String text) {
+    final logLine = RegExp(
+      r'^\s*\d{4}-\d{2}-\d{2}T\S+\s+(?:ERROR|WARN|INFO|DEBUG|TRACE)\s+\S+[: ]',
+    );
+    final lines = text.split('\n');
+    if (!lines.any(logLine.hasMatch)) return text;
+    final readable =
+        lines.where((line) => !logLine.hasMatch(line)).join('\n').trim();
+    return readable.isEmpty ? text : readable;
+  }
+
   /// The text the panel shows, for the Copy action: the provider's error (or
   /// the generic message without one), then the native code and failed-run
   /// response when present.
   static String visibleText(
       String canonicalMessage, AxProviderFailureDetails? details) {
     return [
-      details?.providerErrorText ?? canonicalMessage,
+      details?.providerErrorText == null
+          ? canonicalMessage
+          : _displayError(details!.providerErrorText!),
       if (details?.nativeErrorCode != null)
         'Native code: ${details!.nativeErrorCode}',
       if (details?.failedRunResponse != null) details!.failedRunResponse!,
@@ -66,14 +81,16 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
           // replaces it. The generic message is shown only without one.
           if (hasProviderError)
             _collapsible(
-              details!.providerErrorText!,
+              ProviderFailurePanel._displayError(details!.providerErrorText!),
               textKey: const ValueKey('provider-error-text'),
               toggleKey: const ValueKey('toggle-provider-error'),
               expanded: _errorExpanded,
               onToggle: () => setState(() => _errorExpanded = !_errorExpanded),
               style: widget.canonicalStyle ??
                   message.copyWith(color: scheme.error),
-              semanticsLabel: 'Provider error text',
+              semanticsLabel: details.source == 'agent'
+                  ? 'Worker error text'
+                  : 'Provider error text',
               showMore: 'Show more',
               showLess: 'Show less',
             )

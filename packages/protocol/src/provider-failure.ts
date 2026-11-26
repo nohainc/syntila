@@ -8,6 +8,7 @@ export const PROVIDER_FAILURE_SOURCES = [
   "stderr",
   "stdout",
   "plugin",
+  "agent",
 ] as const;
 
 export const PROVIDER_FAILURE_OMITTABLE_FIELDS = [

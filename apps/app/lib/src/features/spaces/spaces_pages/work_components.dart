@@ -3886,6 +3886,7 @@ class _DiscussionItem {
     this.isMe = true,
     this.aiKind,
     this.aiWorkRequestId,
+    this.failureStep,
     this.eventType,
     this.workRequest,
     this.attachments = const [],
@@ -3912,6 +3913,7 @@ class _DiscussionItem {
   /// `ai_request` or `ai_answer` for an AI exchange archived from Work history.
   final String? aiKind;
   final String? aiWorkRequestId;
+  final AxWorkRequestStep? failureStep;
   final String? eventType;
   bool get isAiAnswer => aiKind == 'ai_answer';
 
@@ -4028,7 +4030,7 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (widget.item.eventType != null) {
+    if (widget.item.eventType != null && widget.item.failureStep == null) {
       final removed = widget.item.eventType == 'message.removed';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -4167,6 +4169,10 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                   child: GestureDetector(
                                     onTap: () =>
                                         widget.onSelectExecutionParameters!(
+                                      workerId:
+                                          widget.item.failureStep?.workerId,
+                                      workerTypeId:
+                                          widget.item.failureStep?.workerTypeId,
                                       workerDisplayName: widget.item.author,
                                     ),
                                     child: Tooltip(
@@ -4243,16 +4249,25 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                               _ReplyQuote(reference: widget.item.replyTo!),
                             if (widget.item.attachments.isNotEmpty)
                               AttachmentCards(files: widget.item.attachments),
-                            CollapsibleOwnMessage(
-                              data: widget.item.text,
-                              enabled: isMe,
-                              toggleColor: metaColor,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              child: _MemoizedWorkMarkdown(
+                            if (widget.item.failureStep case final step?)
+                              ProviderFailurePanel(
+                                canonicalMessage: widget.item.text,
+                                errorCode: step.errorCode,
+                                providerFailure: step.providerFailure,
+                                providerFailureUnavailable:
+                                    step.providerFailureUnavailable,
+                              )
+                            else
+                              CollapsibleOwnMessage(
                                 data: widget.item.text,
-                                fitContent: true,
+                                enabled: isMe,
+                                toggleColor: metaColor,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                child: _MemoizedWorkMarkdown(
+                                  data: widget.item.text,
+                                  fitContent: true,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),

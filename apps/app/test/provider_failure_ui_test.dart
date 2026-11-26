@@ -17,6 +17,37 @@ Widget _wrap(Widget child, {double width = 500}) => MaterialApp(
 
 void main() {
   group('ProviderFailurePanel UI', () {
+    testWidgets('prefers readable error and retains a technical-only error',
+        (tester) async {
+      const diagnostic =
+          '2026-11-25T23:13:48.516787Z ERROR codex_core::tools::router: error=write_stdin failed: Unknown process id 68561';
+      const readable = 'You’ve hit your usage limit. Try again at 4:47 AM.';
+      const details = AxProviderFailureDetails(
+        schemaVersion: 1,
+        source: 'stderr',
+        providerErrorText: '$diagnostic\n\n$readable',
+        failedRunResponse: 'Partial answer',
+      );
+      await tester.pumpWidget(_wrap(const ProviderFailurePanel(
+        canonicalMessage: 'Execution failed.',
+        providerFailure: details,
+      )));
+      expect(find.text(readable), findsOneWidget);
+      expect(find.textContaining('Unknown process id'), findsNothing);
+      expect(find.text('Partial answer'), findsOneWidget);
+      expect(ProviderFailurePanel.visibleText('Execution failed.', details),
+          '$readable\n\nPartial answer');
+
+      await tester.pumpWidget(_wrap(const ProviderFailurePanel(
+        canonicalMessage: 'Execution failed.',
+        providerFailure: AxProviderFailureDetails(
+          schemaVersion: 1,
+          source: 'stderr',
+          providerErrorText: diagnostic,
+        ),
+      )));
+      expect(find.text(diagnostic), findsOneWidget);
+    });
     testWidgets('shows failure details for each failed research step',
         (tester) async {
       const request = AxWorkRequest(

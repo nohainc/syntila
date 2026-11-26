@@ -2764,16 +2764,39 @@ class _ThreadPageState extends State<ThreadPage>
       // An archived AI answer is the Worker speaking, not its requester.
       final worker = message.workerDisplayName?.trim();
       final answer = message.isAiAnswer;
+      final failure = message.workerFailure;
+      final returnedStep = failure == null || failure['workerId'] is! String
+          ? null
+          : AxWorkRequestStep(
+              kind: 'worker_failure',
+              status: 'failed',
+              workerId: failure['workerId'] as String,
+              workerDisplayName: failure['workerName'] as String?,
+              workerTypeId: failure['workerTypeId'] as String?,
+              errorCode: failure['errorCode'] as String?,
+              errorMessage: failure['errorMessage'] as String?,
+              providerFailure: AxProviderFailureDetails.maybeFromJson(
+                  failure['providerFailure']),
+              providerFailureUnavailable:
+                  failure['providerFailureUnavailable'] == true,
+            );
+      final failedStep =
+          message.eventType == 'work_failed' ? returnedStep : null;
+      final failedWorker = failedStep?.workerDisplayName?.trim();
       return _DiscussionItem(
           id: message.id,
-          author: answer
-              ? (worker == null || worker.isEmpty ? 'AI' : worker)
-              : displayAuthor,
+          author: failedStep != null
+              ? (failedWorker == null || failedWorker.isEmpty
+                  ? 'Worker'
+                  : failedWorker)
+              : answer
+                  ? (worker == null || worker.isEmpty ? 'AI' : worker)
+                  : displayAuthor,
           authorId: answer
               ? 'ai:${message.workRequestId ?? message.id}'
               : message.authorUserId,
           date: date,
-          text: message.body,
+          text: failedStep?.errorMessage ?? message.body,
           attachments: message.attachments,
           eventType: message.eventType,
           sentAt: date == null ? null : _chatTimestamp(date),
@@ -2781,6 +2804,7 @@ class _ThreadPageState extends State<ThreadPage>
           editedDate: edited,
           isMe: isMe && !answer,
           replyTo: message.replyTo,
+          failureStep: failedStep,
           aiWorkRequestId: message.isAiEntry ? message.workRequestId : null,
           aiKind: message.isAiEntry ? message.kind : null);
     }).toList();
@@ -2990,8 +3014,13 @@ class _ThreadPageState extends State<ThreadPage>
                                       messages, index,
                                       breakAt: _firstUnreadChatId),
                                   onCopy: () {
-                                    Clipboard.setData(
-                                        ClipboardData(text: message.text));
+                                    Clipboard.setData(ClipboardData(
+                                        text: message.failureStep == null
+                                            ? message.text
+                                            : ProviderFailurePanel.visibleText(
+                                                message.text,
+                                                message.failureStep!
+                                                    .providerFailure)));
                                   },
                                   onReply: message.eventType == null &&
                                           !widget.isDraft

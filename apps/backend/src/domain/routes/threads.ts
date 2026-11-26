@@ -2,7 +2,10 @@ import {
   CreateThreadSchema,
   DiscussionMessageSchema,
   UpdateThreadSchema,
+  canonicalExecutionErrorCode,
+  executionErrorMessage,
 } from "@syntila/protocol";
+import { extractProviderFailure } from "../provider-failure-encryption.js";
 import { readBody } from "./validation.js";
 import { activeWorkCount, directSpaceOfGeneralThread, spaceKind, usersBlocked } from "../queries.js";
 import {
@@ -544,6 +547,36 @@ function discussionMessageView(row: Record<string, unknown>) {
   };
 }
 
+/** Add authorized, decrypted failure details without writing them to the timeline. */
+async function workerFailuresForMessages(env: SecurityEnv, threadId: string, messages: readonly Record<string, unknown>[]) {
+  const ids = [...new Set(messages
+    .filter((row) => row.eventType === "work_failed" && typeof row.workRequestId === "string")
+    .map((row) => String(row.workRequestId)))];
+  const result = new Map<string, Record<string, unknown>>();
+  if (!ids.length) return result;
+  const q = dataOf(env).read;
+  const rows = await q.rows<Record<string, unknown>>`SELECT DISTINCT ON (wt.work_request_id)
+      wt.work_request_id AS "workRequestId", a.id AS "assignmentId", a.worker_instance_id AS "workerId",
+      w.name AS "workerName", w.worker_type_id AS "workerTypeId", a.error_json::text AS "errorJson"
+    FROM workflow_tasks wt JOIN work_requests wr ON wr.id = wt.work_request_id
+    JOIN worker_assignments a ON a.task_id = wt.id
+    JOIN worker_instances w ON w.id = a.worker_instance_id
+    WHERE wr.thread_id = ${threadId} AND wt.work_request_id IN ${q.list(ids)}
+      AND a.status IN ('failed','timed_out','lost')
+    ORDER BY wt.work_request_id, a.updated_at DESC, a.id DESC`;
+  for (const row of rows) {
+    const error = parseJson<Record<string, unknown>>(row.errorJson, {});
+    const raw = error.error && typeof error.error === "object" ? error.error as Record<string, unknown> : {};
+    const errorCode = canonicalExecutionErrorCode(raw.code);
+    result.set(String(row.workRequestId), {
+      kind: "worker_failure", workerId: row.workerId, workerName: row.workerName,
+      workerTypeId: row.workerTypeId, errorCode, errorMessage: executionErrorMessage(errorCode),
+      ...extractProviderFailure(error, row.assignmentId, env),
+    });
+  }
+  return result;
+}
+
 /** One paginated timeline: people and AI items, attributed to their Actor. */
 export async function handleListThreadTimeline(
   request: Request,
@@ -641,10 +674,13 @@ export async function handleListDiscussionMessages(
   const nextCursor =
     more && selected.length ? encode(selected[selected.length - 1]!) : null;
   const messages = forward ? selected : selected.reverse();
+  const failures = await workerFailuresForMessages(env, threadId, messages);
   return json({
     schemaVersion: 1,
     messages: messages.map((row) => ({
       ...discussionMessageView(row),
+      ...(failures.has(String(row.workRequestId)) && row.eventType === "work_failed"
+        ? { workerFailure: failures.get(String(row.workRequestId)) } : {}),
       references: parseJson(row.referencesJson, []),
     })),
     nextCursor,
@@ -773,9 +809,12 @@ export async function handleGetDiscussionMessage(
     "view",
     accessContext,
   );
+  const failures = await workerFailuresForMessages(env, String(message.threadId), [message]);
   return json({
     message: {
       ...discussionMessageView(message),
+      ...(failures.has(String(message.workRequestId)) && message.eventType === "work_failed"
+        ? { workerFailure: failures.get(String(message.workRequestId)) } : {}),
       references: parseJson(message.referencesJson, []),
     },
   });

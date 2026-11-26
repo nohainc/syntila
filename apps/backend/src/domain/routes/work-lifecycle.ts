@@ -1,8 +1,7 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { decryptProviderFailure, previousProviderFailureKeys, providerFailureKey } from "../provider-failure-encryption.js";
+import { extractProviderFailure } from "../provider-failure-encryption.js";
 import {
   RetryWorkRequestSchema,
-  type ProviderFailureDetails,
 } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { clearAiOutcome, recordAiOutcome } from "../ai-timeline.js";
@@ -941,23 +940,6 @@ export async function handleGetWorkRequest(
     errorCode,
     errorMessage: errorCode ? executionErrorMessage(errorCode) : null,
   });
-}
-
-function extractProviderFailure(
-  assignmentError: Record<string, unknown>,
-  assignmentId: unknown,
-  env: SecurityEnv,
-): { providerFailure: ProviderFailureDetails | null; providerFailureUnavailable?: boolean } {
-  const encrypted = assignmentError.providerFailureEncrypted;
-  if (!encrypted) return { providerFailure: null, ...(assignmentError.providerFailureUnavailable === true ? { providerFailureUnavailable: true } : {}) };
-  const value = typeof assignmentId === "string"
-    ? decryptProviderFailure(encrypted, assignmentId, [
-        ...[providerFailureKey(env.SYNTILA_PROVIDER_FAILURE_KEY)].filter(
-          (key): key is Buffer => key !== null,
-        ),
-        ...previousProviderFailureKeys(env.SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS),
-      ]) : null;
-  return { providerFailure: value, ...(!value ? { providerFailureUnavailable: true } : {}) };
 }
 
 /** Cloud-derived execution state for one step; see execution-phase.ts. */
