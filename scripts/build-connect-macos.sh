@@ -65,11 +65,11 @@ ENGINE_VERSION="$(awk '/^version:/ {print $2; exit}' "$ENGINE_DIR/pubspec.yaml")
 AGENT_VERSION="$(sed -n "s/^const agentVersion = '\(.*\)';/\1/p" "$AGENT_DIR/lib/src/cli.dart")"
 OUT="$ROOT/dist/connect/macos-$TARGET_ENV"
 rm -rf "$OUT"
-mkdir -p "$OUT/engine"
+mkdir -p "$OUT"
 
 echo "Engine $ENGINE_VERSION"
 (cd "$ENGINE_DIR" && dart pub get >/dev/null \
-  && dart compile exe "-DENGINE_VERSION=$ENGINE_VERSION" bin/syntila_cli_worker.dart -o "$OUT/engine/syntila-worker")
+  && dart compile exe "-DENGINE_VERSION=$ENGINE_VERSION" bin/syntila_cli_worker.dart -o "$OUT/syntila-worker")
 
 echo "Agent $AGENT_VERSION ($TARGET_ENV)"
 (cd "$AGENT_DIR" && dart pub get >/dev/null \
@@ -78,11 +78,11 @@ echo "Agent $AGENT_VERSION ($TARGET_ENV)"
     "--define=SYNTILA_UPDATE_KEYS=$UPDATE_KEYS" \
     bin/syntila_connect.dart -o "$OUT/syntila-connect")
 
-chmod 755 "$OUT/syntila-connect" "$OUT/engine/syntila-worker"
-for binary in "$OUT/syntila-connect" "$OUT/engine/syntila-worker"; do
+chmod 755 "$OUT/syntila-connect" "$OUT/syntila-worker"
+for binary in "$OUT/syntila-connect" "$OUT/syntila-worker"; do
   codesign --force --sign "$SIGN_IDENTITY" "$binary"
 done
-(cd "$OUT" && shasum -a 256 syntila-connect engine/syntila-worker > SHA256SUMS)
+(cd "$OUT" && shasum -a 256 syntila-connect syntila-worker > SHA256SUMS)
 
 GUI_APP=""
 if [[ "$BUILD_GUI" == 1 ]]; then
@@ -107,12 +107,11 @@ if [[ "$BUILD_GUI" == 1 ]]; then
   # and the CLI it runs are always the same build.
   cp "$OUT/syntila-connect" "$GUI_APP/Contents/Resources/syntila-connect"
   chmod 755 "$GUI_APP/Contents/Resources/syntila-connect"
-  # The Agent looks for the Worker Engine next to itself (engine/syntila-worker).
+  # The Agent looks for the Worker Engine next to itself (syntila-worker).
   # Without it the Worker reports engine_unavailable and cannot read models or
   # run work.
-  mkdir -p "$GUI_APP/Contents/Resources/engine"
-  cp "$OUT/engine/syntila-worker" "$GUI_APP/Contents/Resources/engine/syntila-worker"
-  chmod 755 "$GUI_APP/Contents/Resources/engine/syntila-worker"
+  cp "$OUT/syntila-worker" "$GUI_APP/Contents/Resources/syntila-worker"
+  chmod 755 "$GUI_APP/Contents/Resources/syntila-worker"
   codesign --force --deep --sign "$SIGN_IDENTITY" "$GUI_APP"
 fi
 
@@ -120,7 +119,7 @@ cat <<DONE
 
 Built: $OUT
   $OUT/syntila-connect              the Agent
-  $OUT/engine/syntila-worker   the Syntila Worker Engine${GUI_APP:+
+  $OUT/syntila-worker   the Syntila Worker Engine${GUI_APP:+
   $GUI_APP   the GUI (runs the Agent bundled inside it)}
 
 First run (pairing code from Settings > Workers > the Worker's menu > Pair):

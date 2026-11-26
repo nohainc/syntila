@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  require-ci:
+  read-version:
     name: Read Connect version
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -32,16 +32,15 @@ jobs:
 
   build:
     name: Build and package Windows Connect (installer + portable zip)
-    needs: require-ci
+    needs: read-version
     runs-on: windows-2022
     environment: connect-windows-release
     timeout-minutes: 75
     env:
-      SYNTILA_CONNECT_VERSION: ${{ needs.require-ci.outputs.version }}
+      SYNTILA_CONNECT_VERSION: ${{ needs.read-version.outputs.version }}
       # Releases never fall back to the compile-only CI trust root.
       SYNTILA_PROFILE_TRUST_ROOTS: ${{ vars.SYNTILA_PROFILE_TRUST_ROOTS || vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
       SYNTILA_UPDATE_KEYS: ${{ vars.SYNTILA_UPDATE_KEYS || '' }}
-      SYNTILA_WINDOWS_SIGNING: ${{ vars.SYNTILA_WINDOWS_SIGNING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,9 +50,6 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:SYNTILA_PROFILE_TRUST_ROOTS) { throw 'vars.SYNTILA_PROFILE_TRUST_ROOTS (or vars.SYNTILA_RELEASE_TRUST_KEYS_JSON) is required.' }
-          if ($env:SYNTILA_WINDOWS_SIGNING -and $env:SYNTILA_WINDOWS_SIGNING -notin @('azure', 'pfx')) {
-            throw 'vars.SYNTILA_WINDOWS_SIGNING must be azure or pfx.'
-          }
       - name: Install pinned Inno Setup compiler
         shell: pwsh
         run: |
@@ -63,36 +59,6 @@ jobs:
           $compilerDir = Join-Path $env:RUNNER_TEMP 'inno-setup'
           $install = Start-Process $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$compilerDir`"") -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Compiler installation failed: $($install.ExitCode)" }
-      - name: Install .NET 8 for Azure signing
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'azure'
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Configure Azure Trusted Signing client
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'azure'
-        shell: pwsh
-        env:
-          CLIENT_VERSION: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_CLIENT_VERSION || '1.0.53' }}
-        run: |
-          $package = Join-Path $env:RUNNER_TEMP 'trusted-signing-client.zip'
-          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client/$env:CLIENT_VERSION" -OutFile $package
-          $client = Join-Path $env:RUNNER_TEMP 'trusted-signing-client'
-          Expand-Archive $package $client -Force
-          $dlib = Join-Path $client 'bin/x64/Azure.CodeSigning.Dlib.dll'
-          # The client must carry a valid Microsoft Authenticode signature.
-          $signature = Get-AuthenticodeSignature $dlib
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Trusted Signing client is not Microsoft-signed.' }
-          "SYNTILA_WINDOWS_TRUSTED_SIGNING_DLIB=$dlib" >> $env:GITHUB_ENV
-      - name: Configure certificate file signing
-        if: vars.SYNTILA_WINDOWS_SIGNING == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_PFX: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PFX }}
-        run: |
-          if (-not $env:CERTIFICATE_PFX) { throw 'secrets.SYNTILA_WINDOWS_CERTIFICATE_PFX is required.' }
-          $path = Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx'
-          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:CERTIFICATE_PFX))
-          "SYNTILA_WINDOWS_CERTIFICATE_PATH=$path" >> $env:GITHUB_ENV
       - name: Run Connect CLI tests
         shell: pwsh
         run: |
@@ -107,45 +73,14 @@ jobs:
       - name: Check Connect GUI icon
         shell: pwsh
         run: |
-          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/connect/windows/release/syntila_connect_gui.exe'
+          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/connect/windows/release/Syntila Connect.exe'
           Add-Type -AssemblyName System.Drawing
           $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($gui)
           if ($null -eq $icon) { throw 'Connect GUI executable has no icon.' }
           $icon.Dispose()
-      - name: Sign bundled executables and refresh portable archive
-        if: vars.SYNTILA_WINDOWS_SIGNING != ''
-        shell: pwsh
-        env:
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE }}
-          AZURE_TENANT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
-          SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $bundle = Join-Path $PWD 'dist/connect/windows/release'
-          ./scripts/sign-connect-windows.ps1 -Bundle $bundle
-          ./scripts/sign-connect-windows.ps1 -Bundle $bundle -VerifyOnly
-          $archive = "dist/connect/Syntila-Connect-$env:SYNTILA_CONNECT_VERSION-windows-x64-portable.zip"
-          Compress-Archive -Path "$bundle/*" -DestinationPath $archive -Force
       - name: Build Inno Setup installer
         shell: pwsh
-        env:
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ENDPOINT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_ACCOUNT }}
-          SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE: ${{ vars.SYNTILA_WINDOWS_TRUSTED_SIGNING_PROFILE }}
-          AZURE_TENANT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.SYNTILA_WINDOWS_AZURE_CLIENT_SECRET }}
-          SYNTILA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.SYNTILA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $compiler = "$env:RUNNER_TEMP/inno-setup/ISCC.exe"
-          if ($env:SYNTILA_WINDOWS_SIGNING) {
-            ./scripts/package-connect-windows.ps1 -Compiler $compiler -Sign
-          } else {
-            ./scripts/package-connect-windows.ps1 -Compiler $compiler
-          }
+        run: ./scripts/package-connect-windows.ps1 -Compiler "$env:RUNNER_TEMP/inno-setup/ISCC.exe"
       - name: Test install, upgrade and uninstall
         shell: pwsh
         run: ./scripts/test-connect-windows-installer.ps1
@@ -158,20 +93,12 @@ jobs:
           $files | Copy-Item -Destination dist/windows-release
           $files | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
             Set-Content dist/windows-release/SHA256SUMS -Encoding ascii
-      - name: Remove signing material
-        if: always()
-        shell: pwsh
-        run: Remove-Item (Join-Path $env:RUNNER_TEMP 'syntila-windows-signing.pfx') -ErrorAction SilentlyContinue
       - name: Record build metadata
         shell: pwsh
         run: |
-          @{ version = $env:SYNTILA_CONNECT_VERSION; commit = $env:GITHUB_SHA; run_id = $env:GITHUB_RUN_ID; signed = [bool]$env:SYNTILA_WINDOWS_SIGNING } |
+          @{ version = $env:SYNTILA_CONNECT_VERSION; commit = $env:GITHUB_SHA; run_id = $env:GITHUB_RUN_ID } |
             ConvertTo-Json -Compress | Set-Content dist/windows-release/build.json -Encoding utf8
-          if ($env:SYNTILA_WINDOWS_SIGNING) {
-            "Signed build: eligible for release after provenance and artifact checks." >> $env:GITHUB_STEP_SUMMARY
-          } else {
-            "Unsigned build: available for testing only; not eligible for release." >> $env:GITHUB_STEP_SUMMARY
-          }
+          "Unsigned Windows build: available for testing and release." >> $env:GITHUB_STEP_SUMMARY
       - name: Retain build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

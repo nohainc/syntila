@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     environment: connect-windows-release
     timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
     permissions:
       contents: write
       actions: read
@@ -61,8 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           version="$(jq -r --arg sha "$BUILD_SHA" --arg run "$BUILD_RUN_ID" \
-            'select(.commit == $sha and .run_id == $run and .signed == true) | .version' release/build.json)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Build metadata is invalid or the build is unsigned.' >&2; exit 1; }
+            'select(.commit == $sha and .run_id == $run) | .version' release/build.json)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Build metadata is invalid.' >&2; exit 1; }
           installer="Syntila-Connect-$version-windows-x64-Setup.exe"
           portable="Syntila-Connect-$version-windows-x64-portable.zip"
           # Require exactly the expected entries, so checksum verification covers both assets.
@@ -77,4 +79,4 @@ jobs:
           fi
           gh release create "$tag" "release/$installer" "release/$portable" release/SHA256SUMS --target "$BUILD_SHA" \
             --title "Syntila Connect $version for Windows" \
-            --notes "${NOTES:-Signed Syntila Connect $version for Windows x64 (installer and portable archive).}"
+            --notes "${NOTES:-Unsigned Syntila Connect $version for Windows x64 (installer and portable archive).}"

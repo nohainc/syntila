@@ -29,25 +29,23 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 CloseApplications=no
 RestartApplications=no
-#if FileExists(BundleDir + "\syntila_connect_gui.exe")
-UninstallDisplayIcon={app}\syntila_connect_gui.exe
+#if FileExists(BundleDir + "\Syntila Connect.exe")
+UninstallDisplayIcon={app}\Syntila Connect.exe
 #else
 UninstallDisplayIcon={app}\syntila-connect.exe
 #endif
 SetupLogging=yes
-#ifdef SignInstaller
-; Signs Setup.exe and the embedded uninstaller with the "syntila" sign tool
-; passed by scripts/package-connect-windows.ps1 -Sign.
-SignTool=syntila
-SignedUninstaller=yes
-#endif
+
+[InstallDelete]
+Type: files; Name: "{app}\syntila_connect_gui.exe"
+Type: files; Name: "{app}\engine\syntila-worker.exe"
 
 [Files]
 Source: "{#BundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-#if FileExists(BundleDir + "\syntila_connect_gui.exe")
+#if FileExists(BundleDir + "\Syntila Connect.exe")
 [Icons]
-Name: "{group}\Syntila Connect"; Filename: "{app}\syntila_connect_gui.exe"; WorkingDir: "{app}"
+Name: "{group}\Syntila Connect"; Filename: "{app}\Syntila Connect.exe"; WorkingDir: "{app}"
 #endif
 
 [Code]
@@ -59,7 +57,7 @@ begin
   try
     Locator := CreateOleObject('WbemScripting.SWbemLocator');
     Services := Locator.ConnectServer('', 'root\CIMV2');
-    Processes := Services.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''syntila-connect.exe'' OR Name = ''syntila-worker.exe'' OR Name = ''syntila_connect_gui.exe''');
+    Processes := Services.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''syntila-connect.exe'' OR Name = ''syntila-worker.exe'' OR Name = ''Syntila Connect.exe'' OR Name = ''syntila_connect_gui.exe''');
     Result := Processes.Count > 0;
   except
     // If process inspection fails, preserve the existing installation.

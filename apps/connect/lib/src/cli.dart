@@ -14,6 +14,7 @@ import 'config.dart';
 import 'connection.dart';
 import 'device.dart';
 import 'engine.dart';
+import 'engine_executable.dart';
 import 'folders.dart';
 import 'gui_manifest.dart';
 import 'identity.dart';
@@ -357,23 +358,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     }
   }
 
-  /// Resolves the CLI Worker Engine binary bundled next to `syntila-connect`
-  /// (`engine/syntila-worker` or `syntila-worker` in the same folder).
-  String? _resolveEngineExecutable() {
-    final binName = operatingSystem == 'windows'
-        ? 'syntila-worker.exe'
-        : 'syntila-worker';
-    final agentDir = File(
-      executable ?? Platform.resolvedExecutable,
-    ).parent.path;
-    for (final candidate in [
-      p.join(agentDir, 'engine', binName),
-      p.join(agentDir, binName),
-    ]) {
-      if (File(candidate).existsSync()) return candidate;
-    }
-    return null;
-  }
+  /// Resolves the CLI Worker Engine bundled beside `syntila-connect`.
+  String? _resolveEngineExecutable() => resolveWorkerEngineExecutable(
+    executable ?? Platform.resolvedExecutable,
+    operatingSystem,
+  );
 
   Future<int> _pair(_Args args) async {
     final fromStdin = args.flags.contains('pairing-code-stdin');

@@ -40,15 +40,40 @@ describe("CI acceptance orchestration", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
-  it("points signed Connect release and installer checks at the available signer", () => {
-    const signer = "sign-connect-windows.ps1";
-    expect(source(`scripts/${signer}`)).toContain("VerifyOnly");
-    for (const file of [
-      ".github/workflows/build-connect-windows.yml",
-      "scripts/package-connect-windows.ps1",
-      "scripts/test-connect-windows-installer.ps1",
-    ]) {
-      expect(source(file)).toContain(signer);
+  it("releases an unsigned selected build and rejects incorrect artifact checksums", () => {
+    const root = mkdtempSync(join(tmpdir(), "syntila-windows-release-"));
+    try {
+      const release = join(root, "release");
+      const bin = join(root, "bin");
+      mkdirSync(release);
+      mkdirSync(bin);
+      const version = "1.2.3";
+      const sha = "a".repeat(40);
+      const installer = `Syntila-Connect-${version}-windows-x64-Setup.exe`;
+      const portable = `Syntila-Connect-${version}-windows-x64-portable.zip`;
+      writeFileSync(join(release, installer), "installer");
+      writeFileSync(join(release, portable), "portable");
+      writeFileSync(join(release, "build.json"), JSON.stringify({version, commit: sha, run_id: "123"}));
+      const hashes = spawnSync("shasum", ["-a", "256", installer, portable], {cwd: release, encoding: "utf8"});
+      expect(hashes.status, hashes.stderr).toBe(0);
+      writeFileSync(join(release, "SHA256SUMS"), hashes.stdout);
+      const gh = join(bin, "gh");
+      writeFileSync(gh, '#!/bin/sh\nif [ "$1" = release ] && [ "$2" = view ]; then exit 1; fi\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
+      chmodSync(gh, 0o755);
+      const workflow = source(".github/workflows/release-windows.yml");
+      const script = workflow.split("      - name: Verify artifacts and create release\n")[1]
+        .split("        run: |\n")[1].split("\n").map((line) => line.slice(10)).join("\n");
+      const run = () => spawnSync("bash", ["-c", script], {
+        cwd: root, encoding: "utf8", env: {...process.env, PATH: `${bin}:${process.env.PATH}`,
+          BUILD_RUN_ID: "123", BUILD_SHA: sha, NOTES: "", RELEASE_LOG: join(root, "release.log")},
+      });
+      const result = run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release create connect-windows-v${version}`);
+      writeFileSync(join(release, installer), "modified");
+      expect(run().status).not.toBe(0);
+    } finally {
+      rmSync(root, {recursive: true, force: true});
     }
   });
   it("uses the public Connect platform builder in the release workflow", () => {

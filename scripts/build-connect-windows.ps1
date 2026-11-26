@@ -49,14 +49,14 @@ if ($ConnectVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Unsupported Connect ve
 $Variant = if ($Production) { 'release' } else { 'local' }
 $Bundle = Join-Path $Root "dist/connect/windows/$Variant"
 if (Test-Path $Bundle) { Remove-Item -Recurse -Force $Bundle }
-New-Item -ItemType Directory -Force (Join-Path $Bundle 'engine') | Out-Null
+New-Item -ItemType Directory -Force $Bundle | Out-Null
 
 Write-Host "Building Engine $EngineVersion..."
 Push-Location $EngineDir
 try {
     & dart pub get
     if ($LASTEXITCODE -ne 0) { throw "Engine dart pub get failed: $LASTEXITCODE" }
-    & dart compile exe "-DENGINE_VERSION=$EngineVersion" bin/syntila_cli_worker.dart -o (Join-Path $Bundle 'engine/syntila-worker.exe')
+    & dart compile exe "-DENGINE_VERSION=$EngineVersion" bin/syntila_cli_worker.dart -o (Join-Path $Bundle 'syntila-worker.exe')
     if ($LASTEXITCODE -ne 0) { throw "Engine dart compile exe failed: $LASTEXITCODE" }
 } finally { Pop-Location }
 
@@ -89,10 +89,11 @@ if (-not $SkipGui) {
             throw 'Connect GUI executable (syntila_connect_gui.exe) is missing.'
         }
         Copy-Item "$BuiltGui/*" $Bundle -Recurse -Force
+        Rename-Item (Join-Path $Bundle 'syntila_connect_gui.exe') 'Syntila Connect.exe'
     } finally { Pop-Location }
 }
 
-foreach ($File in @('syntila-connect.exe', 'engine/syntila-worker.exe')) {
+foreach ($File in @('syntila-connect.exe', 'syntila-worker.exe')) {
     if (-not (Test-Path (Join-Path $Bundle $File))) { throw "Bundle is missing $File" }
 }
 

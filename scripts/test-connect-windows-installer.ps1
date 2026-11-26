@@ -11,7 +11,7 @@ function Run-Setup {
 }
 
 Run-Setup
-foreach ($File in @('syntila-connect.exe', 'engine/syntila-worker.exe', 'syntila_connect_gui.exe')) {
+foreach ($File in @('syntila-connect.exe', 'syntila-worker.exe', 'Syntila Connect.exe')) {
     if ((Get-FileHash (Join-Path $Target $File)).Hash -ne
         (Get-FileHash (Join-Path $Root "dist/connect/windows/release/$File")).Hash) {
         throw "Installed file mismatch: $File"
@@ -23,14 +23,18 @@ if (-not (Test-Path $Shortcut)) { throw 'Syntila Connect Start menu shortcut is 
 & (Join-Path $Target 'syntila-connect.exe') help | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Installed syntila-connect.exe help failed: $LASTEXITCODE" }
 
+# Simulate files left by the previous bundle layout before upgrading.
+New-Item -ItemType Directory -Force (Join-Path $Target 'engine') | Out-Null
+Set-Content (Join-Path $Target 'engine/syntila-worker.exe') 'old engine'
+Set-Content (Join-Path $Target 'syntila_connect_gui.exe') 'old desktop app'
 # Repeat installation to exercise the stable AppId upgrade path.
 Run-Setup
-
-if ($env:SYNTILA_WINDOWS_SIGNING) {
-    & (Join-Path $PSScriptRoot 'sign-connect-windows.ps1') (Join-Path $Target 'unins000.exe') -VerifyOnly
+foreach ($OldFile in @('engine/syntila-worker.exe', 'syntila_connect_gui.exe')) {
+    if (Test-Path (Join-Path $Target $OldFile)) { throw "Upgrade left $OldFile behind." }
 }
+
 $Uninstall = Start-Process (Join-Path $Target 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
 if ($Uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($Uninstall.ExitCode)" }
-foreach ($File in @('syntila-connect.exe', 'syntila_connect_gui.exe')) {
+foreach ($File in @('syntila-connect.exe', 'Syntila Connect.exe')) {
     if (Test-Path (Join-Path $Target $File)) { throw "Uninstall left $File behind." }
 }
