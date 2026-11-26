@@ -69,6 +69,20 @@ The package includes the service, management CLI and Worker Engine. See the
 Linux operator guide for user-service setup,
 browser login and upgrades. Provider CLIs and their logins are separate.
 
+## Build, test and release
+
+Everything runs on the dev machine; GitHub builds Windows Connect only (see [Environments](docs/operations/ENVIRONMENTS.md)).
+
+```bash
+scripts/test-all.sh --quick          # typecheck and backend suite
+scripts/test-all.sh                  # full local gate before a commit
+scripts/prod-status.sh               # read-only production state
+scripts/prod-deploy-all.sh --dry-run # plan a release (backend, web app, optional --site)
+scripts/prod-deploy-all.sh           # release; stops at the first failure
+```
+
+Windows Connect: bump `version:` in `apps/connect/pubspec.yaml`, merge to `main`, run the two GitHub workflows ([GitHub Actions](docs/operations/GITHUB_ACTIONS.md)). Details and the other scripts: [Test and deploy scripts](docs/operations/TEST_AND_DEPLOY_SCRIPTS.md).
+
 ## Repository checks
 
 Use the focused tests and component validation commands in [AGENTS.md](AGENTS.md) for the area changed. `pnpm check` is a broad repository check reserved for cases that require that scope.

@@ -4,7 +4,7 @@ The public site and the authenticated app/auth edge deploy independently. The cu
 
 The app edge serves Flutter assets and handles human authentication. Its D1 database `syntila-auth` is for authentication only. Product data, Worker sessions, assignments and realtime streams live in the PostgreSQL backend. Files and artifacts use R2. Apply backend migrations using the [VPS backend procedure](VPS_BACKEND.md), independently of auth migrations.
 
-The manual [cloud deployment workflow](../../.github/workflows/deploy-cloud.yml) requires passing CI on the same main commit. It builds the app, checks the bundle and production configuration, syncs authentication secrets, applies auth D1 migrations and deploys the edge. The [site workflow](../../.github/workflows/deploy-site.yml) deploys the public site separately. Review current workflow and configuration before deploying; local tests do not constitute deployment or device acceptance.
+`scripts/prod-deploy-web-app.sh` builds the app, checks the bundle and production configuration, applies the auth D1 migrations, syncs the authentication secrets and deploys the edge; `scripts/prod-deploy-frontend.sh` deploys the public site separately. See [Test and deploy scripts](../operations/TEST_AND_DEPLOY_SCRIPTS.md). Review current workflow and configuration before deploying; local tests do not constitute deployment or device acceptance.
 
 ## GitHub sign-in
 

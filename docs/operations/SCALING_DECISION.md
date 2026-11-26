@@ -1,6 +1,6 @@
 # Scaling decision (P11, ADR-039 activation gate)
 
-Decides whether one backend node is enough. **Status: not measured yet.** Fill in the tables from a run on the production VPS size, then record the decision at the bottom.
+Decides whether one backend node is enough. **Status: single node; revisit when load grows (ADR-039).** Nothing has been measured yet. Fill in the tables from a run on the production VPS size, then record the decision at the bottom.
 
 ## Targets (ADR-039, decision 6)
 
@@ -24,7 +24,7 @@ SERVER_PID=<pid> scripts/test-scale.sh idle storm --sockets 5000 --json _perf/sc
 SERVER_PID=<pid> scripts/test-scale.sh soak --sockets 1000 --soak-minutes 1440 --json _perf/scale-soak.json
 ```
 
-`scripts/test-scale.sh` fails (exit 1) when REST p99 or fan-out p99 miss the targets or the soak drifts. Compare with the P0 baseline (WORKER_FIRST_BASELINE.md).
+`scripts/test-scale.sh` fails (exit 1) when REST p99 or fan-out p99 miss the targets or the soak drifts. 
 
 Not covered by the script, so measure them another way and add them below: Agent sockets at 1 to 2 events per second (needs a unified-protocol Agent client; none exists yet), 50 concurrent streams, slow readers, lease writes per second, event-loop lag (from the server's own metrics), top queries (`apps/backend/scripts/db-report.sql`).
 

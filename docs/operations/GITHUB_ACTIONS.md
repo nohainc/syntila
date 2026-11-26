@@ -17,7 +17,7 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 
 1. Settings → Environments → create `connect-windows-release` (optional: required reviewers).
 2. In that environment (or repository) add these Variables (public values, not secrets):
-   - `SYNTILA_PROFILE_TRUST_ROOTS`: the public key set that matches the private signing key the backend uses (`SYNTILA_PROFILE_SIGNING_JWK` and `SYNTILA_PROFILE_SIGNING_KEY_ID` in `/etc/syntila/backend.env`). Derive the public value with `scripts/generate-signing-key.mjs` or `scripts/setup-local-profile-signing.mjs`. A mismatch makes Connect refuse every Profile. The build fails when it is empty.
+   - `SYNTILA_PROFILE_TRUST_ROOTS`: the public key set that matches the private signing key the backend uses (`SYNTILA_PROFILE_SIGNING_JWK` and `SYNTILA_PROFILE_SIGNING_KEY_ID` in `/etc/syntila/backend.env`). Derive the public value with `scripts/profile-signing-env.mjs` (verifies an existing seed against the public roots; see [Production provisioning](PRODUCTION_PROVISIONING.md#profile-signing-identity)) or, for a new development key, `scripts/setup-local-profile-signing.mjs`. A mismatch makes Connect refuse every Profile. The build fails when it is empty.
    - `SYNTILA_UPDATE_KEYS`: may stay empty; updates are manual.
 3. The server address is not built in: it comes from the pairing code the web app issues, so a released Connect talks to production (`https://api.syntila.app`) when paired from `https://syntila.app`.
 

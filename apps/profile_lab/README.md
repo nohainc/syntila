@@ -118,8 +118,8 @@ hot-reload development against loopback Cloud (default `http://localhost:8787`).
 Browser sign-in remains required; the active `vitalii@nohainc.com` account is
 the explicitly configured internal Lab owner. Development supports the full
 Candidate → Test → Validate → Publish lifecycle. Start
-`bash scripts/internal/run-workspace-development.sh` to consume current Cloud Profiles in
-a separate non-release Workspace.
+`bash scripts/run-connect.sh run` to consume current Cloud Profiles in
+a separate non-release Connect.
 
 For the currently provisioned hosted development environment, set
 `SYNTILA_DEVELOPMENT_CLOUD_URL=https://app.syntila.app` on both launchers.

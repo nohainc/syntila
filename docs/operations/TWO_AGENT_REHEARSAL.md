@@ -7,10 +7,10 @@ Checks on real processes what `apps/backend/test/domain/worker-stateful-conflict
 1. `scripts/start-local-backend.sh` (flags on by default, including `worker_stateful_work`).
 2. In the app, create two pairing codes for the same account.
 3. Start each Agent with its own data directory and its own Work Root:
-   - `SYNTILA_WORKER_DATA_DIR=.development/agent-a scripts/run-worker-agent.sh install --pairing-code CODE_A --no-service`
-   - `SYNTILA_WORKER_DATA_DIR=.development/agent-b scripts/run-worker-agent.sh install --pairing-code CODE_B --no-service`
+   - `SYNTILA_WORKER_DATA_DIR=.development/agent-a scripts/run-connect.sh pair --pairing-code CODE_A --no-service`
+   - `SYNTILA_WORKER_DATA_DIR=.development/agent-b scripts/run-connect.sh pair --pairing-code CODE_B --no-service`
    - `config set engineExecutable PATH` and `config set workRoot DIR_A` / `DIR_B` in each.
-   - `SYNTILA_WORKER_DATA_DIR=... scripts/run-worker-agent.sh run` in two terminals.
+   - `SYNTILA_WORKER_DATA_DIR=... scripts/run-connect.sh run` in two terminals.
 4. Give both Agents the same folder grant for the Space, then create one Thread in that Space.
 
 ## Steps and expected results

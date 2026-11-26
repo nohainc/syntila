@@ -21,9 +21,23 @@ Each Worker has its own credential, session, journal, and lock under `<applicati
 
 `pnpm db:cleanup:local` clears stuck execution state from the local PostgreSQL database (stop the backend first).
 
+## Where each tool runs
+
+Everything is built, tested and deployed from the dev machine (the Mac). GitHub builds Windows Connect only.
+
+| Tool | Used for |
+| --- | --- |
+| `bun` | backend, tests, backend build |
+| `pnpm` / `node` | Cloud (auth edge) tests, TypeScript packages, `wrangler` |
+| `flutter` | web app (`apps/app`), desktop apps |
+| `dart` | Connect (`apps/connect`), Worker Engine |
+| `wrangler` | auth Worker, D1 migrations, public site |
+| `ssh` / `rsync` | backend deploy to the VPS |
+| GitHub Actions | Windows Connect build and release only ([GITHUB_ACTIONS.md](GITHUB_ACTIONS.md)) |
+
 ## Production
 
+- Release with the `scripts/prod-*.sh` scripts ([TEST_AND_DEPLOY_SCRIPTS.md](TEST_AND_DEPLOY_SCRIPTS.md)); check state with `scripts/prod-status.sh`.
 - `pnpm app:run:prod` runs the web app locally against the **production** Cloud through `scripts/local-cloud-proxy.mjs`: live accounts and data.
-- `pnpm deploy:api` deploys the Cloudflare Worker; build `apps/app/build/web` first. CI normally does this (`deploy-cloud.yml`).
 - `pnpm tail:api` streams production Worker logs.
 - Connect: install `syntila-connect`, pair Workers, and run the per-user login service (`launchd`, `systemd --user`, or Windows logon task).

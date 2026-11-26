@@ -374,8 +374,7 @@ only for this bounded development path; production execution still uses signed
 Profiles through the generic CLI Worker Engine.
 
 For local development, start Cloud/AX with the existing local startup workflow,
-then run `bash scripts/run-profile-lab-development.sh` and
-`bash scripts/internal/run-workspace-development.sh`. Both default to
+then run `bash scripts/run-profile-lab-development.sh`. It defaults to
 `http://localhost:8787`; set `SYNTILA_DEVELOPMENT_CLOUD_URL` to the same loopback
 origin as your local Cloud. Sign in through the browser as the owner,
 save and test a draft in the Lab, sync it, and publish to Testing. Assign the
@@ -386,7 +385,7 @@ is not reused. It now defaults to signed Cloud releases. Explicitly set
 that exception remains loopback-only. `SYNTILA_WORKSPACE_DEVELOPMENT_DATA_DIR`
 overrides development state.
 
-`scripts/setup-development-profile-signing.mjs` generates and validates a local
+`scripts/setup-local-profile-signing.mjs` generates and validates a local
 Ed25519 signer in ignored `apps/cloud/.dev.vars` (0600), preserving existing keys
 and unrelated settings. Public roots are written to ignored
 `.development/profile-trust.json` and injected by both development launchers.
