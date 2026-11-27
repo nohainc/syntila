@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Adds .deb files to a signed static APT repository (suite stable, component main).
 
-  build-apt-repository.py --repo DIR --signing-key FINGERPRINT [--prune PACKAGE ...] DEB...
+  build-apt-repository.py --repo DIR --signing-key FINGERPRINT [--prune PACKAGE ...] [--keep N] DEB...
 
 DIR is a checkout of the apt-repository branch. Packages already in the pool are kept
 (a version is immutable: a different file with the same name is refused). The index
-is rebuilt from every .deb in the pool, read without dpkg. Needs gpg and the private
+is rebuilt from every .deb in the pool, read without dpkg. --keep N deletes all but the
+newest N versions of syntila-connect. Needs gpg and the private
 key in the current GNUPGHOME. No private key is written into DIR.
 """
 import argparse, gzip, hashlib, io, re, shutil, subprocess, tarfile
@@ -40,7 +41,10 @@ def control_of(path):
             k, v = line.split(": ", 1); fields[k] = v
     return text, fields
 
-def build(repo, debs, key, prune):
+def version_key(v):
+    return tuple(int(x) for x in v.split("."))
+
+def build(repo, debs, key, prune, keep=None):
     pool = repo / "pool/main/s/syntila-connect"
     for source in debs:
         _, f = control_of(source)
@@ -57,6 +61,16 @@ def build(repo, debs, key, prune):
         _, f = control_of(old)
         if f["Package"] in prune:
             old.unlink()
+    if keep:
+        found = {}
+        for deb in (repo / "pool").rglob("*.deb"):
+            _, f = control_of(deb)
+            if f["Package"] == "syntila-connect":
+                found.setdefault(f["Version"], []).append(deb)
+        for version in sorted(found, key=version_key, reverse=True)[keep:]:
+            for deb in found[version]:
+                deb.unlink()
+            print(f"Removed syntila-connect {version}")
     indexes = {a: [] for a in ARCHES}
     for deb in sorted((repo / "pool").rglob("*.deb")):
         text, f = control_of(deb)
@@ -99,7 +113,9 @@ if __name__ == "__main__":
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--signing-key", required=True)
     p.add_argument("--prune", action="append", default=[])
+    p.add_argument("--keep", type=int, help="keep only the newest N versions of syntila-connect")
     p.add_argument("debs", type=Path, nargs="*")
     a = p.parse_args()
     if not re.fullmatch(r"[A-Fa-f0-9]{40,64}", a.signing_key): p.error("use the full key fingerprint")
-    build(a.repo, a.debs, a.signing_key, set(a.prune))
+    if a.keep is not None and a.keep < 1: p.error("--keep must be at least 1")
+    build(a.repo, a.debs, a.signing_key, set(a.prune), a.keep)

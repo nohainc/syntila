@@ -3,18 +3,24 @@
 # APT repository (branch apt-repository of this repository, served by GitHub Pages at
 # https://nohainc.github.io/syntila). Run scripts/prod-release-connect-linux.sh first.
 #
-#   scripts/prod-publish-connect-linux.sh [--prune-legacy] [--yes] [--dry-run] [--allow-dirty]
+#   scripts/prod-publish-connect-linux.sh [--prune-legacy] [--keep N] [--yes] [--dry-run] [--allow-dirty]
 #
 # Needs gpg and the repository signing key: either already in your gpg keyring or
 # exported with SYNTILA_APT_PRIVATE_KEY_FILE (imported into a throwaway keyring); if neither,
 # ~/.config/conclave/release-keys/apt-private-key.asc is used when it exists.
 # SYNTILA_APT_SIGNING_FINGERPRINT defaults to the current repository key.
 # --prune-legacy removes the old Workspace packages (syntila, syntila-gui).
+# --keep N keeps only the newest N versions of syntila-connect in the repository (at least 1).
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
-PROD_EXTRA_FLAGS="--prune-legacy"
-parse_flags "$@"
-prune=0; for a in "$@"; do [ "$a" = --prune-legacy ] && prune=1; done
+PROD_EXTRA_FLAGS="--prune-legacy --keep"
+keep=""; args=(); while [ $# -gt 0 ]; do
+  case "$1" in --keep) [ $# -ge 2 ] || die "--keep needs a number"; keep="$2"; shift 2;; *) args+=("$1"); shift;; esac
+done
+parse_flags ${args[@]+"${args[@]}"}
+case "$keep" in ""|[1-9]*) ;; *) die "--keep needs a number of at least 1";; esac
+case "$keep" in *[!0-9]*) die "--keep needs a number of at least 1";; esac
+prune=0; for a in ${args[@]+"${args[@]}"}; do [ "$a" = --prune-legacy ] && prune=1; done
 require git; require gh
 version=$(connect_version)
 owner_repo=$(git -C "$ROOT" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
@@ -41,12 +47,13 @@ publish_apt() {
   say "APT repository"
   git clone -q --single-branch --branch apt-repository "https://github.com/$owner_repo.git" "$tmp/repo"
   local prune_args=(); [ "$prune" = 1 ] && prune_args=(--prune syntila --prune syntila-gui)
+  [ -z "$keep" ] || prune_args+=(--keep "$keep")
   python3 "$ROOT/scripts/internal/build-apt-repository.py" --repo "$tmp/repo" --signing-key "$fp" \
     ${prune_args[@]+"${prune_args[@]}"} "$CONNECT_RELEASE_DIR"/linux/*.deb
   sed -e "s#@BASE_URL@#$base#g" -e "s#@FINGERPRINT@#$fp#g" -e "s#@VERSION@#$version#g" \
     "$ROOT/packaging/linux/apt-index.html" > "$tmp/repo/index.html"
   ( cd "$tmp/repo" && git add -A && git status --short | head -8 )
-  confirm "Push syntila-connect $version to the APT repository branch of $owner_repo$([ "$prune" = 1 ] && echo ', removing the legacy Workspace packages')."
+  confirm "Push syntila-connect $version to the APT repository branch of $owner_repo$([ "$prune" = 1 ] && echo ', removing the legacy Workspace packages')$([ -z "$keep" ] || echo ", keeping only the newest $keep version(s)")."
   if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would commit and push to apt-repository"
   else
     ( cd "$tmp/repo" && git -c user.name="Syntila Releases" -c user.email="support@conclaveax.com" commit -q -m "Publish Syntila Connect $version" \
