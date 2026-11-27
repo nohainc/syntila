@@ -23,7 +23,7 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 
 ## Release procedure
 
-1. When starting a new series, run `scripts/set-version.sh connect 0.3` on a clean, up-to-date `main` (substitute the intended major.minor). It commits the series, creates an annotated `connect-series-v0.3` tag and pushes both atomically. A failed push leaves the local commit and tag for recovery; it does not publish a release.
+1. When starting a new series, run `scripts/set-version.sh 0.3` on a clean, up-to-date `main` (substitute the intended major.minor). It commits the series, creates an annotated `syntila-series-v0.3` tag and pushes both atomically. A failed push leaves the local commit and tag for recovery; it does not publish a release.
 2. Build from the desired pushed `main` commit. The version is `major.minor` plus the number of first-parent commits since the series tag; all platforms in one release must use that same commit. The Windows build fetches full history and tags.
 3. Run **Build Connect for Windows** on `main`; note the run ID. It runs `dart test`, builds, runs `scripts/test-connect-windows-installer.ps1` (per-user install under `%LOCALAPPDATA%\Programs\Syntila\Connect`, no administrator rights, upgrade and uninstall) and uploads the installer, portable zip and checksums.
 4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS-windows`, and that the checksum verifies.

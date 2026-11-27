@@ -7,6 +7,11 @@
 #   scripts/prod-deploy-all.sh [--yes] [--skip-tests] [--dry-run] [--allow-dirty] [--site]
 set -uo pipefail
 here="$(dirname "$0")"
+if ! web_version=$(node "$here/release-version.mjs"); then
+  echo "Syntila version preflight failed; nothing was deployed." >&2
+  exit 1
+fi
+echo "Syntila version: $web_version"
 site=0; args=()
 for a in "$@"; do [ "$a" = --site ] && site=1 || args+=("$a"); done
 dry=0; for a in "${args[@]+"${args[@]}"}"; do [ "$a" = --dry-run ] && dry=1; done

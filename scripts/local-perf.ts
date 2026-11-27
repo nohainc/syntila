@@ -3,7 +3,7 @@
  * Local performance runner for Syntila.
  *
  * Usage:
- *   scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
+ *   scripts/local-perf.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
  *
  * Scenarios:
  *   A "transport": retired; no Worker Agent delivery probe exists.
@@ -27,7 +27,7 @@ import {
   type Jwk,
 } from "../apps/backend/scripts/lib/clients";
 import { summarize } from "./latency-baseline.mjs";
-import { finalizeBenchmarkSpace } from "./perf-local-cleanup.mjs";
+import { finalizeBenchmarkSpace } from "./local-perf-cleanup.mjs";
 import { runWorkerLoad } from "./perf-worker-load.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -95,7 +95,7 @@ function parseCli(argv: string[]): CliOptions {
     else if (arg === "--no-thresholds") opts.checkThresholds = false;
     else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--thresholds file.json] [--no-thresholds]",
+        "Usage: scripts/local-perf.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--thresholds file.json] [--no-thresholds]",
       );
       process.exit(0);
     } else {
@@ -133,14 +133,14 @@ function loadLocalSigningKey(): Jwk {
   const devVarsPath = join(ROOT, "apps/cloud/.dev.vars");
   if (!existsSync(devVarsPath)) {
     throw new Error(
-      `Missing ${devVarsPath}. Run 'node scripts/setup-local-backend.mjs' or 'pnpm start:local' first.`,
+      `Missing ${devVarsPath}. Run 'node scripts/local-setup-backend.mjs' or 'pnpm start:local' first.`,
     );
   }
   const vars = parseEnv(readFileSync(devVarsPath, "utf8"));
   const raw = vars.SYNTILA_BACKEND_SIGNING_KEY;
   if (!raw) {
     throw new Error(
-      `SYNTILA_BACKEND_SIGNING_KEY is missing in ${devVarsPath}. Run 'node scripts/setup-local-backend.mjs'.`,
+      `SYNTILA_BACKEND_SIGNING_KEY is missing in ${devVarsPath}. Run 'node scripts/local-setup-backend.mjs'.`,
     );
   }
   return JSON.parse(raw) as Jwk;

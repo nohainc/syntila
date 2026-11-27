@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'identity.dart';
 import 'server_api.dart';
+import 'version.dart';
 import 'wire.dart';
 
 /// Connection dimension of the Agent state machine. It is separate from
@@ -86,7 +87,7 @@ class AgentConnection {
     required this.onSync,
     required this.onMessage,
     SocketConnector? connector,
-    this.clientVersion = '0.2.2',
+    this.clientVersion = connectVersion,
     this.baseDelay = const Duration(seconds: 1),
     this.maxDelay = const Duration(seconds: 60),
     this.heartbeatInterval = const Duration(seconds: 30),

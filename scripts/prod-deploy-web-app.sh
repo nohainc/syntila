@@ -20,6 +20,8 @@ require flutter; require pnpm; require node; require curl
 say "Production web app deploy: $(git_state)"
 require_clean_main
 require_secrets "${WEB_SECRETS[@]}"
+web_version=$(node "$ROOT/scripts/release-version.mjs")
+echo "Web app version: $web_version"
 cd "$ROOT"
 
 if [ "$SKIP_TESTS" = 0 ]; then
@@ -32,7 +34,7 @@ else
 fi
 
 say "Build Flutter web"
-( cd apps/app && flutter build web --release --dart-define=SYNTILA_API_URL="${SYNTILA_API_URL:-/api}" )
+( cd apps/app && flutter build web --release --build-name="$web_version" --dart-define=SYNTILA_API_URL="${SYNTILA_API_URL:-/api}" )
 
 say "Browser bundle has no server secrets"
 node scripts/assert-no-browser-secrets.mjs apps/app/build/web

@@ -30,9 +30,10 @@ import 'profile_signature.dart';
 import 'runtime.dart';
 import 'server_api.dart';
 import 'services.dart';
+import 'version.dart';
 import 'work_root.dart';
 
-const agentVersion = '0.2.2';
+const agentVersion = connectVersion;
 
 class _Args {
   _Args(this.positionals, this.options, this.flags);

@@ -11,9 +11,13 @@ if (-not (Test-Path $Compiler)) { throw 'Inno Setup 6 ISCC.exe is required.' }
 foreach ($File in @('syntila-connect.exe', 'syntila-worker.exe', 'Syntila Connect.exe')) {
     if (-not (Test-Path (Join-Path $Bundle $File))) { throw "Missing Connect release bundle file: $File" }
 }
-$VersionLine = (Select-String -Path (Join-Path $Root 'apps/connect/pubspec.yaml') -Pattern '^version:').Line
-$Version = ($VersionLine -replace '^version:\s*', '').Trim().Split('+')[0]
-if ($env:SYNTILA_CONNECT_VERSION) { $Version = $env:SYNTILA_CONNECT_VERSION }
+$MetadataFile = Join-Path $Bundle 'build.json'
+if (-not (Test-Path $MetadataFile)) { throw 'Connect build metadata is missing; rebuild the release bundle.' }
+$Metadata = Get-Content $MetadataFile -Raw | ConvertFrom-Json
+$Commit = (& git -C $Root rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $Metadata.commit -ne $Commit) { throw 'Connect bundle was built from another commit.' }
+$Version = $Metadata.version
+if ($env:SYNTILA_CONNECT_VERSION -and $env:SYNTILA_CONNECT_VERSION -ne $Version) { throw 'Connect installer version does not match Git.' }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Unsupported installer version: $Version" }
 New-Item -ItemType Directory -Force $Output | Out-Null
 $CompilerArguments = @("/DBundleDir=$Bundle", "/DAppVersion=$Version", "/DOutputDir=$Output")

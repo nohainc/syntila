@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { afterEach, expect, it } from "vitest";
-import { setupDevelopmentAuth } from "./setup-development-auth.mjs";
+import { setupDevelopmentAuth } from "./local-setup-auth.mjs";
 
 const roots = [];
 function temporaryRoot() {

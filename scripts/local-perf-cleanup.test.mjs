@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { finalizeBenchmarkSpace } from "./perf-local-cleanup.mjs";
+import { finalizeBenchmarkSpace } from "./local-perf-cleanup.mjs";
 
 describe("benchmark Space cleanup", () => {
   it("preserves failed or active runs and removes successful runs", async () => {

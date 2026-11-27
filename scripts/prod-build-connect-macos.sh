@@ -5,7 +5,7 @@
 #
 #   scripts/prod-build-connect-macos.sh [--skip-gui] [--dry-run] [--allow-dirty]
 #
-# Output (version and arch from apps/connect/pubspec.yaml and this Mac):
+# Output (Git-derived version and architecture from this Mac):
 #   Syntila-Connect-<v>-macos-<arch>.tar.gz   syntila-connect + syntila-worker
 #   Syntila-Connect-<v>-macos-<arch>-app.zip  the desktop app (unless --skip-gui)
 #   SHA256SUMS, build.json
@@ -28,7 +28,7 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "[dry-run] would run scripts/build-connect-macos.sh --prod (GUI: $([ "$gui" = 1 ] && echo yes || echo no)) and write to $out"
   exit 0
 fi
-export SYNTILA_PROFILE_TRUST_ROOTS="$roots" SYNTILA_UPDATE_KEYS="${SYNTILA_UPDATE_KEYS:-}"
+export SYNTILA_CONNECT_VERSION="$version" SYNTILA_PROFILE_TRUST_ROOTS="$roots" SYNTILA_UPDATE_KEYS="${SYNTILA_UPDATE_KEYS:-}"
 skip=(); [ "$gui" = 1 ] || skip=(--skip-gui)
 "$ROOT/scripts/build-connect-macos.sh" --prod ${skip[@]+"${skip[@]}"}
 

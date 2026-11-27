@@ -75,7 +75,7 @@ scripts/prod-deploy-all.sh --dry-run # plan a release (backend, web app, optiona
 scripts/prod-deploy-all.sh           # release; stops at the first failure
 ```
 
-Connect and the web app use independent Git-derived release versions. Start a series with `scripts/set-version.sh connect 0.3` or `scripts/set-version.sh web 0.2`, then build from clean, up-to-date `main`. Windows Connect uses the two GitHub workflows ([GitHub Actions](docs/operations/GITHUB_ACTIONS.md)); see [Test and deploy scripts](docs/operations/TEST_AND_DEPLOY_SCRIPTS.md) for the release rules.
+Connect and the web app share a Git-derived release version. Start a series with `scripts/set-version.sh 0.3`, then build from clean, up-to-date `main`. Windows Connect uses the two GitHub workflows ([GitHub Actions](docs/operations/GITHUB_ACTIONS.md)); see [Test and deploy scripts](docs/operations/TEST_AND_DEPLOY_SCRIPTS.md) for the release rules.
 
 ## Repository checks
 

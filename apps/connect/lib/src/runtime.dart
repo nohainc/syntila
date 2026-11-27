@@ -23,6 +23,7 @@ import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart'
 import 'profile_cache.dart';
 import 'readiness.dart';
 import 'server_api.dart';
+import 'version.dart';
 import 'wire.dart';
 import 'work_root.dart';
 
@@ -453,7 +454,7 @@ class AgentRuntime {
     Duration stepTimeout = const Duration(seconds: 30),
     Duration permitTimeout = const Duration(minutes: 2),
     Duration permitResend = const Duration(seconds: 5),
-    String clientVersion = '0.2.2',
+    String clientVersion = connectVersion,
   }) async {
     await paths.ensure();
     final lock = await AgentLock.acquire(paths.lockFile);

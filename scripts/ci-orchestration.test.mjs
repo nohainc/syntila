@@ -91,16 +91,11 @@ describe("CI acceptance orchestration", () => {
     }
   });
 
-  it("derives every release version from the checked-out pubspec", () => {
-    for (const [workflow, pubspec] of [
-      ["build-connect-windows.yml", "apps/connect/pubspec.yaml"],
-    ]) {
-      const content = source(`.github/workflows/${workflow}`);
-      expect(content).toContain(
-        `awk '/^version:/ {print $2; exit}' ${pubspec}`,
-      );
-      expect(content).not.toContain("inputs.version");
-    }
+  it("derives the Windows release version from complete Git history", () => {
+    const content = source(".github/workflows/build-connect-windows.yml");
+    expect(content).toContain("node scripts/release-version.mjs");
+    expect(content.match(/fetch-depth: 0/g)).toHaveLength(2);
+    expect(content).not.toContain("inputs.version");
   });
 
   it("gives both explicit Cloud fixture files exactly one test owner", () => {

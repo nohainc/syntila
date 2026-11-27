@@ -18,7 +18,7 @@ export function environment(name) {
       origin: "http://localhost:8787",
       backend: "http://localhost:8788",
       issuer: "http://localhost:8787",
-      // Written by scripts/setup-local-backend.mjs.
+      // Written by scripts/local-setup-backend.mjs.
       signingKey: { devVars: "apps/cloud/.dev.vars" },
     };
   if (name === "production")

@@ -1,7 +1,7 @@
 -- Clears execution state orphaned by cancelled/failed Work Requests in a
 -- LOCAL development PostgreSQL database: active Thread leases, never-launched
 -- assignments (and their Agent commands), and Work Requests stuck in `queued`.
--- Safe to re-run. Apply with scripts/cleanup-local-stale-execution.sh.
+-- Safe to re-run. Apply with scripts/local-cleanup-stale-execution.sh.
 BEGIN;
 
 UPDATE thread_runtime_leases

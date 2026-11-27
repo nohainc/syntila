@@ -49,7 +49,7 @@ if [[ "$BUILD_GUI" == 1 ]]; then
 fi
 
 if [[ "$TARGET_ENV" == "local" ]]; then
-  node "$ROOT/scripts/setup-local-profile-signing.mjs"
+  node "$ROOT/scripts/local-setup-profile-signing.mjs"
   TRUST_ROOTS="$(cat "$ROOT/.development/local-profile-signing/trust-roots.json")"
   UPDATE_KEYS="${SYNTILA_UPDATE_KEYS:-}"
 else
@@ -64,7 +64,12 @@ fi
 TRUST_ROOTS="$(printf '%s' "$TRUST_ROOTS" | node "$ROOT/scripts/validate-connect-trust-roots.mjs")"
 
 ENGINE_VERSION="$(awk '/^version:/ {print $2; exit}' "$ENGINE_DIR/pubspec.yaml")"
-AGENT_VERSION="$(sed -n "s/^const agentVersion = '\(.*\)';/\1/p" "$AGENT_DIR/lib/src/cli.dart")"
+if [[ "$TARGET_ENV" == production ]]; then
+  AGENT_VERSION="$(node "$ROOT/scripts/release-version.mjs")"
+  [[ -z "${SYNTILA_CONNECT_VERSION:-}" || "$SYNTILA_CONNECT_VERSION" == "$AGENT_VERSION" ]] || { echo "Connect version does not match Git." >&2; exit 1; }
+else
+  AGENT_VERSION="$(awk '/^version:/ {print $2; exit}' "$AGENT_DIR/pubspec.yaml")"
+fi
 OUT="$ROOT/dist/connect/macos-$TARGET_ENV"
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -76,6 +81,7 @@ echo "Engine $ENGINE_VERSION"
 echo "Agent $AGENT_VERSION ($TARGET_ENV)"
 (cd "$AGENT_DIR" && dart pub get >/dev/null \
   && dart compile exe \
+    "--define=SYNTILA_CONNECT_VERSION=$AGENT_VERSION" \
     "--define=SYNTILA_PROFILE_TRUST_ROOTS=$TRUST_ROOTS" \
     "--define=SYNTILA_UPDATE_KEYS=$UPDATE_KEYS" \
     bin/syntila_connect.dart -o "$OUT/syntila-connect")
@@ -99,7 +105,7 @@ if [[ "$BUILD_GUI" == 1 ]]; then
         || /usr/libexec/PlistBuddy -c "Add :com.apple.security.app-sandbox bool false" "$entitlements"
     done
     flutter pub get >/dev/null
-    flutter build macos --release
+    flutter build macos --release --build-name="$AGENT_VERSION"
   )
   APP_SRC="$(ls -d "$GUI_DIR"/build/macos/Build/Products/Release/*.app | head -1)"
   mkdir -p "$OUT/gui"

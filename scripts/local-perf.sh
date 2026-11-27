@@ -2,7 +2,7 @@
 # Local performance runner for real user actions on the local Syntila stack.
 #
 # Usage:
-#   scripts/perf-local.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
+#   scripts/local-perf.sh [--probes N] [--chats N] [--parallel N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
 #
 # Prerequisite:
 #   Run `pnpm start:local` so the local backend (:8788) and PostgreSQL are up.
@@ -33,4 +33,4 @@ export AUTH_JWT_ISSUER="${AUTH_JWT_ISSUER:-http://localhost:${AUTH_PORT:-8787}}"
 export AUTH_JWT_AUDIENCE="${AUTH_JWT_AUDIENCE:-syntila-backend}"
 export ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-http://localhost:${WEB_PORT:-3000}}"
 
-exec bun "$ROOT/scripts/perf-local.ts" "$@"
+exec bun "$ROOT/scripts/local-perf.ts" "$@"

@@ -32,8 +32,8 @@ if ($Production) {
         throw 'A production build needs a flat SYNTILA_PROFILE_TRUST_ROOTS map.'
     }
 } else {
-    & node (Join-Path $Root 'scripts/setup-local-profile-signing.mjs')
-    if ($LASTEXITCODE -ne 0) { throw "setup-local-profile-signing.mjs failed: $LASTEXITCODE" }
+    & node (Join-Path $Root 'scripts/local-setup-profile-signing.mjs')
+    if ($LASTEXITCODE -ne 0) { throw "local-setup-profile-signing.mjs failed: $LASTEXITCODE" }
     $TrustRoots = Get-Content (Join-Path $Root '.development/local-profile-signing/trust-roots.json') -Raw
     $UpdateKeys = if ($env:SYNTILA_UPDATE_KEYS) { $env:SYNTILA_UPDATE_KEYS } else { '' }
 }
@@ -46,7 +46,11 @@ $EngineVersion = ($EngineVersionLine -replace '^version:\s*', '').Trim().Split('
 
 $ConnectVersionLine = (Select-String -Path (Join-Path $ConnectDir 'pubspec.yaml') -Pattern '^version:').Line
 $ConnectVersion = ($ConnectVersionLine -replace '^version:\s*', '').Trim().Split('+')[0]
-if ($env:SYNTILA_CONNECT_VERSION) { $ConnectVersion = $env:SYNTILA_CONNECT_VERSION }
+if ($Production) {
+    $ConnectVersion = & node (Join-Path $Root 'scripts/release-version.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not calculate Connect release version.' }
+    if ($env:SYNTILA_CONNECT_VERSION -and $env:SYNTILA_CONNECT_VERSION -ne $ConnectVersion) { throw 'Connect version does not match Git.' }
+}
 if ($ConnectVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Unsupported Connect version: $ConnectVersion" }
 
 $Variant = if ($Production) { 'release' } else { 'local' }
@@ -69,6 +73,7 @@ try {
     & dart pub get
     if ($LASTEXITCODE -ne 0) { throw "Connect dart pub get failed: $LASTEXITCODE" }
     & dart compile exe `
+        "--define=SYNTILA_CONNECT_VERSION=$ConnectVersion" `
         "--define=SYNTILA_PROFILE_TRUST_ROOTS=$TrustRoots" `
         "--define=SYNTILA_UPDATE_KEYS=$UpdateKeys" `
         bin/syntila_connect.dart -o (Join-Path $Bundle 'syntila-connect.exe')
@@ -98,6 +103,12 @@ if (-not $SkipGui) {
 
 foreach ($File in @('syntila-connect.exe', 'syntila-worker.exe')) {
     if (-not (Test-Path (Join-Path $Bundle $File))) { throw "Bundle is missing $File" }
+}
+if ($Production) {
+    $BuildCommit = (& git -C $Root rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $BuildCommit -notmatch '^[0-9a-f]{40}$') { throw 'Could not identify the build commit.' }
+    @{ version = $ConnectVersion; commit = $BuildCommit } | ConvertTo-Json -Compress |
+        Set-Content (Join-Path $Bundle 'build.json') -Encoding utf8
 }
 
 $Archive = Join-Path $Root "dist/connect/Syntila-Connect-$ConnectVersion-windows-x64-portable.zip"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerates apps/backend/migrations/schema.lock from the migrations, using the
-# local PostgreSQL (same credentials/defaults as start-local-backend.sh).
+# local PostgreSQL (same credentials/defaults as local-start-backend.sh).
 #
 # It builds a throwaway EMPTY database, applies every migration, prints the schema
 # and replaces schema.lock only if everything succeeded (a failed run never leaves
@@ -9,7 +9,7 @@
 #   scripts/regenerate-schema-lock.sh           rewrite schema.lock
 #   scripts/regenerate-schema-lock.sh --check   change nothing; exit 1 if schema.lock is out of date
 #
-# Environment (defaults match start-local-backend.sh):
+# Environment (defaults match local-start-backend.sh):
 #   PGHOST=127.0.0.1 PGPORT=5432 PGUSER=syntila_app PGPASSWORD=devpass
 #   LOCK_DATABASE=syntila_lock   (the scratch database; dropped before and after)
 set -euo pipefail

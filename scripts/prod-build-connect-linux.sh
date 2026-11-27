@@ -5,7 +5,7 @@
 #
 #   scripts/prod-build-connect-linux.sh [--dry-run] [--allow-dirty]
 #
-# Output (v = apps/connect/pubspec.yaml version):
+# Output (v = Git-derived Connect release version):
 #   Syntila-Connect-<v>-linux-amd64.deb, Syntila-Connect-<v>-linux-arm64.deb
 #       /usr/bin/syntila-connect and /usr/bin/syntila-worker (the Engine sits beside the CLI)
 #   Syntila-Connect-<v>-linux-x64.tar.gz, ...-linux-arm64.tar.gz   the same two binaries
@@ -39,6 +39,7 @@ for pair in "x64 amd64" "arm64 arm64"; do
   ( cd "$ROOT/engines/cli_worker" && dart compile exe --target-os linux --target-arch "$darch" \
       "-DENGINE_VERSION=$engine_version" bin/syntila_cli_worker.dart -o "$bin/syntila-worker" )
   ( cd "$ROOT/apps/connect" && dart compile exe --target-os linux --target-arch "$darch" \
+      "--define=SYNTILA_CONNECT_VERSION=$version" \
       "--define=SYNTILA_PROFILE_TRUST_ROOTS=$roots" "--define=SYNTILA_UPDATE_KEYS=${SYNTILA_UPDATE_KEYS:-}" \
       bin/syntila_connect.dart -o "$bin/syntila-connect" )
   chmod 755 "$bin/syntila-connect" "$bin/syntila-worker"

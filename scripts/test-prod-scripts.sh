@@ -20,13 +20,15 @@ for s in test-all.sh regenerate-schema-lock.sh; do
   printf '#!/bin/sh\necho "%s $*" >>"$LOG"\ncase "$FAIL_ON" in *%s*) exit 1;; esac\n' "$s" "$s" > "$R/scripts/$s"; chmod +x "$R/scripts/$s"
 done
 # Stub every external tool: log the call, fail when FAIL_ON matches it.
+REAL_NODE=$(command -v node)
 for tool in ssh rsync curl pnpm flutter node bun wrangler dart gh; do
   cat > "$T/bin/$tool" <<STUB
 #!/bin/sh
 echo "$tool \$*" >>"\$LOG"
 case "\$FAIL_ON" in "") ;; *) case "$tool \$*" in *"\$FAIL_ON"*) exit 1;; esac;; esac
 case "$tool" in
-  ssh) printf '20260102T000000Z (current)\n20260101T000000Z\n';;
+  node) case "\$1" in *release-version.mjs) exec "$REAL_NODE" "\$@";; esac;;
+  ssh) case "\$*" in *'.applied-migrations.txt'*) printf '0001_initial.sql\n';; *) printf '20260102T000000Z (current)\n20260101T000000Z\n';; esac;;
   gh) case "\$*" in "release view"*) exit 1;; esac;;
   curl) case "\$*" in *"-w"*) case "\$*" in *api/session*) printf 401;; *) printf 200;; esac;; esac;;
 esac
@@ -34,8 +36,13 @@ exit 0
 STUB
   chmod +x "$T/bin/$tool"
 done
-mkdir -p "$R/apps/connect"; printf 'name: syntila_connect\nversion: 0.1.0\n' > "$R/apps/connect/pubspec.yaml"
-git -C "$R" init -q -b main && git -C "$R" remote add origin https://github.com/test/repo.git && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -qm t
+mkdir -p "$R/apps/connect" "$R/release-versions"; printf 'name: syntila_connect\nversion: 0.1.0\n' > "$R/apps/connect/pubspec.yaml"
+printf '0.1\n' > "$R/release-versions/syntila"
+printf 'dist/\n' > "$R/.gitignore"
+git init --bare -q "$T/origin.git"
+git -C "$R" init -q -b main && git -C "$R" remote add origin "$T/origin.git" && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -qm t
+git -C "$R" -c user.email=t@t -c user.name=t tag -a syntila-series-v0.1 -m test
+git -C "$R" push -q -u origin main --tags
 # Fake Connect builds of this commit for the release scripts.
 head=$(git -C "$R" rev-parse HEAD)
 for platform in macos linux; do
@@ -92,6 +99,7 @@ FAIL_ON="" run_case pubflag "$R/scripts/prod-publish-connect-linux.sh" --create-
 
 # 2. web app step order, and nothing mutating ran in the dry run
 FAIL_ON="" run_case web "$R/scripts/prod-deploy-web-app.sh" --dry-run
+grep -Fq 'flutter build web --release --build-name=0.1.0' "$LOG" && ok "web build receives its calculated version" || fail "web build version"
 in_order "$(cat "$LOG")" "pnpm --dir apps/cloud types:check" "pnpm --dir apps/cloud test" "flutter analyze" "flutter test" "flutter build web" "node scripts/assert-no-browser-secrets.mjs" "pnpm production:preflight" "pnpm email:config-check" "wrangler d1 migrations list" \
   && in_order "$OUT" "== Gates" "== Build Flutter web" "== Auth D1 migrations" "== Sync Worker secrets" "== Deploy the Worker" "== Public checks" \
   && ok "web app step order" || fail "web app step order"
@@ -126,5 +134,12 @@ echo x > "$R/dirty"
 FAIL_ON="" run_case dirty "$R/scripts/prod-deploy-backend.sh" --yes --skip-tests
 [ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "Refusing to deploy" && ! grep -q "^rsync\|^ssh" "$LOG" && ok "dirty tree is refused" || fail "dirty tree was not refused"
 rm "$R/dirty"
+
+# A missing shared series must stop the combined release before the backend.
+git -C "$R" tag -d syntila-series-v0.1 >/dev/null
+git --git-dir="$T/origin.git" tag -d syntila-series-v0.1 >/dev/null
+FAIL_ON="" run_case missingseries "$R/scripts/prod-deploy-all.sh" --yes --skip-tests
+[ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q 'nothing was deployed' && ! grep -q '^ssh\|^rsync' "$LOG" \
+  && ok "deploy-all checks shared version before deployment" || fail "deploy-all did not preflight shared version"
 
 [ "$fails" = 0 ] && echo "All prod script tests passed." || { echo "$fails failure(s)"; exit 1; }

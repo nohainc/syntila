@@ -135,7 +135,7 @@ d1_pending() {
 
 CONNECT_RELEASE_DIR="$ROOT/dist/connect/release"
 
-connect_version() { awk '/^version:/ {print $2; exit}' "$ROOT/apps/connect/pubspec.yaml"; }
+connect_version() { node "$ROOT/scripts/release-version.mjs"; }
 
 # Public Profile trust roots baked into a release build (JSON). From the
 # environment, or the GitHub variable the Windows build uses.
@@ -189,7 +189,7 @@ create_connect_release() {
   local names; names=$(for f in "${files[@]}"; do basename "$f"; done | tr '\n' ' ')
   if gh release view "$tag" >/dev/null 2>&1; then
     local tag_commit; tag_commit=$(gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)
-    [ "$tag_commit" = "$commit" ] || die "$tag is on commit ${tag_commit:0:8}, this build is ${commit:0:8}. Files from different commits cannot share a release: build again from that commit, or bump version: in apps/connect/pubspec.yaml."
+    [ "$tag_commit" = "$commit" ] || die "$tag is on commit ${tag_commit:0:8}, this build is ${commit:0:8}. Files from different commits cannot share a release."
     local existing; existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
     for f in "${files[@]}"; do
       printf '%s\n' "$existing" | grep -qx "$(basename "$f")" && die "$tag already has $(basename "$f"); releases are immutable."
