@@ -22,5 +22,5 @@ Related: [CONNECT_CLI_AND_SERVICES.md](../specifications/CONNECT_CLI_AND_SERVICE
 ## Linux
 
 - **APT** (Ubuntu 22.04+ or Debian-based, amd64 or arm64): add the signed repository once (instructions and key fingerprint on `https://nohainc.github.io/syntila`), then `sudo apt install syntila-connect`.
-- **Manual:** download the `.deb` or `Syntila-Connect-<version>-linux-<x64|arm64>.tar.gz` from the GitHub Release `connect-v<version>`, check `SHA256SUMS-linux`, then `sudo apt install ./syntila-connect_<version>_<arch>.deb`.
+- **Manual:** download `Syntila-Connect-<version>-linux-<amd64|arm64>.deb` or `Syntila-Connect-<version>-linux-<x64|arm64>.tar.gz` from the GitHub Release `connect-v<version>`, check `SHA256SUMS-linux`, then `sudo apt install ./Syntila-Connect-<version>-linux-<arch>.deb`.
 - Pair with `syntila-connect pair --pairing-code CODE --auto-start` (a systemd user unit); run `sudo loginctl enable-linger "$USER"` so it starts without a login session. Data: `~/.local/share/Syntila/Workers/<worker-id>/`. Provider CLIs and their logins are installed separately.

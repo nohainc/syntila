@@ -6,10 +6,11 @@
 #   scripts/prod-build-connect-linux.sh [--dry-run] [--allow-dirty]
 #
 # Output (v = apps/connect/pubspec.yaml version):
-#   syntila-connect_<v>_amd64.deb, syntila-connect_<v>_arm64.deb
+#   Syntila-Connect-<v>-linux-amd64.deb, Syntila-Connect-<v>-linux-arm64.deb
 #       /usr/bin/syntila-connect and /usr/bin/syntila-worker (the Engine sits beside the CLI)
 #   Syntila-Connect-<v>-linux-x64.tar.gz, ...-linux-arm64.tar.gz   the same two binaries
 #   SHA256SUMS, build.json
+# (The APT repository stores them under the Debian name syntila-connect_<v>_<arch>.deb.)
 # The .deb files are built with scripts/internal/make-deb.py (no dpkg needed).
 # --dry-run checks the prerequisites and prints the plan; it builds nothing.
 set -euo pipefail
@@ -41,7 +42,7 @@ for pair in "x64 amd64" "arm64 arm64"; do
       "--define=SYNTILA_PROFILE_TRUST_ROOTS=$roots" "--define=SYNTILA_UPDATE_KEYS=${SYNTILA_UPDATE_KEYS:-}" \
       bin/syntila_connect.dart -o "$bin/syntila-connect" )
   chmod 755 "$bin/syntila-connect" "$bin/syntila-worker"
-  python3 "$ROOT/scripts/internal/make-deb.py" --root "$work/$darch" --output "$out/syntila-connect_${version}_${debarch}.deb" \
+  python3 "$ROOT/scripts/internal/make-deb.py" --root "$work/$darch" --output "$out/Syntila-Connect-$version-linux-$debarch.deb" \
     --package syntila-connect --version "$version" --arch "$debarch" --maintainer "$maintainer" \
     --homepage "https://syntila.app" --depends "libc6 (>= 2.31)" \
     --description "Syntila Connect: runs your Workers on this computer" >/dev/null
