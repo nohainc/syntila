@@ -23,7 +23,7 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 
 ## Release procedure
 
-1. Bump `version:` in `apps/connect/pubspec.yaml` (x.y.z). The workflows read it and refuse a version that already has a release.
+1. Run `scripts/set-connect-version.sh 0.2.1` (substitute the intended x.y.z version). It updates the Connect CLI and desktop metadata together and commits only those files; it refuses to overwrite existing edits in them. The workflows read the version and refuse one that already has a release.
 2. Merge to `main`.
 3. Run **Build Connect for Windows** on `main`; note the run ID. It runs `dart test`, builds, runs `scripts/test-connect-windows-installer.ps1` (per-user install under `%LOCALAPPDATA%\Programs\Syntila\Connect`, no administrator rights, upgrade and uninstall) and uploads the installer, portable zip and checksums.
 4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS-windows`, and that the checksum verifies.

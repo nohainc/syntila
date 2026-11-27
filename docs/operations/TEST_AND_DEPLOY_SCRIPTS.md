@@ -92,7 +92,7 @@ With the backend deploy, normally. Code and schema ship together, the code rollb
 
 ### Connect releases for macOS and Linux
 
-Run on the Mac, from a clean `main` equal to `origin/main` (same flags as the other `prod-*` scripts: `--dry-run`, `--yes`, `--allow-dirty`). Bump `version:` in `apps/connect/pubspec.yaml` first; a version that already has a GitHub Release is refused.
+Run on the Mac, from a clean `main` equal to `origin/main` (same flags as the other `prod-*` scripts: `--dry-run`, `--yes`, `--allow-dirty`). First run `scripts/set-connect-version.sh <major.minor.patch>` to update and commit the Connect versions; a version that already has a GitHub Release is refused.
 
 | Command | What it does |
 | --- | --- |
