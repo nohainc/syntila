@@ -13,7 +13,7 @@ set -euo pipefail
 #                                            .development/local-profile-signing
 #   scripts/build-connect-macos.sh --prod    production build: needs
 #                                            SYNTILA_PROFILE_TRUST_ROOTS (JSON) and
-#                                            SYNTILA_UPDATE_KEYS (comma list) in the
+#                                            (SYNTILA_UPDATE_KEYS optional) in the
 #                                            environment
 #   --sign IDENTITY                          codesign with this identity (default: ad hoc)
 #   --skip-gui                               build only the CLI and engine (no Flutter)
@@ -55,8 +55,8 @@ if [[ "$TARGET_ENV" == "local" ]]; then
 else
   TRUST_ROOTS="${SYNTILA_PROFILE_TRUST_ROOTS:-}"
   UPDATE_KEYS="${SYNTILA_UPDATE_KEYS:-}"
-  [[ -n "$TRUST_ROOTS" && -n "$UPDATE_KEYS" ]] || {
-    echo "A production build needs SYNTILA_PROFILE_TRUST_ROOTS and SYNTILA_UPDATE_KEYS." >&2
+  [[ -n "$TRUST_ROOTS" ]] || {
+    echo "A production build needs SYNTILA_PROFILE_TRUST_ROOTS (SYNTILA_UPDATE_KEYS may stay empty: updates are manual)." >&2
     exit 1
   }
 fi

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Syntila Connect APT repository</title>
+  <style>
+    body { font: 17px/1.6 system-ui, sans-serif; max-width: 860px; margin: 4rem auto; padding: 0 1.5rem; color: #17202a; }
+    pre { padding: 1.2rem; background: #f3f5f7; overflow: auto; font: 14px/1.6 monospace; }
+    code { font-family: monospace; }
+  </style>
+  <h1>Syntila Connect for Linux</h1>
+  <p>
+    Install Syntila Connect (the <code>syntila-connect</code> CLI and the Worker Engine) on Ubuntu 22.04
+    or newer, or any Debian-based system. Packages are available for amd64 and ARM64. Provider CLIs and
+    their logins are installed separately. Current version: @VERSION@.
+  </p>
+  <h2>Install</h2>
+  <pre>
+curl --fail --location @BASE_URL@/syntila-archive-keyring.gpg -o /tmp/syntila-archive-keyring.gpg
+gpg --show-keys --with-fingerprint /tmp/syntila-archive-keyring.gpg
+sudo install -D -m 644 /tmp/syntila-archive-keyring.gpg /etc/apt/keyrings/syntila-archive-keyring.gpg
+printf 'Types: deb\nURIs: @BASE_URL@\nSuites: stable\nComponents: main\nSigned-By: /etc/apt/keyrings/syntila-archive-keyring.gpg\n' | sudo tee /etc/apt/sources.list.d/syntila.sources
+sudo apt update
+sudo apt install syntila-connect</pre>
+  <p>Check the key fingerprint: <code>@FINGERPRINT@</code>.</p>
+  <h2>Pair a Worker</h2>
+  <p>In the web app add a Worker and copy its pairing code, then as your normal user:</p>
+  <pre>
+syntila-connect pair --pairing-code CODE --auto-start
+syntila-connect status</pre>
+  <p>For startup without a login session run <code>sudo loginctl enable-linger "$USER"</code>.</p>
+</html>

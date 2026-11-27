@@ -1,0 +1,14 @@
+cask "syntila-connect-app" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "@URL@"
+  name "Syntila Connect"
+  desc "Desktop app for Syntila Connect"
+  homepage "https://syntila.app"
+
+  depends_on arch: :arm64
+  depends_on macos: ">= :catalina"
+
+  app "@APP@"
+end

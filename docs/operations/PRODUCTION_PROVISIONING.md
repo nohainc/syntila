@@ -18,6 +18,8 @@ Production readiness also requires the device, real-provider, and security evide
 | `SYNTILA_AUTH_GITHUB_CLIENT_ID`, `SYNTILA_AUTH_GITHUB_CLIENT_SECRET` | GitHub → Settings → Developer settings → OAuth Apps. |
 | `SYNTILA_AUTH_GOOGLE_CLIENT_ID`, `SYNTILA_AUTH_GOOGLE_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials. |
 
+Connect release builds (`scripts/prod-build-connect-*.sh`) also need `SYNTILA_PROFILE_TRUST_ROOTS` (public Profile roots; falls back to the GitHub variable via `gh`). Publishing to APT needs the repository signing key in your gpg keyring or `SYNTILA_APT_PRIVATE_KEY_FILE`, and optionally `SYNTILA_APT_SIGNING_FINGERPRINT`; the Homebrew tap needs `gh` logged in with write access to `nohainc/homebrew-syntila`.
+
 Optional settings: `PROD_VPS`, `PROD_STAGE`, `PROD_API_URL`, `PROD_APP_URL`, `SYNTILA_API_URL`.
 
 ## Profile signing identity

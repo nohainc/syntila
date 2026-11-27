@@ -20,27 +20,36 @@ for s in test-all.sh regenerate-schema-lock.sh; do
   printf '#!/bin/sh\necho "%s $*" >>"$LOG"\ncase "$FAIL_ON" in *%s*) exit 1;; esac\n' "$s" "$s" > "$R/scripts/$s"; chmod +x "$R/scripts/$s"
 done
 # Stub every external tool: log the call, fail when FAIL_ON matches it.
-for tool in ssh rsync curl pnpm flutter node bun wrangler; do
+for tool in ssh rsync curl pnpm flutter node bun wrangler dart gh; do
   cat > "$T/bin/$tool" <<STUB
 #!/bin/sh
 echo "$tool \$*" >>"\$LOG"
 case "\$FAIL_ON" in "") ;; *) case "$tool \$*" in *"\$FAIL_ON"*) exit 1;; esac;; esac
 case "$tool" in
   ssh) printf '20260102T000000Z (current)\n20260101T000000Z\n';;
+  gh) case "\$*" in "release view"*) exit 1;; esac;;
   curl) case "\$*" in *"-w"*) case "\$*" in *api/session*) printf 401;; *) printf 200;; esac;; esac;;
 esac
 exit 0
 STUB
   chmod +x "$T/bin/$tool"
 done
+mkdir -p "$R/apps/connect"; printf 'name: syntila_connect\nversion: 0.1.0\n' > "$R/apps/connect/pubspec.yaml"
 git -C "$R" init -q -b main && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -qm t
+# Fake Connect builds of this commit for the release scripts.
+head=$(git -C "$R" rev-parse HEAD)
+for platform in macos linux; do
+  d="$R/dist/connect/release/$platform"; mkdir -p "$d"; echo pkg > "$d/Syntila-Connect-0.1.0-$platform.tar.gz"
+  ( cd "$d" && shasum -a 256 * > SHA256SUMS )
+  printf '{"version":"0.1.0","commit":"%s","arch":"arm64"}\n' "$head" > "$d/build.json"
+done
 
 # run_case <name> <script> [args...]; sets OUT, CODE, LOG
 run_case() {
   local name="$1"; shift
   export LOG="$T/$name.log"; : > "$LOG"
   OUT=$(cd "$R" && HOME="$T/home" PATH="$T/bin:/usr/bin:/bin" \
-    CLOUDFLARE_API_TOKEN=x CLOUDFLARE_ACCOUNT_ID=x BETTER_AUTH_SECRET=x SYNTILA_AUTH_GITHUB_CLIENT_ID=x \
+    SYNTILA_PROFILE_TRUST_ROOTS='{"t":{"k":"AA=="}}' CLOUDFLARE_API_TOKEN=x CLOUDFLARE_ACCOUNT_ID=x BETTER_AUTH_SECRET=x SYNTILA_AUTH_GITHUB_CLIENT_ID=x \
     SYNTILA_AUTH_GITHUB_CLIENT_SECRET=x SYNTILA_AUTH_GOOGLE_CLIENT_ID=x SYNTILA_AUTH_GOOGLE_CLIENT_SECRET=x \
     "${@}" 2>&1); CODE=$?
 }
@@ -63,6 +72,23 @@ FAIL_ON="" run_case reset "$R/scripts/prod-reset-db.sh" --i-understand-this-dele
 [ "$CODE" = 0 ] && ok "prod-reset-db --dry-run" || { fail "prod-reset-db --dry-run"; printf '%s\n' "$OUT" | tail -5; }
 FAIL_ON="" run_case reset2 "$R/scripts/prod-reset-db.sh" --dry-run
 [ "$CODE" != 0 ] && ok "prod-reset-db refuses without the flag" || fail "prod-reset-db ran without the flag"
+
+for s in prod-build-connect-macos prod-build-connect-linux prod-release-connect-macos prod-release-connect-linux; do
+  FAIL_ON="" run_case "$s" "$R/scripts/$s.sh" --dry-run
+  [ "$CODE" = 0 ] && ok "$s --dry-run" || { fail "$s --dry-run (exit $CODE)"; printf '%s\n' "$OUT" | tail -6; }
+done
+FAIL_ON="" run_case relmac "$R/scripts/prod-release-connect-macos.sh" --dry-run
+printf '%s' "$OUT" | grep -q "gh release create connect-macos-v0.1.0" && ok "macOS release names the tag and uploads the build" || fail "macOS release plan"
+echo stale > "$R/dist/connect/release/linux/Syntila-Connect-0.1.0-linux.tar.gz"
+FAIL_ON="" run_case relstale "$R/scripts/prod-release-connect-linux.sh" --dry-run
+[ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "Checksum verification failed" && ok "release refuses artifacts that do not match SHA256SUMS" || fail "checksum check"
+echo pkg > "$R/dist/connect/release/linux/Syntila-Connect-0.1.0-linux.tar.gz"
+echo extra > "$R/dist/connect/release/linux/extra.deb"
+FAIL_ON="" run_case relextra "$R/scripts/prod-release-connect-linux.sh" --dry-run
+[ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "not listed in SHA256SUMS" && ok "release refuses files that are not in SHA256SUMS" || fail "unlisted artifact check"
+rm -f "$R/dist/connect/release/linux/extra.deb"
+FAIL_ON="" run_case pubnone "$R/scripts/prod-publish-connect-packages.sh" --dry-run
+[ "$CODE" != 0 ] && ok "publish needs --apt or --homebrew" || fail "publish without target"
 
 # 2. web app step order, and nothing mutating ran in the dry run
 FAIL_ON="" run_case web "$R/scripts/prod-deploy-web-app.sh" --dry-run

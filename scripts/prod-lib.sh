@@ -127,3 +127,49 @@ d1_pending() {
   ( cd "$ROOT" && pnpm exec wrangler d1 migrations list "${SYNTILA_PRODUCTION_D1_NAME:-syntila-auth}" --remote \
       --config "${SYNTILA_WRANGLER_CONFIG:-$ROOT/infra/cloudflare/app.wrangler.jsonc}" 2>&1 )
 }
+
+# ---- Connect releases (macOS, Linux) ----
+
+CONNECT_RELEASE_DIR="$ROOT/dist/connect/release"
+
+connect_version() { awk '/^version:/ {print $2; exit}' "$ROOT/apps/connect/pubspec.yaml"; }
+
+# Public Profile trust roots baked into a release build (JSON). From the
+# environment, or the GitHub variable the Windows build uses.
+connect_trust_roots() {
+  local v="${SYNTILA_PROFILE_TRUST_ROOTS:-${SYNTILA_RELEASE_TRUST_KEYS_JSON:-}}"
+  if [ -z "$v" ] && command -v gh >/dev/null 2>&1; then
+    v=$(gh variable get SYNTILA_PROFILE_TRUST_ROOTS 2>/dev/null || gh variable get SYNTILA_RELEASE_TRUST_KEYS_JSON 2>/dev/null || true)
+  fi
+  [ -n "$v" ] || die "No Profile trust roots: set SYNTILA_PROFILE_TRUST_ROOTS (public keys that match the backend's SYNTILA_PROFILE_SIGNING_KEY_ID)."
+  printf '%s' "$v"
+}
+
+# check_connect_build <platform> <version>: the artifacts in dist are the build of
+# this commit and version, and their checksums verify. Prints nothing on success.
+check_connect_build() {
+  local platform="$1" version="$2" dir="$CONNECT_RELEASE_DIR/$1"
+  [ -f "$dir/build.json" ] || die "No build in $dir. Run scripts/prod-build-connect-$platform.sh first."
+  local built_version built_commit head
+  built_version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$dir/build.json")
+  built_commit=$(sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$dir/build.json")
+  head=$(git -C "$ROOT" rev-parse HEAD)
+  [ "$built_version" = "$version" ] || die "The build is version $built_version, the checkout is $version. Rebuild."
+  [ "$built_commit" = "$head" ] || [ "$ALLOW_DIRTY" = 1 ] || die "The build is from ${built_commit:0:8}, HEAD is ${head:0:8}. Rebuild."
+  ( cd "$dir" && shasum -a 256 -c SHA256SUMS >/dev/null ) || die "Checksum verification failed in $dir."
+  local f
+  for f in "$dir"/*; do
+    case "$(basename "$f")" in SHA256SUMS|build.json) continue;; esac
+    grep -q "  $(basename "$f")\$" "$dir/SHA256SUMS" || die "$(basename "$f") is not listed in SHA256SUMS; rebuild."
+  done
+}
+
+# create_connect_release <platform> <tag> <title> <notes> <file...>: GitHub Release
+# for a verified build; refuses an existing tag.
+create_connect_release() {
+  local platform="$1" tag="$2" title="$3" notes="$4"; shift 4
+  require gh
+  if gh release view "$tag" >/dev/null 2>&1; then die "$tag already exists; releases are immutable. Bump version: in apps/connect/pubspec.yaml."; fi
+  confirm "Publish GitHub Release $tag with: $(printf '%s ' "$@" | sed "s#$CONNECT_RELEASE_DIR/$platform/##g")"
+  run gh release create "$tag" "$@" --target "$(git -C "$ROOT" rev-parse HEAD)" --title "$title" --notes "$notes"
+}

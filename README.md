@@ -51,23 +51,17 @@ are implementation details shown only in Advanced Diagnostics.
   supported local CLI Workers.
 - **Tool Profiles** — signed immutable official provider integration releases.
 
-## Install Connect on Ubuntu
+## Install Connect
 
-Headless Connect packages for Ubuntu 22.04 and newer are available for amd64
-and ARM64 through the [signed APT repository](https://nohainc.github.io/syntila/).
-Follow the one-time repository setup there, then install with:
+Connect runs your Workers on a computer. See [Connect onboarding](docs/operations/CONNECT_ONBOARDING.md) for pairing and data locations.
 
 ```bash
-sudo apt update
-sudo apt install syntila
-syntila setup
-# Existing Cloud email/password; no browser needed on the server.
-sudo loginctl enable-linger "$USER"
+# Linux (Ubuntu 22.04+, amd64 or arm64): signed APT repository, setup at https://nohainc.github.io/syntila
+sudo apt install syntila-connect
+# macOS (Apple silicon)
+brew install nohainc/syntila/syntila-connect
+# Windows: download the installer from the GitHub Release connect-windows-v<version>
 ```
-
-The package includes the service, management CLI and Worker Engine. See the
-Linux operator guide for user-service setup,
-browser login and upgrades. Provider CLIs and their logins are separate.
 
 ## Build, test and release
 

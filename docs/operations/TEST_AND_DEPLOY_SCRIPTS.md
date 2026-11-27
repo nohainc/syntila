@@ -90,6 +90,21 @@ Common to every deploy script:
 
 With the backend deploy, normally. Code and schema ship together, the code rollback is part of that deploy, and migrations are forward-only (expand/contract). Use `prod-migrate-db.sh` to look at the state (`status`) or to apply a schema change ahead of the code (`apply`), which is only safe for expand-style changes that the running release ignores. A migration cannot be undone by switching the code back; there are no backups, so fix a bad migration forward or reset the database.
 
+### Connect releases for macOS and Linux
+
+Run on the Mac, from a clean `main` equal to `origin/main` (same flags as the other `prod-*` scripts: `--dry-run`, `--yes`, `--allow-dirty`). Bump `version:` in `apps/connect/pubspec.yaml` first; a version that already has a GitHub Release is refused.
+
+| Command | What it does |
+| --- | --- |
+| `scripts/prod-build-connect-macos.sh [--skip-gui]` | Builds the CLI, Worker Engine and desktop app for this Mac's architecture (arm64) with the production Profile trust roots (`SYNTILA_PROFILE_TRUST_ROOTS`, or the GitHub variable via `gh`). Writes `Syntila-Connect-<v>-macos-<arch>.tar.gz`, `...-app.zip`, `SHA256SUMS` and `build.json` to `dist/connect/release/macos/`. Ad-hoc signed, not notarized. |
+| `scripts/prod-release-connect-macos.sh` | Checks the build is this commit and version and the checksums match, then creates the GitHub Release `connect-macos-v<v>` with those files. |
+| `scripts/prod-build-connect-linux.sh` | Cross-compiles the CLI and Engine for linux x64 and arm64 with the Dart SDK, builds `syntila-connect_<v>_amd64.deb` and `_arm64.deb` (`scripts/internal/make-deb.py`, no dpkg needed) and two tarballs in `dist/connect/release/linux/`. The `.deb` installs `/usr/bin/syntila-connect` and `/usr/bin/syntila-worker`. |
+| `scripts/prod-release-connect-linux.sh` | Same checks, then the GitHub Release `connect-linux-v<v>`. |
+| `scripts/prod-publish-connect-packages.sh --apt` | Adds the `.deb` files to the signed APT repository (branch `apt-repository`, site `https://nohainc.github.io/syntila`) and signs it with the key `SYNTILA_APT_SIGNING_FINGERPRINT` (default: the current repository key; use your gpg keyring or `SYNTILA_APT_PRIVATE_KEY_FILE`). `--prune-legacy` removes the old Workspace packages. GitHub Pages must serve the `apt-repository` branch; the script prints the one command that switches it if it does not. |
+| `scripts/prod-publish-connect-packages.sh --homebrew` | Generates the formula (`syntila-connect`) and cask (`syntila-connect-app`) from the macOS build and the Release URL, and pushes them to the tap `nohainc/homebrew-syntila` (`--create-tap` creates it). Run the macOS release first. |
+
+Order: `prod-build-connect-<os>.sh`, `prod-release-connect-<os>.sh`, then `prod-publish-connect-packages.sh --apt` and/or `--homebrew`. The Windows build and release stay on GitHub ([GitHub Actions](GITHUB_ACTIONS.md)).
+
 ### Typical sequences
 
 - Backend change with a migration: `scripts/test-all.sh`, then `scripts/prod-migrate-db.sh status`, then `scripts/prod-deploy-backend.sh`.
