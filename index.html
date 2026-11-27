@@ -2,82 +2,31 @@
 <html lang="en">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Syntila Workspace APT repository</title>
+  <title>Syntila Connect APT repository</title>
   <style>
-    body {
-      font:
-        17px/1.6 system-ui,
-        sans-serif;
-      max-width: 860px;
-      margin: 4rem auto;
-      padding: 0 1.5rem;
-      color: #17202a;
-    }
-    pre {
-      padding: 1.2rem;
-      background: #f3f5f7;
-      overflow: auto;
-      font: 14px/1.6 monospace;
-    }
-    code {
-      font-family: monospace;
-    }
-    a {
-      color: #155abe;
-    }
+    body { font: 17px/1.6 system-ui, sans-serif; max-width: 860px; margin: 4rem auto; padding: 0 1.5rem; color: #17202a; }
+    pre { padding: 1.2rem; background: #f3f5f7; overflow: auto; font: 14px/1.6 monospace; }
+    code { font-family: monospace; }
   </style>
-  <h1>Syntila Workspace for Linux</h1>
+  <h1>Syntila Connect for Linux</h1>
   <p>
-    Install the headless Workspace service, management CLI and Worker Engine on
-    Ubuntu 22.04 or newer. Packages are available for amd64 and ARM64. Provider
-    CLIs and their logins are installed separately.
+    Install Syntila Connect (the <code>syntila-connect</code> CLI and the Worker Engine) on Ubuntu 22.04
+    or newer, or any Debian-based system. Packages are available for amd64 and ARM64. Provider CLIs and
+    their logins are installed separately. Current version: 0.1.0.
   </p>
   <h2>Install</h2>
-  <p>Add this signed repository once:</p>
   <pre>
 curl --fail --location https://nohainc.github.io/syntila/syntila-archive-keyring.gpg -o /tmp/syntila-archive-keyring.gpg
 gpg --show-keys --with-fingerprint /tmp/syntila-archive-keyring.gpg
 sudo install -D -m 644 /tmp/syntila-archive-keyring.gpg /etc/apt/keyrings/syntila-archive-keyring.gpg
 printf 'Types: deb\nURIs: https://nohainc.github.io/syntila\nSuites: stable\nComponents: main\nSigned-By: /etc/apt/keyrings/syntila-archive-keyring.gpg\n' | sudo tee /etc/apt/sources.list.d/syntila.sources
 sudo apt update
-sudo apt install syntila</pre>
-  <p>
-    Check the key fingerprint against the publisher's release documentation:
-    <code>6EA013D12EF79CBDC34D66058182CCCFCF4175F2</code>.
-  </p>
-  <p>Then, as your normal user:</p>
+sudo apt install syntila-connect</pre>
+  <p>Check the key fingerprint: <code>6EA013D12EF79CBDC34D66058182CCCFCF4175F2</code>.</p>
+  <h2>Pair a Worker</h2>
+  <p>In the web app add a Worker and copy its pairing code, then as your normal user:</p>
   <pre>
-syntila service install
-syntila service start
-syntila login
-# Open the returned verification URL in your browser and approve sign-in.
-syntila login status
-# Once phase is complete:
-syntila connect
-syntila workers check
-syntila status</pre>
-  <p>
-    For startup without a login session, enable lingering:
-    <code>loginctl enable-linger "$USER"</code>.
-  </p>
-  <h2>Upgrade</h2>
-  <p>After active work finishes:</p>
-  <pre>
-syntila service stop
-sudo apt update
-sudo apt install --only-upgrade syntila
-syntila service start
-syntila status</pre>
-  <p>
-    User state, credentials, sessions and work files are preserved. Package
-    operations do not start a root-owned service or restart running assignments.
-  </p>
-  <p>
-    <a
-      href="https://github.com/nohainc/conclave/blob/main/docs/operations/WORKSPACE_LINUX.md"
-      >Operator guide</a
-    >
-    · <a href="dists/stable/Release">Repository metadata</a> ·
-    <a href="pool/main/c/syntila/syntila_1.0.18_amd64.deb">amd64 package</a>
-  </p>
+syntila-connect pair --pairing-code CODE --auto-start
+syntila-connect status</pre>
+  <p>For startup without a login session run <code>sudo loginctl enable-linger "$USER"</code>.</p>
 </html>

@@ -1,14 +1,14 @@
 Origin: Syntila
-Label: Syntila Workspace
+Label: Syntila Connect
 Suite: stable
 Codename: stable
-Date: Sun, 08 Nov 2026 22:48:41 GMT
+Date: Fri, 27 Nov 2026 12:03:20 GMT
 Architectures: amd64 arm64
 Components: main
 Acquire-By-Hash: yes
-Description: Syntila Workspace packages
+Description: Syntila Connect packages
 SHA256:
- cabc71247b0021fe4eb12173fdd19959d8be7320d777f9521aa3e8a7af6745ac 9813 main/binary-amd64/Packages
- 6486a56d2ddfcce16624fc8ad9821e43fad54864457414a143d782c15a621045 1462 main/binary-amd64/Packages.gz
- f4fe1c906cc0a7123bc62437148aea6f61bddd16eb347200d4c1b5292b86816d 9813 main/binary-arm64/Packages
- 9fc8d913414218abf62f4f63d3c28b5f827444f7864d75f8d5829fb2b8dd2a55 1458 main/binary-arm64/Packages.gz
+ b47796f5ce2379258b64d134a3b53d1f56d5a07e9338074479b1031aaa59dd4a 10252 main/binary-amd64/Packages
+ e1b16ea01442887ca57b70463a583042d8ec1ae4aa1cf9f9e68096cefe9a1190 1623 main/binary-amd64/Packages.gz
+ 41a28443ffa711ca716dbbb31cf491360b012d70472987c88db895d26e742ddd 10252 main/binary-arm64/Packages
+ 1842ca9516b3e8c22d1e21b5c44cbe6e21c11f1e3a75a3a2013a1406de1d74c6 1611 main/binary-arm64/Packages.gz
