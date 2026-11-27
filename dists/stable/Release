@@ -2,13 +2,13 @@ Origin: Syntila
 Label: Syntila Connect
 Suite: stable
 Codename: stable
-Date: Fri, 27 Nov 2026 12:07:48 GMT
+Date: Fri, 27 Nov 2026 19:26:57 GMT
 Architectures: amd64 arm64
 Components: main
 Acquire-By-Hash: yes
 Description: Syntila Connect packages
 SHA256:
- 14d8f02c88b6de546ce3ba017704d6fd92de8c5b1767a5890dfb5ff9a8075391 439 main/binary-amd64/Packages
- 4ff3d1e19bfb15ba0e9012d56222a311f7b28e7ae5187968f33ef6bf7f109a12 325 main/binary-amd64/Packages.gz
- 60cc292b39b3b3f5396564b4a1c462a857983639022197824ee640cccbea1c72 439 main/binary-arm64/Packages
- 8bed750d1c9b83d394257daad36544633ef6c4c93af2197e2614a0363f7bcb92 325 main/binary-arm64/Packages.gz
+ b77d280ac1b78211d92f06602339fa754703e21e7308f435c334865b41ce48d9 878 main/binary-amd64/Packages
+ 7584e60cc1f2b7537265e3f7eb1d57801317ff1d7da17fe90d17dc4245ad8fcb 393 main/binary-amd64/Packages.gz
+ dc5127d73ecd82a7a6ed00d661a6d3640a922e7cc6edfd1ce2a628b17ca2d515 878 main/binary-arm64/Packages
+ 64cc4456aed8a2381e25a3d35fde89c73d0dc945704ecac3c268ea6577208d09 394 main/binary-arm64/Packages.gz
