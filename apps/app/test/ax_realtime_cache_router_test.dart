@@ -600,4 +600,30 @@ void main() {
     expect(loads['space:A:invitations'], 2);
     expect(loads['space:B:members'], 1);
   });
+  test('running reconciliation re-reads lists only while work shows running',
+      () async {
+    var threadLoads = 0;
+    var running = true;
+    final threads = AxQuery<List<AxThread>>(
+        key: AxQueryKey(['space', 'A', 'threads']),
+        load: () async {
+          threadLoads++;
+          return [
+            AxThread.fromJson({
+              'id': 'W',
+              'spaceId': 'A',
+              'name': 'W',
+              'hasActiveWork': running
+            })
+          ];
+        });
+    await engine.ensure(threads);
+    expect(await router.reconcileRunningIndicators(), isTrue);
+    expect(threadLoads, 2);
+    running = false;
+    expect(await router.reconcileRunningIndicators(), isTrue);
+    expect(threadLoads, 3);
+    expect(await router.reconcileRunningIndicators(), isFalse);
+    expect(threadLoads, 3);
+  });
 }

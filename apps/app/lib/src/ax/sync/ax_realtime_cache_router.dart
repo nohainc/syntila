@@ -101,6 +101,35 @@ class AxRealtimeCacheRouter {
     return awaitRefresh ? flush.future : Future.value();
   }
 
+  /// Safety net for a missed completion event or a failed indicator refresh:
+  /// while any cached Space or Thread still shows running work, re-read those
+  /// lists. Returns false when nothing shows running and nothing was read.
+  Future<bool> reconcileRunningIndicators() async {
+    final spaces = <String>{};
+    for (final collection in engine.cachedValues<List<AxThread>>().entries) {
+      final parts = collection.key.parts;
+      if (parts.length == 3 &&
+          parts[0] == 'space' &&
+          parts[2] == 'threads' &&
+          collection.value.any((thread) => thread.hasActiveWork)) {
+        spaces.add(parts[1]);
+      }
+    }
+    final spacesList = engine
+        .cachedValues<List<AxSpace>>()[AxQueryKey(['spaces'])]
+        ?.any((space) => space.hasActiveWork);
+    if (spaces.isEmpty && spacesList != true) return false;
+    await engine
+        .revalidateWhere((key) =>
+            key == AxQueryKey(['spaces']) ||
+            (key.parts.length == 3 &&
+                key.parts[0] == 'space' &&
+                key.parts[2] == 'threads' &&
+                spaces.contains(key.parts[1])))
+        .catchError((Object _) {});
+    return true;
+  }
+
   Future<void> handle(Map<String, dynamic> event) async {
     final type = event['type'];
     if (type is! String) return;

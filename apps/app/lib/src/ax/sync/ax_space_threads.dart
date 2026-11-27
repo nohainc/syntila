@@ -113,8 +113,17 @@ class AxSpaceThreads {
               ]),
           fenceReads: false);
     }
-    try {
-      await (source as AxThreadReadDataSource).markThreadRead(threadId);
-    } catch (_) {}
+    // A lost POST would leave the server flag set and bring the indicator back
+    // on the next list read, so retry once before giving up.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await (source as AxThreadReadDataSource).markThreadRead(threadId);
+        return;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+      }
+    }
   }
 }

@@ -185,6 +185,9 @@ polling and navigation never repeat the POST.
   route advances the marker and publishes a recipient-scoped `thread.updated`; the
   app marks the open Thread read after 1 s while visible. Running takes priority
   over unread. Other Threads' events refresh lists in one 400 ms trailing batch.
+  While a visible app shows running work, it re-reads those lists every 30 s so a
+  missed completion event cannot leave a stale indicator. A failed read-marker
+  `POST` is retried once.
 - **Notifications.** `GET /api/notifications` derives finished Work Requests from
   the last 14 days (max 50, the caller's own successes excluded), with read markers
   in `user_notification_reads`. The app merges the feed with live events under

@@ -53,6 +53,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   StreamSubscription<Uri>? navigationSubscription;
   StreamSubscription<void>? lifecycleSubscription;
   Timer? _readTimer;
+  Timer? _runningReconcileTimer;
   StreamSubscription<bool>? connectivitySubscription;
   late final RealtimeClient realtimeClient;
   StreamSubscription<Map<String, dynamic>>? realtimeSubscription;
@@ -464,6 +465,13 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     realtimeClient = widget.realtimeClient ?? createRealtimeClient();
     realtimeSubscription = realtimeClient.events.listen(_onRealtimeEvent);
     store.viewedThreadActivity = _viewedThreadActivity;
+    // A running indicator that outlives its missed completion event would
+    // otherwise stay until unrelated activity; re-read it while visible.
+    _runningReconcileTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _tabVisible && store.auth.session?.authenticated == true) {
+        unawaited(store.realtimeCacheRouter.reconcileRunningIndicators());
+      }
+    });
     lifecycleSubscription = browserNavigation.lifecycleChanges.listen((_) {
       unawaited(() async {
         await _syncSession();
@@ -499,6 +507,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   void dispose() {
     _mobileSpacesScroll.dispose();
     _readTimer?.cancel();
+    _runningReconcileTimer?.cancel();
     _desktopAuthStatusTimer?.cancel();
     store.spaces.removeListener(_restoreSidebarExpansion);
     store.invitations.removeListener(_onInvitationsChanged);
