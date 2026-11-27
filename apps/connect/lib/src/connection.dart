@@ -86,7 +86,7 @@ class AgentConnection {
     required this.onSync,
     required this.onMessage,
     SocketConnector? connector,
-    this.clientVersion = '0.2.0',
+    this.clientVersion = '0.2.1',
     this.baseDelay = const Duration(seconds: 1),
     this.maxDelay = const Duration(seconds: 60),
     this.heartbeatInterval = const Duration(seconds: 30),

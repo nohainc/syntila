@@ -32,7 +32,7 @@ import 'server_api.dart';
 import 'services.dart';
 import 'work_root.dart';
 
-const agentVersion = '0.2.0';
+const agentVersion = '0.2.1';
 
 class _Args {
   _Args(this.positionals, this.options, this.flags);
