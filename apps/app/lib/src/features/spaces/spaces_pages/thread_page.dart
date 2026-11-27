@@ -3050,6 +3050,10 @@ class _ThreadPageState extends State<ThreadPage>
                                       : null,
                                   onSelectExecutionParameters:
                                       _trySelectExecutionParameters,
+                                  workers: [
+                                    ..._spaceWorkers,
+                                    ..._eligibleWorkers
+                                  ],
                                 ),
                         );
                         final isDark =

@@ -3976,7 +3976,11 @@ class _DiscussionMessageBubble extends StatefulWidget {
     this.onReply,
     this.editing = false,
     this.onSelectExecutionParameters,
+    this.workers = const [],
   });
+
+  /// Worker catalog used to turn a stored model ID into its display name.
+  final List<AxWorker> workers;
 
   /// Selects the worker, model, and effort when tapping AI identity in conversation.
   final void Function({
@@ -4032,6 +4036,20 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
     }
   }
 
+  /// Time the answer took: the Steps' reported time, else the turn's span.
+  Duration? _answerElapsed(AxWorkRequest? request, AxConversationTurn? turn) {
+    final reported = (request?.steps ?? const <AxWorkRequestStep>[])
+        .map((step) => step.elapsedMs)
+        .whereType<int>()
+        .fold<int>(0, (total, value) => total + value);
+    if (reported > 0) return Duration(milliseconds: reported);
+    final started = DateTime.tryParse(turn?.startedAt ?? '');
+    final completed = DateTime.tryParse(turn?.completedAt ?? '');
+    if (started == null || completed == null) return null;
+    final span = completed.difference(started);
+    return span > Duration.zero ? span : null;
+  }
+
   /// The sender line of an archived AI answer: Worker icon and name, then the
   /// model and effort the answer was produced with, like the live Work card.
   Widget _aiAnswerHeader(BuildContext context, bool isDark, Color metaColor) {
@@ -4062,7 +4080,23 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
             failureStep?.workerTypeId)
         ?.toLowerCase();
     final modelId = pick(turn?.modelId, step?.model);
-    final modelLabel = pick(turn?.modelName, step?.modelName);
+    final frozenModelName = pick(turn?.modelName, step?.modelName);
+    final catalogModelName = modelId == null || modelId.isEmpty
+        ? null
+        : widget.workers
+            .expand((w) =>
+                w.executionOptions?.models ?? const <AxWorkerModelOption>[])
+            .where((m) => m.id == modelId)
+            .firstOrNull
+            ?.name;
+    final modelLabel = catalogModelName != null &&
+            catalogModelName.isNotEmpty &&
+            (frozenModelName == null ||
+                frozenModelName.isEmpty ||
+                frozenModelName == modelId)
+        ? catalogModelName
+        : frozenModelName;
+    final elapsed = _answerElapsed(request, turn);
     final effort = pick(turn?.effort, step?.reasoningEffort);
     final worker = WorkerPresentation.resolve(workerType, widget.item.author);
     final hasModel =
@@ -4130,6 +4164,9 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
               '${hasModel ? '' : '· '}${effort?.isNotEmpty == true ? executionEffortDisplayName(effort) : 'Default effort'}',
               key: const ValueKey('response-effort-label'),
               style: textStyle),
+        if (elapsed != null)
+          Text('· ${AxWorkProgress.formatDuration(elapsed)}',
+              key: const ValueKey('response-elapsed-label'), style: textStyle),
       ],
     );
   }
