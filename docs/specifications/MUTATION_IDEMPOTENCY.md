@@ -53,8 +53,7 @@ supplied explicitly; AX does not currently persist pending operation identities.
 
 ## Storage rollout and verification
 
-The fresh v8 schema baseline now includes `mutation_receipts`. Existing deployed
-schemas require the same table before the updated Cloud routes are deployed.
+The schema baseline includes `mutation_receipts`.
 The production schema preflight checks its columns and canonical definition so
 deployments cannot silently omit the receipt storage required by AX requests.
 This change introduces no Worker Agent or Local Worker Protocol change.

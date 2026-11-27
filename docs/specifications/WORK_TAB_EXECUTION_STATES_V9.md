@@ -1,6 +1,6 @@
-# Work tab execution states (V9 Phase 7)
+# Work request execution states
 
-The Work tab now shows where a request really is: delivered, waiting for a Worker slot, starting the provider, or running. Cloud derives the state from the assignment's recorded evidence and the app only renders it.
+The Work tab shows where a request really is: delivered, waiting for a Worker slot, starting the provider, or running. Cloud derives the state from the assignment's recorded evidence and the app only renders it.
 
 ## Execution phase
 
@@ -55,15 +55,11 @@ A new durable `step.phase` event (payload `status` carries the phase, `assignmen
 
 The app applies a pushed phase only when it moves strictly forward on the same assignment. Delayed older phases are dropped. Terminal, uncertain, unknown-assignment events and events for a terminal request trigger an authoritative re-read. The existing reconnect resync already re-reads active requests, so state after a reconnect comes from Cloud and not from the last activity event. State is per request, so concurrent requests keep independent status.
 
-## Deploy order
-
-Deploy Cloud first (additive fields and the new event type; older apps ignore them), then the app. Regenerate protocol bindings after the schema change.
-
 ## Verification
 
 - Cloud: `execution-phase.test.ts` (phase mapping, categories, retry advice, request-level terminal-wins, no diagnostic leakage).
 - App: `ax_execution_phase_test.dart` (forward-only advance, terminal wins, parsing, never Running before provider start).
 
-## Waiting for the Service to be ready
+## Waiting for Connect to be ready
 
 When Connect is offline or still synchronizing, the Workflow parks the request and re-dispatches periodically. A ready Worker can also wake waiting requests; the poll remains a durable fallback.

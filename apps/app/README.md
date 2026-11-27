@@ -17,7 +17,7 @@ Flavored Markdown with selectable text and soft line breaks. Its theme-derived
 style sheet covers headings, emphasis, code, quotes, lists, read-only task lists,
 tables, links and rules. HTML is not rendered. Source stays an ordinary Markdown
 string through storage and Worker execution; diagnostics stay plain text.
-The canonical [Thread authored-content contract](../../docs/specifications/WORK_V1_CONTRACT.md#thread-authored-content-contract)
+The canonical [Thread authored-content contract](../../docs/specifications/WORK_V1_CONTRACT.md#authored-content)
 keeps Chat `body`, Work `originalRequest`, Worker `finalText` and Step
 `resultText` as source strings. Existing plain text remains valid Markdown.
 No generated HTML, AST, renderer data or `contentFormat` field is persisted.

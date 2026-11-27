@@ -5,14 +5,14 @@ Status: accepted. Extends [ADR-022](ADR-022-account-plans.md).
 ## Policy
 Free accounts run **one AI execution at a time per requesting account**;
 Syntila Plus has no subscription-based cap. The limit is across all Spaces,
-Threads, Workspaces, Workers and browser sessions, covers AI Chat and Work
-steps, and does not apply to human messages. The Workspace's own capacity,
+Threads, Spaces, Workers and browser sessions, covers AI Chat and Work
+steps, and does not apply to human messages. The Worker's own capacity,
 provider limits, permissions and Thread leases are unchanged and still apply.
 
 The limit follows the **authenticated requester** (`worker_assignments.
-requested_by_user_id`), never the Workspace owner: a Plus owner does not lift a
-Free requester's limit on a shared Workspace, and a Free owner does not limit a
-Plus requester. Workspace count and sharing policies are unchanged.
+requested_by_user_id`), never the Space owner: a Plus owner does not lift a
+Free requester's limit on a shared Space, and a Free owner does not limit a
+Plus requester. Space count and sharing policies are unchanged.
 
 ## Counting semantics
 - **One execution = one non-terminal Worker Assignment** attributed to the
@@ -25,7 +25,7 @@ Plus requester. Workspace count and sharing policies are unchanged.
   so a cancellation request or lost connectivity never frees a slot while the
   Worker may still be running.
 - **Queued requests hold nothing.** A task refused a slot has no assignment.
-  A Free request whose Workspace Service is only *connected* (synchronizing,
+  A Free request whose Worker is only *connected* (synchronizing,
   paused or draining) also waits without a slot and reserves one once the
   Service is ready. Plus keeps the existing queue-behind-the-Service behaviour.
 - **Workflow steps:** each dispatched step is one execution. Sequential steps
@@ -53,7 +53,7 @@ fails with a clear message). The table `account_execution_waiters` (migration
 waiter of the same requester exists, and a request that has not waited yet does
 not jump ahead of waiters. A waiter that stops heartbeating (crashed Workflow,
 two minutes) or is cancelled stops blocking, and requests blocked by
-permissions, Thread leases or an offline Workspace are not waiters, so they
+permissions, Thread leases or an offline Worker are not waiters, so they
 never hold up unrelated work. When an assignment becomes terminal, Cloud
 nudges the requester's oldest waiter; the timed poll is the durable fallback.
 The existing Thread request queue and its limits still bound how many requests
@@ -70,14 +70,12 @@ a Thread accepts.
 ## User experience
 A queued step reports `waitReason` (`account_concurrency_limit`) and `executionPhaseDetail`: "Free runs one AI task at a
 time. This request will start when your current task finishes." (distinct from
-Workspace or provider capacity text). The `step.queued` event carries `reason`
+Worker or provider capacity text). The `step.queued` event carries `reason`
 and `message`. Cancelling a queued request uses the existing cancel flow. The
 Free Profile plan line reads "Syntila Plus: Run AI tasks in parallel." There is
 no upgrade action to link yet; no checkout flow is invented.
 
 ## Rollout
-- Apply `0097_account_execution_slots.sql` before deploy. Without the
-  `account_execution_waiters` table dispatch fails.
 - Everyone is Free by default: grant Plus (see ADR-022) to accounts that should
   keep running in parallel *before* deploying.
 - Work already running at deploy time finishes; new work queues behind it.
@@ -86,7 +84,7 @@ no upgrade action to link yet; no checkout flow is invented.
 - A queued request cancelled while waiting is noticed at its next wake-up
   (at most 60 s), not instantly.
 - Waking is best effort; ordering and admission never depend on it.
-- Waiting tasks poll D1 about once a minute; very large numbers of queued Free
+- Waiting tasks poll PostgreSQL about once a minute; very large numbers of queued Free
   requests add that load.
 - Workflow-level waiting (the re-dispatch loop) is covered by reasoning and
   type checks plus dispatcher tests; there is no Workflow-runtime harness in

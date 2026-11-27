@@ -1,27 +1,14 @@
 # ADR-022: Free and paid account plans
 
 ## Status
-Accepted (foundation). Billing-provider integration is not yet implemented.
-
-### Local Paddle sandbox groundwork
-
-The backend has development-only endpoints for sandbox checkout configuration
-and Paddle subscription notifications. The checkout configuration issues a
-server-signed account reference; notifications verify both the Paddle signature
-and that reference. Subscription snapshots are kept in PostgreSQL in
-`paddle_sandbox_subscriptions`; older deliveries cannot overwrite newer ones.
-They may update provider-sourced `account_plans`, but never replace a manual
-grant, but records the provider link alongside it. A verified sandbox purchase
-reconciles a previous manual Free override. The endpoints return 404 outside the development environment. The
-reference secret, webhook secret, client token and two sandbox price IDs must
-be configured separately. A local-only checkout page displays Paddle's price
-previews and passes the signed reference to a sandbox overlay. Local settings
-can be stored in `.development/local-backend/paddle.env`; keep its reference
-secret stable so later subscription events can be verified. No live billing is
-enabled. A development-only customer-portal endpoint resolves the customer
-from the signed-in user's local subscription and creates a temporary sandbox
-portal link. A stable notification destination and a functioning payment-link
-page for Paddle's emails are still needed; live integration remains outstanding.
+Accepted and implemented: the two tiers, the server-enforced feature gate and the
+manual grant flow. Subscription billing through Paddle is not live: a development-only
+sandbox flow and a disabled-by-default live checkout-configuration endpoint exist, but
+live notifications, fulfillment and the customer portal are not implemented, and live
+purchases must stay off until they are. See [Paddle sandbox](../operations/PADDLE_SANDBOX.md).
+Provider-sourced plans (`source = provider`) may update `account_plans` from verified
+notifications but never replace a manual grant; a verified sandbox purchase reconciles a
+previous manual Free override.
 
 ## Context
 Some web-app features will be available only to subscribers. We want one
@@ -30,9 +17,9 @@ without migrations.
 
 ## Decision
 - **Two tiers per user account:** `free` and `paid`. `paid` is the stable
-  identifier in D1 and the API; the product name ("Syntila Plus") lives only in
+  identifier in PostgreSQL and the API; the product name ("Syntila Plus") lives only in
   the app (`paidPlanName`).
-- **Storage:** `account_plans` (migration `0094_account_plans.sql`). A missing
+- **Storage:** `account_plans`. A missing
   row means Free. `source` is `manual` (grants) or `provider` (future billing
   webhooks). The client never writes plans.
 - **Operator protection:** the Accounts app may change manual grants only.
@@ -40,7 +27,7 @@ without migrations.
   or retains a provider customer or subscription ID, including records previously
   overwritten by an operator. Provider-linked billing is managed at the payment
   provider. The app disables plan controls when management status is unknown.
-- **Effective tier** (`apps/cloud/src/account-plan.ts`): Paid only when
+- **Effective tier** (`apps/backend/src/domain/account-plan.ts`): Paid only when
   `tier = 'paid'`, status is `active`, `trialing` or `past_due`, and
   `current_period_end` is absent (open-ended grant) or in the future.
 - **Gate by feature name, not tier.** `PAID_FEATURES` lists paid features.
@@ -59,8 +46,7 @@ without migrations.
   `current_period_end` needs no event, and renewing restores access. Work
   already admitted finishes. The Space owner's own Workers, which members use
   through their Space rights, are not shares and are not affected.
-- **No Workspace allowance.** Workspaces no longer exist, so the former limit
-  of one personal Workspace on Free is removed; Free accounts may register any
+- **No Worker-count allowance.** The former limit on Free is removed; Free accounts may register any
   number of their own Workers.
 - **Read API:** `GET /api/me/plan` returns
   `{ tier, status, currentPeriodEnd, features, attachments }`.

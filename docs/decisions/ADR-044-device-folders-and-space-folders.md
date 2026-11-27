@@ -1,7 +1,7 @@
 # ADR-044: Device folders and the Space folder
 
 - **Status:** Accepted and implemented
-- **Date:** 2026-11-24 (records a decision implemented in migration `0042`)
+- **Date:** 2026-11-24 (records an implemented decision)
 - **Depends on:** ADR-034 (Connect), ADR-040 (stateful Work)
 - **Replaces:** the per-Worker Work Root and `spaces/<space-id>/` mapping first proposed in ADR-037
 

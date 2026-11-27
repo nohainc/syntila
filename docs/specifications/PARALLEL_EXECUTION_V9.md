@@ -61,6 +61,5 @@ transport reconnects do not re-execute an assignment.
 
 Older assignment payloads without `queueWaitTimeoutMs` or
 `maxConcurrentAssignments` remain accepted during rollout. New Cloud payloads
-always include both fields. The queue deadline is persisted in migration
-`0055_assignment_queue_deadline.sql` so Cloud recovery does not mistake a
+always include both fields. The queue deadline is persisted so Cloud recovery does not mistake a
 healthy local queue for a lost execution.

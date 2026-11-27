@@ -90,8 +90,8 @@ There are no Profile Lab testing, beta, or stable Profile channels in V9. Prior 
 Cloud authenticates the Profile Lab operator, revalidates the candidate and
 fresh evidence, checks the expected revision and digest, then atomically
 publishes the next current Profile revision. Profile snapshots use canonical
-digests and schema validation; they do not carry cryptographic Profile
-signatures or require Profile trust-root configuration. Apple app signing and
+digests and schema validation. Profile Lab holds no signing key and needs no
+trust roots; Cloud signs the digest when delivering a Profile to Connect. Apple app signing and
 Connect application-release signing remain separate security mechanisms.
 
 ## Security rules
@@ -113,12 +113,12 @@ Connect application-release signing remain separate security mechanisms.
 
 ## Unsigned development
 
-Run `bash scripts/run-profile-lab-development.sh` from the repository root for
+Run `bash scripts/local-run-profile-lab.sh` from the repository root for
 hot-reload development against loopback Cloud (default `http://localhost:8787`).
 Browser sign-in remains required; the active `vitalii@nohainc.com` account is
 the explicitly configured internal Lab owner. Development supports the full
 Candidate → Test → Validate → Publish lifecycle. Start
-`bash scripts/run-connect.sh run` to consume current Cloud Profiles in
+`bash scripts/local-run-connect.sh run` to consume current Cloud Profiles in
 a separate non-release Connect.
 
 For the currently provisioned hosted development environment, set

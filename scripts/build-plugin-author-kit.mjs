@@ -74,8 +74,8 @@ export function buildPluginAuthorKit(outputDirectory) {
       join(kit, "README.md"),
       `# Syntila plugin author kit
 
-This archive contains the protocol, SDK, conformance runner and reference MCP
-Worker. It uses only internal relative package paths; no Syntila checkout,
+This archive contains the package and manifest specification, SDK, conformance
+runner and reference MCP Worker. It uses only internal relative package paths; no Syntila checkout,
 account or Plus entitlement is needed for authoring. Install Dart (SDK >=3.5)
 and Node for optional signing.
 
@@ -99,14 +99,13 @@ already uses this name). Review plugin.json access declarations. Packing fills
 hash/size fields after compilation; it does not create an archive or signature.
 The generated project README repeats the platform-specific build commands.
 
-The language-neutral protocol is in docs/specifications/WORKER_PLUGIN_PROTOCOL_V1.md
-and transcript vectors are beside it. examples/plugins/echo_dart demonstrates
-progress and sessions; examples/plugins/echo_python/echo.py uses only Python's
-standard library. For long work, keep protocol input responsive to ping/cancel.
+The package and manifest rules are in docs/specifications/WORKER_PLUGIN_PROTOCOL_V1.md.
+examples/mcp/echo_worker demonstrates progress and sessions. For long work, keep
+the server responsive to cancellation.
 Optional scripts/sign-plugin.mjs takes package directory, private PEM key file,
 and key ID, and writes plugin.sig. Keep private keys outside the package.
 
-A passing conformance result proves protocol behavior only, not safety. A plugin
+A passing conformance result proves sampled profile behavior only, not safety. A plugin
 runs as its installing user. Production testing, registration and enablement go
 through Connect and require Plus and explicit consent. Standalone
 conformance does not register or enable anything.

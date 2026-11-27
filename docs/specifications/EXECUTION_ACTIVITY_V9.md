@@ -1,9 +1,7 @@
 # Syntila Execution Activity V9
 
-Phase 4 consolidates provider observations into one normalized activity stream.
-`assignment.activity` is the sole external activity transport. The legacy
-`assignment.progress` message has been removed from the Cloud/Service/Web
-contract; the Engine's private milestone frame is not forwarded as a second
+Provider observations form one normalized activity stream.
+`assignment.activity` is the sole external activity transport; the Engine's private milestone frame is not forwarded as a second
 timeline.
 
 ## Contract
@@ -48,7 +46,3 @@ adapters are `codex-jsonl`, `agy-stream-json`, `claude-stream-json` and
 `grok-streaming-json`;
 adding a provider adapter does not change Cloud, Service or AX. Replay fixtures must be sanitized and may contain only provider event
 shapes and safe identifiers, not prompts, output, credentials or file data.
-
-Migration is complete for the active application contract. Persisted activity
-history and assignment records remain available for recovery; no compatibility
-reader is retained for the removed wire message.

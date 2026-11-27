@@ -2,7 +2,7 @@
 
 - **Status:** Accepted; MCP Worker execution is specified by [ADR-041](ADR-041-mcp-workers-on-worker-agents.md)
 - **Date:** 2026-11-03
-- **Details:** [Architecture](../architecture/CUSTOM_WORKER_PLUGINS.md), [Worker Plugin Protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md)
+- **Details:** [Architecture](../architecture/CUSTOM_WORKER_PLUGINS.md), [Worker plugin package and manifest](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md)
 
 ## Context
 

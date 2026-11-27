@@ -1,7 +1,5 @@
 # AX Timeline Rendering V1
 
-Status: Phase 2 implementation
-
 ## Rendering contract
 
 Chat and Work history use the shared `AxTimelineContainer`. Each instance owns

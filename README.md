@@ -15,7 +15,7 @@ agreement or terms of service.
 
 ## Architecture
 
-Architecture v9 is the current design target; the v8 implementation remains the baseline where v9 work is not yet complete. See the [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md) for current contracts and implementation status.
+See the [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md) for current contracts and implementation status.
 
 ~~~text
 Syntila
@@ -75,14 +75,14 @@ scripts/prod-deploy-all.sh --dry-run # plan a release (backend, web app, optiona
 scripts/prod-deploy-all.sh           # release; stops at the first failure
 ```
 
-Windows Connect: bump `version:` in `apps/connect/pubspec.yaml`, merge to `main`, run the two GitHub workflows ([GitHub Actions](docs/operations/GITHUB_ACTIONS.md)). Details and the other scripts: [Test and deploy scripts](docs/operations/TEST_AND_DEPLOY_SCRIPTS.md).
+Connect and the web app use independent Git-derived release versions. Start a series with `scripts/set-version.sh connect 0.3` or `scripts/set-version.sh web 0.2`, then build from clean, up-to-date `main`. Windows Connect uses the two GitHub workflows ([GitHub Actions](docs/operations/GITHUB_ACTIONS.md)); see [Test and deploy scripts](docs/operations/TEST_AND_DEPLOY_SCRIPTS.md) for the release rules.
 
 ## Repository checks
 
 Use the focused tests and component validation commands in [AGENTS.md](AGENTS.md) for the area changed. `pnpm check` is a broad repository check reserved for cases that require that scope.
 
-`./scripts/start-local.sh` starts the Syntila frontend on `http://localhost:3000`
-and a local API gateway on `http://localhost:8787`. By default the gateway runs the isolated local backend and local v8 D1 database.
+`./scripts/local-start.sh` starts the Syntila frontend on `http://localhost:3000`
+and a local API gateway on `http://localhost:8787`. By default the gateway runs the isolated local backend, its local PostgreSQL database and the local auth D1 database.
 Local state and browser profiles may persist between runs; isolation from production
 does not mean a fresh database or browser session. To forward HTTP and WebSocket
 requests to production Cloud instead, explicitly use `--proxy`: actions in that
@@ -90,8 +90,11 @@ mode affect live accounts, remote data and Connect connections. Authentication
 cookies are adapted to localhost while retaining HttpOnly; production authentication
 secrets stay on Cloud.
 Stop previous frontend/backend processes before restarting the launcher.
+To apply both local databases' pending migrations without starting the apps, run
+`pnpm db:migrate:local`. It applies auth D1 migrations and backend PostgreSQL
+migrations; PostgreSQL must be running with the local development role.
 
-For browser acceptance testing, use `./scripts/start-local.sh --web-release`.
+For browser acceptance testing, use `./scripts/local-start.sh --web-release`.
 This runs the production web rendering path against the same configured API,
 without hot reload/restart. Stop the Flutter runner and close its browser window
 before switching modes; stop and relaunch to rebuild after code changes. Debug
@@ -100,14 +103,14 @@ stale view and report “Trying to render a disposed EngineFlutterView”; a fre
 release session helps distinguish that engine failure from application updates.
 See [Flutter's tracked web restart issue](https://github.com/flutter/flutter/issues/182377).
 
-Use `./scripts/start-local.sh --isolated` (the default) to test local backend changes with
-the local v8 D1 database and separate accounts. In this mode the launcher
+Use `./scripts/local-start.sh --isolated` (the default) to test local backend changes with
+the local auth and PostgreSQL databases and separate accounts. In this mode the launcher
 generates a persistent local authentication secret in the ignored
 `apps/cloud/.dev.vars` file, preserving existing settings and limiting file access
 to its owner. Local email sign-in uses the local account database, so create a
 local account first if needed; hosted accounts are separate. If an already
 running backend reports “Authentication is not configured”, run
-`node scripts/setup-development-auth.mjs` and restart the local backend.
+`node scripts/local-setup-auth.mjs` and restart the local backend.
 To sign in with Google or GitHub locally, add `SYNTILA_AUTH_GOOGLE_CLIENT_ID` /
 `SYNTILA_AUTH_GOOGLE_CLIENT_SECRET` or `SYNTILA_AUTH_GITHUB_CLIENT_ID` /
 `SYNTILA_AUTH_GITHUB_CLIENT_SECRET` to `apps/cloud/.dev.vars`; the OAuth setup is
@@ -129,11 +132,10 @@ Verify
 and built-in Workflows:
 
 ~~~text
-Direct
+Chat
+Work
 Research
-Plan & Implement
-Implement & Verify
-Full Cycle
+Implement
 ~~~
 
 Threads bind those Steps to logical Workers. Users do not build arbitrary
@@ -143,11 +145,10 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 
 - Flutter + Dart for Syntila; pure Dart (no Flutter) for the Syntila Connect
   service and CLI.
-- TypeScript for Syntila Cloud.
+- TypeScript on Bun with PostgreSQL for Syntila Cloud (`apps/backend`).
 - Dart AOT for the generic CLI Worker Engine.
-- Cloudflare Workers + Workflows + Durable Objects.
-- Cloudflare D1 for structured state.
-- Cloudflare R2 where release/artifact payload storage is appropriate.
+- A Cloudflare Worker with D1 for the human sign-in edge (`apps/cloud`).
+- Cloudflare R2 for files and artifacts.
 - Better Auth for human authentication.
 - Local Worker Protocol between Connect and CLI Worker Engine; see [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md) for supported versions.
 - Signed Tool Profile v1 releases for provider CLI behavior.
@@ -190,17 +191,15 @@ Provider secrets never enter Syntila Cloud.
 ## Read first
 
 - [Architecture](ARCHITECTURE.md)
-- Architecture v8
-- ADR-018: Generic CLI Worker Engine and Tool Profiles
-- ADR-019: Syntila Profile Lab Architecture Contract
+- [Documentation index](docs/README.md)
+- [Architecture decisions](docs/decisions/README.md)
 - [Tool Profile v1](docs/specifications/TOOL_PROFILE_V1.md)
 - [Worker Profile v9](docs/specifications/WORKER_PROFILE_V9.md)
 - [Work v1 contract](docs/specifications/WORK_V1_CONTRACT.md)
 - [First-party Worker catalog v1](docs/specifications/FIRST_PARTY_WORKER_CATALOG_V1.md)
 - [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md)
 - [Technology Stack](docs/architecture/TECH_STACK.md)
-- Connect release operations
-- Release trust and rotation
+- [Production provisioning](docs/operations/PRODUCTION_PROVISIONING.md)
 - [AI Development Rules](AGENTS.md)
 
 New CLI integrations use the generic Engine and official signed Tool Profiles.

@@ -19,7 +19,7 @@ Configure the sandbox destination to send subscription lifecycle events to
 For local testing, restrict forwarding to that exact path and method. A quick
 tunnel has a temporary URL and must be updated in Paddle when it changes; it
 is not suitable for production. Verify an invalid signature receives a 401.
-For example, start `node scripts/paddle-sandbox-forwarder.mjs`, then run
+For example, start `node scripts/local-paddle-sandbox-forwarder.mjs`, then run
 `pnpm exec wrangler tunnel quick-start http://127.0.0.1:18789`. Append the
 webhook path above to the tunnel URL in the existing sandbox destination.
 

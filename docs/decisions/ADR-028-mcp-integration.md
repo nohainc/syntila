@@ -3,13 +3,12 @@
 **Status:** Accepted (2026-11-06; amended 2026-11-24 to scope to MCP Workers after legacy path removal; see [ADR-041](ADR-041-mcp-workers-on-worker-agents.md)).
 **Date:** 2026-11-05
 **Builds on:** ADR-018 (anticipates an MCP Engine), [ADR-027](ADR-027-custom-worker-plugins.md), [ADR-041](ADR-041-mcp-workers-on-worker-agents.md)
-**Contracts:** [MCP host v1](../specifications/MCP_HOST_V1.md), [MCP Worker profile v1](../specifications/MCP_WORKER_PROFILE_V1.md), [MCP server manifest v1](../specifications/MCP_SERVER_MANIFEST_V1.md), [Threat model](../security/MCP_THREAT_MODEL.md)
+**Contracts:** [MCP host v1](../specifications/MCP_HOST_V1.md), [MCP Worker profile v1](../specifications/MCP_WORKER_PROFILE_V1.md), [Threat model](../security/MCP_THREAT_MODEL.md)
 
 ## 1. Context
 
 Syntila has two executor kinds below the Engine: `profile` (official provider
-CLIs) and `plugin` (user executables speaking the NDJSON Worker Plugin
-Protocol). Users want to connect local and remote custom Workers through a
+CLIs) and `plugin` (user-supplied executables). Users want to connect local and remote custom Workers through a
 standard protocol rather than a Syntila-specific one.
 
 MCP tool calls from Workflows (direct `tool_call` steps and attaching MCP tool
@@ -27,8 +26,8 @@ execution path and are deferred to a future decision for Syntila Connect (see
 3. **MCP Workers implement the Syntila MCP Worker profile** and receive whole
    assignments through the Engine's plugin host. Class is declared in the
    manifest and verified at connect time.
-4. **One custom-Worker protocol long term.** The NDJSON Worker Plugin Protocol
-   is frozen at v1.x; plugin packaging and trust (manifest, digest pin,
+4. **One custom-Worker protocol.** The earlier NDJSON plugin protocol is removed;
+   plugin packaging and trust (manifest, digest pin,
    consent-by-hash, signer recognition, limits, supervision, conformance) are
    retained and wrap a local MCP server.
 5. **The Engine remains the only process host.** MCP Worker servers are
@@ -46,7 +45,7 @@ execution path and are deferred to a future decision for Syntila Connect (see
    (`syntila_mcp_protocol`).
 10. **Entitlement:** MCP Workers reuse `workers.custom_plugins` admission.
 
-## 3. Why this respects the v8 exclusion
+## 3. Why this keeps providers out of Cloud
 
 Same argument as ADR-027 §3: Syntila ships no server and no provider adapter;
 the Engine host is provider-neutral; one audited process host and cancellation

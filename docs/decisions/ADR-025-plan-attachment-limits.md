@@ -28,8 +28,8 @@ reservedBytes, quotaBytes, maxFileBytes }`; the web app loads limits from them.
 Generated files collected from an assignment's output directory use the same
 storage and per-file limits, reservations, My Files records, sync and deletion
 as request attachments. Their owner and quota account are the Space owner,
-including when another member requested the work or another Workspace ran it.
-The Workspace collects at most ten non-empty regular files per assignment;
+including when another member requested the work or another Worker ran it.
+Connect collects at most ten non-empty regular files per assignment;
 files rejected by storage limits are not attached. Images retain inline previews
 and other files appear as downloadable attachment cards. Existing generated
 images stored before this policy are not automatically imported.
@@ -86,14 +86,10 @@ input, which does not fit a 128 MB Worker for a 100 MB file. Now:
   `storedFileDigest` reads either.
 - **Multipart bodies are buffered**, so they are accepted only up to 25 MB of file data; larger files must be raw (413 `upload_requires_raw_body`)
   and carry no preview image. Text previews are taken from the first bytes.
-- The Workspace stages downloads by streaming (`stageStream`) and now copies the
+- Connect stages downloads by streaming (`stageStream`) and now copies the
   verified staged file into the execution directory by streaming
   (`copyTo`); a retry compares a streamed digest instead of reading bytes. Its
   per-file sanity bound is 100,000,000 bytes.
-- **Evidence** (`apps/cloud/scripts/large-upload`, real workerd via
-  `wrangler dev --local`): a 100,000,000-byte raw upload stored all bytes with a
-  matching SHA-256; workerd peaked at about +40-50 MB over idle, versus about
-  +270 MB for the previous buffering approach on the same file.
 - **Edge limit.** Cloudflare caps request bodies by zone plan (100 MB on Free
   and Pro zones, more on Business/Enterprise). 100,000,000 bytes fits, but the
   deployed zone's plan was not verified here; confirm it before relying on the
@@ -113,8 +109,7 @@ stay downloadable and deletable. Composers give per-file feedback before upload
 and no checkout flow; the copy only names Syntila Plus.
 
 ## Rollout
-- Apply migration `0098_user_file_reservations.sql` before deploying Cloud.
-- Deploy Cloud, the web app and the Workspace together: an older Workspace
+- Deploy Cloud, the web app and Connect together: an older Connect
   rejects inputs over 10 MiB, an older web app sends the old limits and reads
   `usage` without the new fields.
 - Existing Free accounts between 1,000,000,000 and 1,073,741,824 bytes become
@@ -123,7 +118,7 @@ and no checkout flow; the copy only names Syntila Plus.
 ## Limitations
 - The web client still reads a picked file fully into browser memory (and as
   base64); a 100 MB file is held several times over while uploading.
-- The Workspace Service still buffers a downloaded file once for the digest on
+- Connect still buffers a downloaded file once for the digest on
   `read` (used by older callers); the execution path streams.
 - Reservations are not restored by the cron if a Worker dies mid-upload until
   they expire (one hour), though they never block beyond that.

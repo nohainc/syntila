@@ -57,7 +57,7 @@ Run on the dev machine (the Mac) from a clean `main` equal to `origin/main`. Com
    - [ ] Work with a Space folder (`syntila-connect folders add PATH`) and an attached file.
    - [ ] Start a long request and cancel it; the request ends as cancelled.
    - [ ] With Connect online run `scripts/prod-deploy-backend.sh --yes`; Connect reconnects without a restart (`syntila-connect status`) and the next Chat works.
-5. **Resilience:** on the VPS (the phase 5 installer put the script there):
+5. **Resilience:** on the VPS (the VPS installer in `infra/vps/phase5` put the script there):
    `ssh -t syntila@46.225.103.109 'sudo bash /usr/local/lib/syntila/run-resilience-test.sh'`
    It restarts the backend and PostgreSQL several times with a temporary signing key and removes the key afterwards.
 6. **Defects:** fix each one in the scripts or these docs as a small commit, then repeat the failed step.

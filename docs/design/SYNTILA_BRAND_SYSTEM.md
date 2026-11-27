@@ -6,7 +6,6 @@
 
 **Status:** Canonical  
 **Version:** 1.0.0  
-**Last Updated:** 2026-10-07  
 
 ---
 

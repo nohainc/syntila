@@ -17,14 +17,14 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 
 1. Settings → Environments → create `connect-windows-release` (optional: required reviewers).
 2. In that environment (or repository) add these Variables (public values, not secrets):
-   - `SYNTILA_PROFILE_TRUST_ROOTS`: the public key set that matches the private signing key the backend uses (`SYNTILA_PROFILE_SIGNING_JWK` and `SYNTILA_PROFILE_SIGNING_KEY_ID` in `/etc/syntila/backend.env`). Derive the public value with `scripts/profile-signing-env.mjs` (verifies an existing seed against the public roots; see [Production provisioning](PRODUCTION_PROVISIONING.md#profile-signing-identity)) or, for a new development key, `scripts/setup-local-profile-signing.mjs`. A mismatch makes Connect refuse every Profile. The value must be a flat map such as `{"syntila-profile-v1":"PUBLIC_KEY"}`; the build rejects empty, nested, or invalid maps.
+   - `SYNTILA_PROFILE_TRUST_ROOTS`: the public key set that matches the private signing key the backend uses (`SYNTILA_PROFILE_SIGNING_JWK` and `SYNTILA_PROFILE_SIGNING_KEY_ID` in `/etc/syntila/backend.env`). Derive the public value with `scripts/profile-signing-env.mjs` (verifies an existing seed against the public roots; see [Production provisioning](PRODUCTION_PROVISIONING.md#profile-signing-identity)) or, for a new development key, `scripts/local-setup-profile-signing.mjs`. A mismatch makes Connect refuse every Profile. The value must be a flat map such as `{"syntila-profile-v1":"PUBLIC_KEY"}`; the build rejects empty, nested, or invalid maps.
    - `SYNTILA_UPDATE_KEYS`: may stay empty; updates are manual.
 3. The server address is not built in: it comes from the pairing code the web app issues, so a released Connect talks to production (`https://api.syntila.app`) when paired from `https://syntila.app`.
 
 ## Release procedure
 
-1. Run `scripts/set-connect-version.sh 0.2.1` (substitute the intended x.y.z version). It updates the Connect CLI and desktop metadata together and commits only those files; it refuses to overwrite existing edits in them. The workflows read the version and refuse one that already has a release.
-2. Merge to `main`.
+1. When starting a new series, run `scripts/set-version.sh connect 0.3` on a clean, up-to-date `main` (substitute the intended major.minor). It commits the series, creates an annotated `connect-series-v0.3` tag and pushes both atomically. A failed push leaves the local commit and tag for recovery; it does not publish a release.
+2. Build from the desired pushed `main` commit. The version is `major.minor` plus the number of first-parent commits since the series tag; all platforms in one release must use that same commit. The Windows build fetches full history and tags.
 3. Run **Build Connect for Windows** on `main`; note the run ID. It runs `dart test`, builds, runs `scripts/test-connect-windows-installer.ps1` (per-user install under `%LOCALAPPDATA%\Programs\Syntila\Connect`, no administrator rights, upgrade and uninstall) and uploads the installer, portable zip and checksums.
 4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS-windows`, and that the checksum verifies.
 5. Install it on a Windows machine and follow [Connect onboarding](CONNECT_ONBOARDING.md).

@@ -1,7 +1,5 @@
 # ADR-029: Direct Spaces and Personal Connections
 
-> **Partly superseded (proposed, 2026-11-19).** Section 8 (Execution and Workspace Boundaries) and the Workspace-grant statements in the Consequences keep their intent (no access to another person's local environment), but the Workspace vocabulary is replaced by Worker ownership and sharing grants in [ADR-035](ADR-035-worker-targeted-execution.md) and [ADR-032](ADR-032-worker-instance-and-actor-identity.md). Direct Space semantics are unchanged.
-
 **Status:** Accepted; **Date:** 2026-11-06
 
 Extends ADR-008 and ADR-020. Complements People v1.
@@ -74,11 +72,11 @@ Direct Spaces present a personalized identity depending on who is viewing the Sp
   the profile or the other participant's view.
 - Underlying persistence and authorization strictly use immutable user IDs (`userId`), never mutable display names or emails.
 
-### 8. Execution and Workspace Boundaries
+### 8. Execution Boundaries
 
-- Direct Space membership does not grant access to the other participant's local Workspace or execution environments.
-- Personal Spaces support only Chat, using a Worker owned by the requester. Person Grants and another participant's Workspace do not confer Worker access in a personal Space.
-- Local provider credentials, API keys, and file trees remain safely bounded within their respective owners' Workspaces.
+- Direct Space membership does not grant access to the other participant's Workers or local execution environments.
+- Personal Spaces support only Chat, using a Worker owned by the requester. Person Grants and another participant's Worker do not confer Worker access in a personal Space.
+- Local provider credentials, API keys, and file trees remain safely bounded within their respective owners' computers.
 
 ### 9. Removal, Retention, and Deletion Semantics
 
@@ -100,7 +98,7 @@ The application sidebar introduces a first-class **Personal** section positioned
 ### 11. Migration, Full Acceptance, and Rollout Policy
 
 - **Existing People Migration:** Existing `people_relationships` entries are preserved as collaborators (`status = 'collaborator'`). Syntila does **not** automatically generate Direct Spaces for pre-existing collaborator pairs. Direct Spaces are provisioned exclusively upon explicit mutual consent via personal invitation acceptance.
-- **Group Space Integrity:** All existing Spaces retain `kind = 'group'` by default. Group Space permissions, membership caps (ADR-024), thread hierarchies, and workspace grants remain strictly isolated and unaffected across personal connection lifecycle events (connecting, disconnecting, blocking, or hiding).
+- **Group Space Integrity:** All existing Spaces retain `kind = 'group'` by default. Group Space permissions, membership caps (ADR-024), thread hierarchies and Worker sharing remain strictly isolated and unaffected across personal connection lifecycle events (connecting, disconnecting, blocking, or hiding).
 - **End-to-End Reliability & Concurrency:**
   - Racing personal invitations between the same pair resolve to a single canonical connection with mutual consent.
   - Acceptance retries are idempotent and consistently return the identical Direct Space ID.

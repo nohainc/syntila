@@ -57,14 +57,13 @@ control grouped with the emoji and Markdown controls on the left of the same
 toolbar row, with Send aligned to the right. It opens the same
 anchored Add files menu as Ask AI; no separate attachment row is shown.
 
-Migration `0080_discussion_attachments.sql` adds `attachments_json` with an empty
-array default. Create, list and single-message responses return attachments;
+Messages carry `attachments_json`, defaulting to an empty array. Create, list and single-message responses return attachments;
 caption edits preserve them. The AX message cache, optimistic send, retry identity
 and optional persisted read cache retain attachments. Failed sends restore files
 without discarding newer draft attachments; if recovery leaves more than ten,
 the user must remove files before resubmitting. New clients treat missing arrays as empty; older clients
-ignore additive response fields. Apply the migration before deploying Cloud.
+ignore additive response fields.
 
-Cards and download authorization share the [Work attachment contract](WORK_V1_CONTRACT.md#work-request-attachments).
+Cards and download authorization share the [Work attachment contract](WORK_V1_CONTRACT.md#attachments-and-files).
 Thumbnails are presentation only and never assert that a Worker supports a file
 format. Removal from a draft does not delete previously uploaded server objects.

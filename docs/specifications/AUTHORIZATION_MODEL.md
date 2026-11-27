@@ -171,7 +171,7 @@ Sensitive ownership or release operations may require a recent step-up proof tie
 Worker ownership reconciliation is a narrow migration recovery operation.
 It requires a desktop session created by fresh browser approval and an exact
 local Worker/runtime identity that Cloud can prove belongs to the signed-in
-user. Cloud may reconstruct a missing v8 installation binding only when there
+user. Cloud may reconstruct a missing installation binding only when there
 is no competing active binding and no recorded Release. It never transfers an
 active foreign-owned installation or uses email equality as ownership proof.
 The reconciliation is audited; ambiguous state requires operator investigation.
@@ -228,8 +228,8 @@ selected Worker. Only the Space owner may change Space workflow settings.
 Submission and validation enforce the effective workflow enabled flag and the
 requester's member rights. Dispatch continues to check current member rights,
 Worker grants, and accepted execution snapshots. Chat requires Chat permission.
-Migration 0022 converts existing Space-wide Work denials to per-workflow disabled
-flags and removes `settings.allowWork`; obsolete writes receive 400. History is
+Space-wide Work denial is expressed as per-workflow disabled flags; the former
+`settings.allowWork` is gone and writes to it receive 400. History is
 preserved, and accepted runs retain their execution evidence. Already-running
 provider calls are not cancelled by a settings change.
 
@@ -260,8 +260,7 @@ with the owner's current rights at acceptance. Revoked ownership prevents
 acceptance. Members cannot list, create, resend, or revoke pending invitations.
 Invitation acceptance cannot rewrite an existing member's rights.
 
-Migration 0025 removes obsolete `inviteMembers` snapshots from persisted Space
-settings. Deploy Cloud before the updated AX app. Older clients cannot bypass
+Persisted Space settings carry no `inviteMembers` snapshot, so clients cannot bypass
 the owner-only invitation boundary or current member rights.
 
 ## Three-right contract
@@ -295,9 +294,9 @@ them (audit event) before dropping the field, and the owner should be told. Malf
 overrides still fail closed to no rights.
 
 **Client compatibility.** Cloud keeps returning four fields in `permissions` and accepts
-the legacy four-field PATCH body, so shipped AX apps keep working (they send
-`useOwnWorkers` from state and hide it in the grid). New clients may send three fields.
-Deploy Cloud first; the field is removed from responses only after old clients age out.
+the four-field PATCH body (older apps send `useOwnWorkers` from state and hide it in the
+grid); clients may send three fields. The field is dropped from responses only after old
+clients age out.
 
 ## Private notes
 
@@ -306,13 +305,13 @@ members, and Workers cannot read it, and notes are never added to Thread or
 Worker context. A Thread note needs Thread view access when it is read or
 saved through the Thread; the owner keeps the note in My Notes after the
 Thread is deleted or they lose access to it. See
-[AX server state: Private notes](../architecture/AX_SERVER_STATE.md#private-notes).
+[AX server state: Private notes](../architecture/AX_SERVER_STATE.md#sidebar-activity-and-personal-data).
 
 ## People
 
 An accepted Space membership automatically establishes symmetric user-ID relationships with co-members. Pending invitations never grant People visibility. Authenticated `GET /api/people` exposes only established peers and supports no global search or caller-supplied owner. Known-Person invitations require both a caller-owned relationship and Space invitation rights; removal from a Space preserves the relationship but removes that Space authorization. See [People v1](PEOPLE_V1.md).
 
-Known-Person Space invitations persist `invitee_user_id`; recipient inbox access and Accept/Reject compare the authenticated user ID, independent of email changes. Email-addressed invitations remain available for new collaborators and bind identity on acceptance. Invitation selection grants no membership or consent. Both People and Space entry points use the same permission-checked invitation endpoint. Migration 0024 adds a unique pending Space/recipient identity constraint without changing accepted memberships.
+Known-Person Space invitations persist `invitee_user_id`; recipient inbox access and Accept/Reject compare the authenticated user ID, independent of email changes. Email-addressed invitations remain available for new collaborators and bind identity on acceptance. Invitation selection grants no membership or consent. Both People and Space entry points use the same permission-checked invitation endpoint.
 
 
 ## Shared Thread history and lifecycle
@@ -355,13 +354,12 @@ subsequent steps of superseded requests use isolated sessions. Reset does not
 undo work or replenish provider/billing quotas. Context-limit retry also records
 an attributed reset notice and preserves its existing latest-answer retry policy.
 
-Migration `0087_thread_history_permissions.sql` adds notice/contribution/context
-generation fields and insertion triggers. Historical hard-deleted contributions
+The schema carries notice, contribution and context-generation fields with
+insertion triggers. Historical hard-deleted contributions
 cannot be reconstructed, so all preexisting Threads conservatively require the
 Space owner for clear/delete. Newly created Threads use the precise creator
-exception. Apply the migration before deploying the updated Cloud routes; older
-clients may display notices as ordinary messages, while Cloud still protects
-them from edits/deletion. No local Worker or provider credential migration
+exception. Older clients may display notices as ordinary messages, while Cloud still
+protects them from edits and deletion. No local Worker or provider credential migration
 is required. Personal hide/unhide is outside this feature.
 
 ## Direct Space authorization
@@ -387,4 +385,4 @@ Owners grant exactly three rights per member, stored under `settings.memberPermi
 - `spaces:write` needs any right; `run.start` needs `chat` or `work`; read is inherent in membership. Owners hold all rights and cannot be overridden; invitation management, `runs:control` and `spaces:manage` are owner-only. Direct Spaces ignore stored overrides and use collaborator defaults.
 - Stored values count only when strictly `true`; absent or malformed values grant nothing. A member with no override gets role defaults. Invitation acceptance intersects the snapshot with the inviter's current rights.
 - `useOwnWorkers` is derived from `chat`, never stored or read from storage. Cloud still tolerates it in write bodies (ignored) so older clients keep working; Cloud responses may still include it for them.
-- Migration `0106_three_space_member_rights.sql` removes the legacy key from both snapshot maps, preserving other settings and leaving absent or malformed data untouched. It is idempotent. Previously independent `useOwnWorkers: false` records no longer restrict members who hold `chat`; the only access change is that those members can use their own Workers.
+- The legacy key is absent from both snapshot maps. Previously independent `useOwnWorkers: false` records no longer restrict members who hold `chat`; the only access change is that those members can use their own Workers.

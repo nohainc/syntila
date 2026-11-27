@@ -201,53 +201,19 @@ stream sequencing are specified in [Realtime synchronization 1.1](../specificati
 Existing Worker envelopes remain compatible; this does not change
 Worker Runtime or Local Worker Protocol transport.
 
-For model replacement, version 1 `workerSession` may also contain optional version
-1 `bootstrap`: Syntila Conversation/context IDs, a frozen canonical history
-sequence, and bounded canonical history text. Cloud route modules build this
-snapshot from Syntila history; Worker validates its scope and forwards it to
-the generic Engine. The Engine consumes it only for a new native session. Provider
-handles remain local. Strict older readers reject the additive field, requiring
-Worker/Engine rollout before Cloud emits it. See
-[Conversation Continuity Phase 14](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-14--same-worker-different-model).
-
-
-Phase 15 supplies bootstrap context for every manual durable Conversation Worker.
-An optional version 1 bootstrap `turnRevision` freezes the accepted request; each
-history entry carries `contextRevision`, and `throughSequence` freezes dispatch-time
-facts. Updated Worker/Engine readers must precede Cloud rollout. The generic
-Engine forwards full context for new sessions or missed context alongside a resumed
-turn, and records synchronization only after success. Worker switching remains a
-next-turn product selection. See
-[Phase 15](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-15--different-worker-continuity).
-
-
-Phase 16 adds version 1 structured Bootstrap/Delta/Stateless context documents
-inside bounded canonical context text. Stateless assignments and ExecuteRequest
-may include optional `statelessContext`, rejected for durable execution. Workflow
-state is explicit and provider independent. Worker/Engine updates must precede
-Cloud emission. See [Context Engine](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-16--provider-independent-context-engine).
-
-
-Phase 17 Context Engine documents distinguish persistent `conversationContext`
-from request/receiving-step `workflowExecutionContext` (version 1). Work and
-multi-step execution context is preserved in resumed deltas independently of
-Conversation history changes. Provider CLI transport remains Profile-defined.
-See [workflow-aware context](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-17--workflow-aware-context).
-
-
-Phase 18 Human Product Work history/request detail adds version 1 `workflowRun`,
-separate from the existing `turns` list. Worker turns expose `workflowRunId` and
-optional runtime-attempt association `runtimeRunId` (null without an attempt).
-Workflow execution context includes the stable logical WorkflowRun identity.
-Native sessions remain local and Local Worker Protocol framing is unchanged.
-Deploy Cloud only after the ownership schema update. See
-[Phase 18](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-18--workflowrun-and-workerturn-ownership).
-
-
-Phase 19 version 1 WorkflowRun read models add trigger-message identity, persisted
-start/completion evidence and nested version 1 `stepRuns`. Turns add immutable
-`workflowStepRunId`; context steps include StepRun identity and role. Step results
-use the existing bounded Human Product text projection. Native Session handles
-remain local; Local Worker Protocol framing is unchanged. Apply schema migration
-0016 before Cloud deployment. See
-[Phase 19](../specifications/CONVERSATION_CONTINUITY_V1.md#phase-19--workflowrun-and-workflowsteprun-data-model).
+Durable assignments carry a version 1 `workerSession` (session, Conversation and Worker
+IDs, `baseContextRevision`) and, when a Worker needs history, an optional `bootstrap`:
+Syntila Conversation and context IDs, a frozen canonical history sequence,
+`turnRevision` and bounded canonical history text, where each history entry carries its
+`contextRevision` and `throughSequence` freezes dispatch-time facts. Cloud route modules
+build this from Syntila history, Connect validates its scope and forwards it to the
+generic Engine, and the Engine consumes it only to start or catch up a native session;
+provider handles stay local. Stateless assignments may carry `statelessContext`
+(rejected for durable execution). Context documents (Bootstrap, Delta, Stateless) are
+version 1, with `conversationContext` separate from request-scoped
+`workflowExecutionContext`, all provider independent. Work history and request detail
+add `workflowRun` (with `stepRuns`) beside `turns`; turns expose `workflowRunId`,
+`workflowStepRunId` and an optional `runtimeRunId`. These fields are additive: strict
+older readers reject them, so Connect and Engine readers must be updated before Cloud
+emits them. Local Worker Protocol framing is otherwise unchanged. Details:
+[Conversation continuity](../specifications/CONVERSATION_CONTINUITY_V1.md).

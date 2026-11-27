@@ -1,9 +1,8 @@
 # Syntila email template architecture
 
-This document records the Phase 1 audit and the source-controlled template
-contract. Rendering is deliberately separate from sender resolution and
-Cloudflare Email Sending. Authentication and invitation behavior continues to
-use the existing callbacks and delivery service until a later migration phase.
+This document records the source-controlled email template contract. Rendering is
+deliberately separate from sender resolution and Cloudflare Email Sending, and
+authentication and invitation emails use the existing callbacks and delivery service.
 
 ## Event matrix
 

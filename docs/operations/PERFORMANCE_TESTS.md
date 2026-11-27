@@ -1,6 +1,6 @@
 # Local performance tests
 
-`scripts/perf-local.sh` measures local Work requests using a real configured Worker and provider. `--chats N` controls the number of requests, `--parallel N` runs up to eight requests concurrently on separate Threads (default one), `--workflow chat|work` chooses the workflow, `--model ID` selects a model, `--json FILE` saves a report, and `--no-thresholds` disables threshold enforcement. `SYNTILA_PERF_WORKER_ID` selects a Worker. See the script help and `scripts/perf-thresholds.json` for current options and limits.
+`scripts/local-perf.sh` measures local Work requests using a real configured Worker and provider. `--chats N` controls the number of requests, `--parallel N` runs up to eight requests concurrently on separate Threads (default one), `--workflow chat|work` chooses the workflow, `--model ID` selects a model, `--json FILE` saves a report, and `--no-thresholds` disables threshold enforcement. `SYNTILA_PERF_WORKER_ID` selects a Worker. See the script help and `scripts/perf-thresholds.json` for current options and limits.
 
 The runner reports end-to-end request timing and available persisted admission and dispatch intervals. Historical requests are informational. Percentiles from small samples are not reliable; compare representative runs on a quiet machine. Provider requests may consume quota, and stateful Work can create local files.
 

@@ -1,6 +1,6 @@
 # Syntila External Worker SDK
 
-Repository-local Dart author tooling for Worker Plugin Protocol 1.0. This
+Repository-local Dart author tooling for the Syntila MCP Worker profile. This
 package is not published yet. Add a path dependency to this directory and
 import `package:syntila_external_worker_sdk/syntila_external_worker_sdk.dart`.
 

@@ -1,7 +1,5 @@
 # AX Rendering Diagnostics V1
 
-Status: Phase 1 implementation
-
 ## Purpose
 
 The AX Web App has one bounded, privacy-safe diagnostic reporter for Flutter

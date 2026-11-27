@@ -1,6 +1,6 @@
 # AX Thread interaction lifecycle V1
 
-Phase 5 moves interaction side effects out of ThreadPage rendering callbacks.
+Interaction side effects live outside ThreadPage rendering callbacks.
 
 ## Space draft lifecycle
 

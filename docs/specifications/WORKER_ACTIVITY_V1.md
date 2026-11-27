@@ -99,7 +99,7 @@ by tool name. Messages arrive per completed assistant message; token-level
 partial messages (`--include-partial-messages`) are intentionally not enabled
 because they would multiply provider output against the Engine's output limit.
 
-The official Codex Profile (`docs/profile-templates/chatgpt-codex-runtime-catalog.v2.json`)
+The official Codex Profile (`apps/profile_lab/assets/profiles/chatgpt.json`)
 declares `activity.adapter: codex-jsonl` and maps the Codex `exec --json` item
 types to user-facing activity titles: `reasoning` and `todo_list` to
 `model.status` ("Thinking", "Updating the plan"), `command_execution`,
@@ -115,8 +115,7 @@ The sanitized replay streams in
 `packages/tool-profile/test/fixtures/{codex-events,antigravity-events}` cover
 normal tool pairs, repeated calls, missing identifiers, provider failures, and
 malformed lines. Real-provider acceptance remains opt-in because it requires a
-locally authenticated provider account; recorded evidence is retained under
-`docs/acceptance/real-provider/`.
+locally authenticated provider account.
 
 Profile Lab replays a bounded, sanitized Codex or agy JSONL fixture against the
 candidate mapping before publication evidence is eligible for Cloud. The replay

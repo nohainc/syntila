@@ -10,7 +10,7 @@ import { scheduleLostWorkflowCheck } from "./thread-coordinator.js";
 export const ASSIGNMENT_TERMINAL_EVENT_TYPE = "assignment-terminal";
 
 /** After this many failed sends the sweep stops; the waiter's own bounded
- * reconciliation still observes the terminal row in D1. */
+ * reconciliation still observes the terminal row in PostgreSQL. */
 export const MAX_WORKFLOW_SIGNAL_ATTEMPTS = 5;
 
 /** Terminal rows older than this are never re-signalled by the sweep. */
@@ -23,7 +23,7 @@ const TERMINAL_SQL = TERMINAL_STATUSES.map((status) => `'${status}'`).join(
 
 /**
  * Identity carried by the event. It is a hint, never evidence: the Workflow
- * re-reads the assignment from D1 before acting, so a stale, duplicated or
+ * re-reads the assignment from PostgreSQL before acting, so a stale, duplicated or
  * forged payload can at worst cause one extra read.
  */
 export interface AssignmentTerminalEventPayload {

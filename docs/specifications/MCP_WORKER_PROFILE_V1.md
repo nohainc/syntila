@@ -92,7 +92,7 @@ Input `{ "mode": "passive | live" }`; `structuredContent` is
 `state` is `ready`, `setup_required`, `sign_in_required`, `unavailable` or
 `failed`, and each of at most 32 checks is `{ code, ok, message }` with a
 message of 1-1,024 characters. A malformed check is a protocol violation. The
-Engine redacts check, progress and error messages like the NDJSON host.
+Engine redacts check, progress and error messages as described in [Worker plugin package and manifest](WORKER_PLUGIN_PROTOCOL_V1.md#redaction).
 
 ### `syntila.models` (optional)
 
@@ -121,19 +121,17 @@ unknown version, advertisement, required tools, tool definition shape and unique
 result shapes, a single terminal result, and unknown-method errors. Execute
 validation checks the returned text against the UTF-8 output limit, session
 state, and bounded, safe relative artifact paths. This checks the sampled reply;
-it does not prove all future replies will be within the limit. It
-does not yet re-express all 21 NDJSON plugin cases.
+it does not prove all future replies will be within the limit.
 
 ## Local Worker Protocol 4.3: how the Engine receives an MCP Worker
 
 An MCP Worker is a plugin package whose executor says `"protocol": "mcp"`. On
 `initialize` and `execute.request` the `executor` object then carries
 `toolPins` (tool name -> SHA-256 of the consented definition, 1-128 entries) and
-the frame must name protocol `4.3`; a 4.2 peer rejects it. NDJSON executors omit
-both keys and keep protocol `4.2`. The Service, not Cloud, supplies the pins from
+the frame must name protocol `4.3`; a 4.2 peer rejects it. The Service, not Cloud, supplies the pins from
 the consent record. The Engine launches the server with the same digest pin,
-limits and tree cleanup as an NDJSON plugin, requires the Worker-profile
+limits and tree cleanup as any plugin, requires the Worker-profile
 marker, refuses any tool whose definition differs from its pin, and maps results
-and errors onto the existing stable issue codes. MCP conformance is available through the package runner described above; it does not yet cover the full NDJSON suite.
+and errors onto the existing stable issue codes. MCP conformance is available through the package runner described above;
 
 The assembled prompt may differ from the prompt used by an official Worker due to session synchronization, advisory read-only instructions, or output-image guidance. Workers should choose the representation appropriate for their provider; neither representation grants extra permissions.

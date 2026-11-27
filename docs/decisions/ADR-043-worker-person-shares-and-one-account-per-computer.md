@@ -35,7 +35,7 @@ defence against a modified Connect on a computer its user controls.
 ### 2. Person Shares
 
 `worker_person_shares(worker_id, user_id, max_concurrent_requests,
-max_run_seconds_per_month)` (migration `0046`). No expiry. Deleting the row
+max_run_seconds_per_month)`. No expiry. Deleting the row
 revokes the share; it takes effect at the next admission and dispatch check.
 
 - **Who:** only someone in the owner's People (`people_relationships` or a

@@ -1,6 +1,6 @@
 # Email delivery verification
 
-The sender migration has two separate verification layers:
+Email sender setup has two separate verification layers:
 
 1. The automated tests verify sender resolution, controlled fallback, failure
    classification, authentication/invitation behavior, and diagnostic
@@ -72,10 +72,8 @@ accepted the message.
 The focused Cloud test suite covers the deterministic parts of this runbook:
 
 ```bash
-pnpm --dir apps/cloud exec vitest run \
-  test/email-config.test.ts \
-  test/auth.test.ts \
-  test/invitation-email.test.ts
+pnpm --dir apps/cloud exec vitest run test/email test/auth-worker.test.ts
+scripts/test-backend.sh invitation-email
 ```
 
 The configuration gate is side-effect free:
@@ -121,7 +119,3 @@ redeploy. Do not depend on the application fallback when Cloudflare Email
 Sending itself is unavailable, and do not weaken email verification or reset
 security to recover from a delivery incident.
 
-After verification, remove any remaining legacy sender configuration from
-deployment systems and operational notes. The configuration validator checks
-the active authentication and invitation modules, Wrangler configurations,
-and the retained legacy-address rejection guard.

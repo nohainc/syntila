@@ -24,8 +24,8 @@ Thread revisions are computed after membership-specific permissions and
 Space ordering are applied. Denied or missing resources never become `304`
 responses. Workflow catalog publication remains on its existing public route.
 The server still queries and constructs the authorized representation; this
-change reduces response bandwidth, not D1 reads. No shared edge cache is added.
-Hashing uses the Workers [Web Crypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/).
+change reduces response bandwidth, not database reads. No shared edge cache is added.
+Hashing uses the Web Crypto API (`crypto.subtle`).
 
 AX sends validators only for these three reads and retains their authoritative
 JSON in a bounded, memory-only transport cache: at most 16 representations,

@@ -1,4 +1,4 @@
-# Worker-first security review checklist (P11)
+# Worker-first security review checklist
 
 Status: **checklist only; no item has been reviewed yet.** Each line names what to check and where the code or tests live. Mark it with the date, the reviewer and the evidence when done.
 
@@ -9,7 +9,7 @@ Status: **checklist only; no item has been reviewed yet.** Each line names what 
 ## Worker keys and pairing (ADR-034)
 - [ ] Pairing challenge: single use, 10-minute expiry, only its digest is stored (`worker-agents.ts`, `test/domain/worker-pairing*`).
 - [ ] The private key never leaves the host; every request signs a server nonce; nonces are consumed in their own statement (replay refused even after a failed attempt).
-- [ ] Revoking a Worker closes its sessions and assignments immediately, on every node (`assignment-revocation.ts`, `messaging/session.ts`). Revocation outside space events is still open (see P9 status).
+- [ ] Revoking a Worker closes its sessions and assignments immediately, on every node (`assignment-revocation.ts`, `messaging/session.ts`). Revocation outside Space events is still open.
 - [ ] Rotating the credential invalidates the old key.
 
 ## Session fencing

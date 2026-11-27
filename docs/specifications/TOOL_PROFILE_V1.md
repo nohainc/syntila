@@ -1,1204 +1,416 @@
 # Tool Profile v1 Specification
 
-**Status:** Architecture v8 normative profile contract  
-**Architecture:** Architecture v8  
-**Decision:** ADR-018
+**Decision:** [ADR-015](../decisions/ADR-015-first-party-worker-v1-contract.md)
+(official Worker Types resolve through signed Profiles). Publication, signing and
+delivery are in [Worker Profile V9](WORKER_PROFILE_V9.md); authoring is in
+[Profile Lab](PROFILE_LAB.md); the evidence format is the
+[Tool Profile evidence contract](TOOL_PROFILE_EVIDENCE_CONTRACT.md).
 
-## 1. Purpose
+## Purpose
 
-Tool Profile v1 is the declarative contract used by the generic Syntila CLI
-Worker Engine to integrate one approved local CLI tool.
+A Tool Profile is the declarative contract the generic CLI Worker Engine uses to
+integrate one approved local CLI tool (one Profile per Worker Type). It is
+provider-specific data constrained by a finite schema, never executable code. The
+authoritative schema is the TypeScript validator
+`packages/tool-profile/src/index.ts` (it exports `TOOL_PROFILE_LIMITS` and a JSON
+Schema) with its Dart counterpart in `packages/tool_profile_v1`; the two must stay
+semantically aligned. This document explains the semantics. Official Profile files
+live in `apps/profile_lab/assets/profiles/` (`chatgpt`, `gemini`, `claude`,
+`copilot`, `grok`).
 
-A Profile release is immutable, signed, independently versioned, provider/tool
-specific, and constrained by a finite schema. It is never arbitrary executable
-code.
+## Design principles
 
-## 2. Design principles
+1. Arguments are structured arrays, never shell strings; Profiles never enable shell
+   execution.
+2. Placeholders come from a closed list; selectors use a bounded property-only
+   syntax; match and action rules use a fixed finite set.
+3. No loops, expressions, arbitrary file I/O, network access or helper subprocesses.
+   The only filesystem read is the typed local JSON config check (see Passive probe).
+4. Engine hard limits override Profile values; unknown fields are rejected at every
+   Profile object, and payloads over 256 KiB are rejected.
+5. Material provider behavior changes should be a new Profile revision, not large
+   in-profile branching. Normal users do not edit official Profiles.
 
-1. Arguments are structured arrays, never shell command strings.
-2. Profiles never enable shell execution.
-3. Placeholders come from a closed list.
-4. Selectors use a bounded JSON-path-like syntax implemented by the Engine.
-5. Match/action rules use a fixed finite operation set.
-6. Profiles cannot define loops, arbitrary expressions, arbitrary file I/O,
-   network access, or helper subprocesses. The sole bounded filesystem read is
-   the typed local JSON config check defined in section 9.1.
-7. Engine hard limits override Profile values.
-8. Material provider behavior changes should prefer a new Profile release over
-   large in-profile branching.
-9. Profile releases are tested like code.
-10. Normal users do not edit official Profiles.
+**Schema evolution gate.** v1 is closed: no escape hatches, expressions, scripts or
+provider-only interpreter branches. An unsupported CLI behavior needs (1) the
+concrete provider behavior and the missing primitive, (2) evidence it is generic
+across integrations (fixture CLI where practical), (3) justification for any
+integration-specific handling, (4) an update to the
+[authorization model](AUTHORIZATION_MODEL.md) and this spec with the new authority,
+inputs and bounds before implementation, and (5) a schema v2 only when existing finite
+primitives cannot express it. A v2 would have its own strict validator and
+interpreter; v1 payloads are never reinterpreted, and Connect and the Engine reject
+unsupported schema versions before execution. No v2 exists.
 
-## 3. Top-level shape
+## Top-level shape
 
-Conceptual JSON:
-
-~~~json
+```json
 {
   "schemaVersion": 1,
   "profileDefinitionId": "chatgpt-codex",
   "releaseVersion": 10,
   "logicalWorkerTypeId": "chatgpt",
   "engineFamily": "cli",
-  "engineCompatibility": {
-    "min": "1.2.0",
-    "maxExclusive": "2.0.0"
-  },
-  "providerTool": {},
-  "environment": {},
-  "probe": {},
-  "execution": {},
-  "session": {},
-  "model": {},
-  "timeout": {},
-  "sandbox": {},
-  "progress": {},
-  "errors": {},
+  "engineCompatibility": { "min": "1.2.0", "maxExclusive": "2.0.0" },
+  "providerTool": {}, "environment": {}, "probe": {}, "execution": {},
+  "session": {}, "model": {}, "timeout": {}, "sandbox": {}, "progress": {},
+  "activity": {}, "usage": {}, "errors": {}, "context": {}, "capabilities": [],
   "compatibilityOverrides": []
 }
-~~~
+```
 
-Unknown fields are rejected unless a later schema version explicitly permits
-extensions. The former top-level `capabilities` field is retired; v1 no longer
-accepts or interprets it. Development databases must apply the destructive
-release reset migration before authoring new releases.
+`activity`, `context` and `capabilities` are optional; `usage` is optional in the
+schema but required for publication. `capabilities` (a unique list drawn from
+`authorized_context_read`, `thread_write`, `test_execution`,
+`independent_verification`) states what the Worker Type can do for a Workflow Step;
+a Profile without it makes no claim and Cloud applies no extra filter.
 
-The canonical v1 validator and inferred TypeScript model are maintained
-together in [`packages/tool-profile/src/index.ts`](../../packages/tool-profile/src/index.ts).
-The same source exports a JSON Schema representation. Its engine-owned bounds
-are published as `TOOL_PROFILE_LIMITS`; the validator rejects payloads over
-256 KiB and rejects unknown fields at every Profile-defined object.
+**Identity.** `profileDefinitionId` is a bounded stable ID, `releaseVersion` a
+positive monotonic integer (the published revision), `engineFamily` is `cli`, and
+`logicalWorkerTypeId` matches the Worker catalog entry (the stable product identity;
+a Worker Type can move to a replacement definition).
 
-The ChatGPT development starter is maintained in
-[`chatgpt-codex.v1.json`](../../packages/tool-profile/test/fixtures/chatgpt-codex.v1.json).
-The Cloud starter after ordered migrations must contain the same payload; the
-provisioning test checks equality and the acceptance manifest's canonical
-reference. The immutable baseline retains its original seed;
-`0007_chat_profile_starter_attestation.sql` updates only that unchanged template.
-`0008_codex_compatibility_approval_policy.sql` preserves explicit
-`--ask-for-approval never` in the compatibility argument layout, updating only
-the unchanged official starter from the preceding migration.
-Profile Lab clones the optional Cloud starter rather than maintaining another
-provider payload. Published releases and historical acceptance evidence remain
-immutable when a development starter changes.
+**Engine compatibility.** Connect and the Engine reject a Profile outside the running
+Engine's range, using full SemVer precedence (prerelease ordered, build metadata
+ignored) through the shared comparator.
 
-Chat's generic `provider_default` policy expands to `--sandbox read-only`;
-Work's `restricted` policy expands to `--sandbox workspace-write`. Argument
-expansion tests cover the default and all compatibility override layouts, both
-fresh and resumed conversations, and preserve the existing full-access mapping.
+**Policy ownership.** Cloud resolves workflow policy and carries it in the
+assignment. A Profile needs no capability declaration for Chat or Work; its signed
+sandbox mapping decides provider arguments, and the web app decides which Workflows
+and Workers can be selected. Chat's `provider_default` policy expands to
+`--sandbox read-only` and Work's `restricted` to `--sandbox workspace-write` for
+Codex; AGY uses `--mode plan` for Chat and `--mode accept-edits` for Work. Argument
+expansion is tested for the base layout and every override layout, fresh and resumed.
 
-Workflow policy is resolved by Cloud and carried in the assignment. Connect
-does not require a Worker or Profile capability declaration for Chat or Work.
-The Profile's signed sandbox mapping still determines the provider arguments;
-the web app owns which workflows and Workers may be selected.
+## Provider tool declaration
 
-The Antigravity starter uses `--mode plan` for Chat's provider-default policy
-and `--mode accept-edits` for Work's restricted policy. AGY does not expose a
-separate Syntila-style chat mode; plan mode is the closest provider mode and
-the web app remains responsible for workflow selection. See the official
-[sandbox contract](https://www.agy.dev/docs/sandbox/) and
-[execution modes](https://www.agy.dev/docs/cli/modes/).
-
-### 3.1 Schema evolution gate
-
-Profile v1 is closed. Do not add optional escape hatches, expressions, scripts,
-or provider-only interpreter branches to make one integration fit. For an
-unsupported CLI behavior, the proposal must:
-
-1. document the concrete provider behavior and the missing v1 primitive;
-2. test whether the behavior is generic across integrations, using at least a
-   fixture CLI/Profile where practical;
-3. justify any integration-specific handling and explain why bounded Profile
-   data cannot represent it safely;
-4. update the [authorization model](AUTHORIZATION_MODEL.md) and this
-   specification with the new authority, inputs, and resource bounds before
-   implementation;
-5. add schema v2 only when the behavior needs new Profile semantics that cannot
-   be expressed by the existing finite v1 primitives.
-
-When v2 is justified, it must have its own strict versioned validator and
-interpreter semantics. v1 payloads continue through the unchanged v1 validator;
-they are never reinterpreted as v2, and neither validator accepts unknown
-fields. Connect and Engine reject unsupported schema versions before
-execution. Profile releases remain immutable and signed over the schema
-version and complete behavior payload. No schema v2 is defined by this
-specification.
-
-## 4. Identity
-
-Required:
-
-~~~text
-schemaVersion
-profileDefinitionId
-releaseVersion
-logicalWorkerTypeId
-engineFamily
-~~~
-
-Constraints:
-- identifiers are bounded stable IDs;
-- releaseVersion is a positive monotonic integer within one definition;
-- engineFamily v1 is `cli`;
-- logicalWorkerTypeId matches the admitted Worker catalog entry.
-
-The logical Worker Type ID is the stable product identity from
-`worker_catalog`; `profileDefinitionId` identifies its implementation
-binding. A Worker can move to a replacement Profile Definition without
-changing its product identity. Releases remain versioned within one Profile
-Definition, and Cloud allows at most one active Definition per Worker.
-
-## 5. Engine compatibility
-
-~~~json
-{
-  "engineCompatibility": {
-    "min": "1.2.0",
-    "maxExclusive": "2.0.0"
-  }
-}
-~~~
-
-Connect/Engine rejects a Profile outside the running Engine version range.
-Semantic-version checks use full SemVer precedence, including prerelease
-ordering; build metadata does not affect compatibility. Both Engine and
-Connect use the shared Tool Profile v1 comparator.
-
-## 6. Provider tool declaration
-
-Conceptual:
-
-~~~json
+```json
 {
   "providerTool": {
     "name": "Codex CLI",
     "executableCandidates": ["codex"],
-    "discovery": {
-      "standardLocations": [
-        "{{home}}/.local/bin",
-        "/opt/homebrew/bin",
-        "/usr/local/bin"
-      ],
-      "allowPathSearch": true
-    },
+    "discovery": { "standardLocations": ["{{home}}/.local/bin"], "allowPathSearch": true },
     "versionProbe": {
-      "arguments": ["--version"],
-      "timeoutMs": 10000,
-      "source": "stdout",
-      "extract": {
-        "kind": "regex_capture",
-        "patternId": "semver"
-      }
+      "arguments": ["--version"], "timeoutMs": 10000, "source": "stdout",
+      "extract": { "kind": "regex_capture", "patternId": "semver" }
     }
   }
 }
-~~~
+```
 
-The Engine executes `providerTool.executableCandidates`' discovered executable
-with the declared `versionProbe.arguments`, bounded by `versionProbe.timeoutMs`.
-It extracts only from the configured `source` stream and applies the declared
-`extract` rule. The CLI Worker Engine and Profile Lab use the same shared
-runtime interpreter for this operation.
+The Engine runs the discovered executable with `versionProbe.arguments`, bounded by
+`timeoutMs`, and extracts only from the configured stream with the declared rule;
+pattern IDs are Engine-owned, never user regular expressions. Profile Lab and the
+Engine share this interpreter.
 
-The detected CLI version is informational. Profiles do not declare provider CLI
-support ranges. Bundled Profile files and new Profile Lab drafts omit
-`providerTool.supportedVersions`; both Dart and TypeScript validators accept its
-absence without adding a default field or changing the candidate digest.
-Existing payloads that contain the field remain readable, but its values never
-gate readiness, execution, admission, or publication. Version-specific overrides
-are selected solely by their own `providerVersion` ranges (section 23); versions
-outside those ranges use the base Profile.
+The detected version is informational. Profiles declare no support range;
+`providerTool.supportedVersions` is accepted for old payloads but never gates
+readiness, execution, admission or publication, and new Profiles omit it.
+Version-specific overrides select solely by their own `providerVersion` range; other
+versions use the base Profile. The probe still requires the CLI to start and answer.
 
-The version probe still requires the CLI to start and answer its version command.
-Profile Lab records the exact tested version as evidence, without inferring
-support limits from that test. Publication continues to require fresh evidence
-for the exact candidate digest; removing ranges changes the digest and requires
-retesting before publication. Engine compatibility bounds remain enforced.
+**Discovery restrictions.** Candidate names contain no path separators and no
+absolute Profile paths; standard locations use approved placeholders only; the Engine
+owns path count and depth and adds generic safe locations (user CLI directories,
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`). A cached absolute path is
+tried first only after re-checking identity, bounds, expected name and executable
+status. With `allowPathSearch` the Engine searches the inherited `PATH` independently
+of the environment passed to the provider. Grok may also use `{{home}}/.grok/bin`. No
+Syntila-specific variable is needed for discovery.
 
-### 6.1 Discovery restrictions
+## Placeholders and environment
 
-- executable candidate names cannot contain path separators;
-- arbitrary Profile absolute executable paths are forbidden;
-- standard locations may use approved path placeholders only;
-- Engine owns maximum path count/search depth;
-- Connect/Engine may add generic safe OS locations;
-- a cached absolute path may be tried first only after checking its identity,
-  path bounds, expected executable name, and executable status again;
-- when `allowPathSearch` is true, Engine searches the inherited OS `PATH`
-  independently of the environment keys passed through to the provider;
-- no Syntila-specific environment variable is required for discovery.
+Allowed placeholders: `{{prompt}}`, `{{model}}`, `{{sessionId}}`, `{{timeoutMs}}`,
+`{{timeoutSeconds}}`, `{{workingDirectory}}`, `{{home}}`, `{{workerStateDirectory}}`,
+plus `{{reasoningEffort}}` and the slot-scoped `{{additionalDirectory}}`,
+`{{mcpConfigPath}}`, `{{mcpServersToml}}` (the same servers as an inline TOML table
+for CLIs configured by a `-c` override) and `{{mcpServer}}` (inside a
+`forEachMcpServer` slot). Substitution never invokes a shell; unknown placeholders fail
+validation; a missing value for a referenced placeholder is a controlled execution
+failure. `timeoutMs` is `max(1, assignmentTimeoutMs - providerReserveMs)` and
+`timeoutSeconds` its ceiling in seconds (minimum 1).
 
-Engine generic locations include the common user CLI directories under the OS
-home directory and standard system locations such as `/opt/homebrew/bin`,
-`/usr/local/bin`, `/usr/bin`, and `/bin` on macOS. These are added by Engine;
-Profiles do not need to enumerate every normal installation location.
+`environment.passthrough` names must satisfy the Engine policy (no reserved Syntila
+or Cloud secrets); `environment.set` holds bounded constants. Whole-environment
+inheritance is forbidden and Profiles cannot remove Connect's baseline or safety
+values; the Engine builds the final environment.
 
-## 7. Closed placeholders
+## Probes
 
-Tool Profile v1 may use only approved placeholders:
+**Passive probe** never invokes a model. Each check runs arguments on the
+already-resolved executable (never a second program) with a timeout,
+`successExitCodes` and a `failureIssueCode`. A bounded **config check**
+(`configChecks`, at most 8) may read one small JSON file below the Engine-approved
+home directory: `root: "home"`, a relative path with no `.` or `..`, `format: "json"`,
+`maxBytes` at most 64 KiB. The Engine applies property-only selectors and returns only
+passed, warning or failed plus a stable issue code, never file contents. Missing,
+malformed and oversized files have declared finite outcomes (`onMissing` is not an
+authentication failure unless explicitly `failed`); no globbing, directory listing,
+symlink traversal or other roots. `requiredEnvironmentAny` checks names for non-empty
+values and `whenEnvironmentMissing` decides the result; values are never returned.
 
-~~~text
-{{prompt}}
-{{model}}
-{{sessionId}}
-{{timeoutMs}}
-{{timeoutSeconds}}
-{{workingDirectory}}
-{{home}}
-{{workerStateDirectory}}
-~~~
+**Live probe** is an explicit test with a Syntila-controlled prompt (`Reply with exactly
+the word OK. Do not use tools.`), a stateless session and a 30-second ceiling; the
+final text must equal `OK` after trimming. It may consume quota.
+`probe.live.requiredForReadiness` ties scheduling readiness to a successful live test
+for the current Profile digest and CLI version (passive discovery does not
+authenticate the account).
 
-The Engine performs substitution without invoking a shell.
+## Execution
 
-Unknown placeholders fail Profile validation.
-
-No nested expressions or function calls exist.
-
-At execution time a missing value for a referenced placeholder is a controlled
-Profile execution failure. `timeoutMs` expands to
-`max(1, assignmentTimeoutMs - providerReserveMs)`; `timeoutSeconds` is the
-ceiling of that value in seconds, with a minimum of one.
-
-## 8. Environment
-
-Conceptual:
-
-~~~json
-{
-  "environment": {
-    "passthrough": [
-      "CODEX_HOME",
-      "XDG_CONFIG_HOME"
-    ],
-    "set": {
-      "NO_COLOR": "1"
-    }
-  }
-}
-~~~
-
-Rules:
-- passthrough names must satisfy Engine environment policy;
-- reserved Syntila/Cloud secret variables cannot be requested;
-- complete parent environment inheritance is forbidden;
-- constant values are bounded;
-- approved placeholders may be used where the schema permits;
-- Profiles cannot remove Connect-enforced baseline/safety values.
-
-The Engine constructs the final provider environment.
-
-## 9. Passive probe
-
-A passive probe must not invoke a provider model.
-
-Conceptual:
-
-~~~json
-{
-  "probe": {
-    "passive": {
-      "checks": [
-        {
-          "id": "authentication",
-          "arguments": ["login", "status"],
-          "timeoutMs": 10000,
-          "successExitCodes": [0],
-          "failureIssueCode": "provider_authentication_required"
-        }
-      ]
-    }
-  }
-}
-~~~
-
-The already-resolved provider executable is always used. A Profile cannot
-execute a second arbitrary program for probes.
-
-### 9.1 Bounded local config check
-
-A passive probe may read a small JSON file below the Engine-approved local home
-directory through `configChecks`. A check must declare `root: "home"`, a
-relative path with no `.`/`..` segments, `format: "json"`, and a `maxBytes`
-value no greater than 64 KiB. The Engine opens only that file, parses bounded
-JSON, applies the same property-only selectors as event rules, and returns
-only a passed/warning/failed state and stable issue code. It never exposes file
-contents to Cloud or the UI. Missing, malformed, and oversized files are
-handled by declared finite outcomes. No globbing, directory listing, symlink
-traversal, arbitrary roots, or other file reads are permitted. Required
-environment variables can be checked by name for non-empty values using
-`requiredEnvironmentAny`; if none are present, the rule's explicit
-`whenEnvironmentMissing` result applies. A missing file or home directory uses
-`onMissing` and does not imply an authentication failure unless that outcome
-is explicitly `failed`. The conditions and no-match result make the config
-decision exhaustive. Values are never returned.
-
-## 10. Live probe
-
-Live probe uses normal Profile execution with a Syntila-controlled test
-request and a hard 30-second timeout ceiling:
-
-~~~text
-Reply with exactly the word OK. Do not use tools.
-~~~
-
-The Engine owns the prompt and exact expected final text `OK`. Profiles cannot
-change either. The Engine runs the Profile's normal transport and output parser
-with a stateless session, applies the remaining request deadline, and fails
-closed when the final text does not exactly match `OK` after trimming.
-
-Live tests are explicit because they may consume provider quota.
-
-## 11. Execution arguments
-
-Conceptual Codex-like Profile:
-
-~~~json
+```json
 {
   "execution": {
     "arguments": [
-      "--ask-for-approval", "never",
-      {"sandboxPolicyMapping": true},
-      "exec",
-      "--json",
-      "--color", "never",
-      "--skip-git-repo-check",
-      "--cd", "{{workingDirectory}}",
-      {"modelArguments": true},
-      {"sessionResumeArguments": true},
-      {"ifAbsent": "sessionId", "ifSessionPolicy": "stateless",
-       "values": ["--ephemeral"]},
-      {"providerTimeoutArguments": true},
-      "-"
+      "--ask-for-approval", "never", {"sandboxPolicyMapping": true},
+      "exec", "--json", "--cd", "{{workingDirectory}}",
+      {"modelArguments": true}, {"sessionResumeArguments": true},
+      {"ifAbsent": "sessionId", "ifSessionPolicy": "stateless", "values": ["--ephemeral"]},
+      {"providerTimeoutArguments": true}, "-"
     ],
-    "stdin": {
-      "mode": "raw_text",
-      "value": "{{prompt}}"
-    },
-    "output": {
-      "mode": "jsonl"
-    }
+    "stdin": { "mode": "raw_text", "value": "{{prompt}}" },
+    "output": { "mode": "jsonl" }
   }
 }
-~~~
-
-Conditional argument forms are fixed schema constructs, not expressions.
-Every execution argument list has exactly one
-`{"sandboxPolicyMapping": true}` slot. The Engine replaces it with the
-arguments mapped for the authorized execution policy, preserving provider CLI
-argument position. It also contains one `{"providerTimeoutArguments": true}`
-slot and contains one `{"modelArguments": true}` slot when model arguments are
-declared, plus one `{"sessionResumeArguments": true}` slot when sessions are
-supported. These markers insert the corresponding section's fixed argument
-vector at that position. The profile's `sandbox.mappings` define finite vectors
-for `restricted`, `provider_default`, and `full_access`.
-
-An execution argument list may contain at most one
-`{"forEachAdditionalDirectory": ["--add-dir", "{{additionalDirectory}}"]}`
-slot (1–8 values, at least one containing `{{additionalDirectory}}`). The
-Engine repeats the values once per Connect-verified additional folder from
-`execute.request` `additionalDirectories`, in order, and emits nothing when
-there are none. `{{additionalDirectory}}` is invalid anywhere else. When an
-assignment has additional folders, the base argument list and every
-compatibility override that replaces it must contain the slot; otherwise the
-Connect fails the assignment instead of running without the folders.
-
-Connect Local Worker Protocol 4.0 assignments can select only `restricted`
-or `provider_default`; omitted values default to `restricted`. `full_access`
-remains a schema-level profile mapping for products with a separate explicit
-authorization path and is not representable in normal assignments.
-
-Allowed v1 conditions are limited to:
-- known field present/absent, equals/not-equals, one-of bounded constants, or
-  has a JSON value type;
-- session policy equality;
-- bounded Engine-defined execution policy.
-
-### 11.1 MCP configuration slot (ADR-028)
-
-An execution argument list may contain at most one
-`{"mcpConfigArguments": ["--mcp-config", "{{mcpConfigPath}}"]}` slot (1-8
-values, at least one containing `{{mcpConfigPath}}`). `{{mcpConfigPath}}` is
-invalid anywhere else. Per [section 3.1](#31-schema-evolution-gate):
-
-1. **Provider behaviour / missing primitive.** Official CLIs can load MCP
-   servers from a config file given on the command line (for example
-   `claude --mcp-config <file> --strict-mcp-config`). v1 has no way to pass a
-   per-execution, Engine-generated file path. This is generic across CLIs that
-   take a file-path flag; CLIs that only read a global settings file or use a
-   different file format are **not** covered and need a later, separately
-   justified primitive.
-2. **Generic.** The slot names no provider; the Engine knows only the
-   `{"mcpServers": {name: {command, args, env}}}` file shape.
-3. **Authority.** The Engine writes the file only from `mcpServers` in
-   `execute.request`, which the Connect service populates solely from servers
-   the user consented to and enabled for that Step. See the
-   [authorization model](AUTHORIZATION_MODEL.md#mcp-server-configuration).
-4. **Semantics.** If the Profile has this slot, the Engine always writes a
-   per-execution configuration, including an empty server map when the request
-   carries no `mcpServers`, and emits the slot arguments. Profiles must use the
-   CLI isolation flags needed to prevent other MCP configuration from being
-   merged. If the request has servers and the Profile has no slot, execution fails
-   with "Worker Profile does not support MCP servers"; servers are never
-   dropped silently. The file lives in a fresh owner-only directory (mode 700,
-   file 600 on POSIX) and is deleted when the execution ends; the user's own
-   CLI configuration is never read or modified.
-5. **Bounds.** At most 8 servers; names `[a-z0-9][a-z0-9_-]{0,63}`; command an
-   absolute path; at most 32 arguments and 16 environment entries; no
-   `SYNTILA_*` environment names.
-
-No schema version change: the slot is an additive fixed construct like
-`forEachAdditionalDirectory`, and existing signed releases are unaffected.
-Official Profile releases adopt the slot only through a normal new release
-with acceptance evidence.
-
-## 12. JSON stdin template
-
-For tools requiring structured stdin:
-
-~~~json
-{
-  "stdin": {
-    "mode": "json_object",
-    "value": {
-      "event": "user",
-      "message": {
-        "content": "{{prompt}}"
-      }
-    },
-    "appendNewline": true
-  }
-}
-~~~
-
-The Engine serializes JSON. Profiles do not interpolate raw JSON strings.
-
-## 13. Output modes
-
-Tool Profile v1 supports:
-
-~~~text
-plain_text
-single_json
-jsonl
-~~~
-
-For `jsonl`, each bounded line is decoded as one JSON value.
-Blank lines are ignored. A malformed non-empty line or output exceeding Engine
-limits is a controlled provider failure. The v1 interpreter bounds prompt and
-stdin at 1 MiB, expanded argv bytes at 128 KiB, total output at 4 MiB, each
-JSONL line at 512 KiB, event count at 10,000, and normalized final text at 512
-KiB. Session IDs are limited to 256 characters.
-
-Required structured output that cannot be decoded is a controlled execution
-failure.
-
-## 14. Selectors
-
-Profiles use a bounded selector syntax such as:
-
-~~~text
-$.type
-$.thread_id
-$.item.type
-$.item.text
-$.result.status
-$.result.response
-~~~
-
-v1 selectors:
-- begin at root;
-- allow object-property traversal only;
-- address own JSON data properties only and reject prototype properties;
-- have bounded depth/length;
-- do not support filters;
-- do not support recursive descent;
-- do not support script expressions.
-
-## 15. Event rules
-
-Finite rules map provider events into Engine semantics.
-
-Progress rules are evaluated in source order and the first matching rule
-wins. Profiles must put specific rules before a broader fallback. This makes
-the Gemini `agent_response` mapping deterministic.
-
-Conceptual:
-
-~~~json
-{
-  "events": [
-    {
-      "when": [
-        {"kind": "equals", "selector": "$.type", "value": "thread.started"}
-      ],
-      "actions": [
-        {"type": "set_session", "selector": "$.thread_id"}
-      ]
-    },
-    {
-      "when": [
-        {"kind": "equals", "selector": "$.type", "value": "item.completed"},
-        {"kind": "equals", "selector": "$.item.type", "value": "agent_message"}
-      ],
-      "actions": [
-        {"type": "set_final_text", "selector": "$.item.text"}
-      ]
-    }
-  ]
-}
-~~~
-
-Allowed actions v1:
-
-~~~text
-set_session
-set_final_text
-append_final_text
-clear_final_text
-set_terminal_status
-set_provider_error
-emit_progress
-mark_success
-mark_failure
-~~~
-
-No arbitrary state mutation is permitted.
-
-`append_final_text` appends the selected string to the final text, for
-providers that stream the answer only as chunks (Grok Build `streaming-json`
-`text` events). `clear_final_text` takes no selector and discards the text
-built so far; the Grok Profile clears on each `tool_call` so text written
-before a tool call stays narration and the final text is the answer after the
-last tool call. The appended text has the same 512 KiB result limit as
-`set_final_text`.
-
-`set_provider_error` also accepts a selector that yields a list. A non-empty list
-is a list of actions the provider refused to run (for example AGY's
-`denied_actions`) and is reported as `permission_denied` even when the provider
-turn says success; an empty list is ignored.
-
-The provider failure details contract
-specifies declarative extraction of native error codes and responses on
-failure via an optional `execution.failureExtraction` block. Each selector is
-evaluated against the provider event carrying the failure, using the existing
-bounded selector grammar. The block has no effect until Engine support ships:
-
-- `nativeErrorCode`: optional selector extracting the provider's native error
-  code from structured output. Never populated from process exit codes.
-- `providerErrorText`: optional selector extracting the provider's error text.
-- `failedRunResponse`: optional selector extracting a final response emitted
-  alongside a failure.
-- `source`: optional explicit source hint (`structured_error`, `result_message`,
-  `stderr`, `stdout`).
-
-Existing Profile releases without `failureExtraction` remain unchanged and
-produce canonical-only failures.
-
-## 16. Terminal result contract
-
-A Profile makes terminal success/failure unambiguous.
-
-Examples:
-
-~~~text
-success:
-event=result AND result.status=SUCCESS
-~~~
-
-or:
-
-~~~text
-success:
-turn.completed observed AND final text exists
-~~~
-
-The Engine requires one bounded final result for successful execution.
-For structured output, success requires exit code zero, a `mark_success` action,
-and non-empty final text. `mark_failure`, a provider error, cancellation, or an
-Engine timeout makes the terminal result fail. For `plain_text`, a non-empty
-text result and exit code zero are sufficient. A failed result uses the first
-matching Profile error mapping, except Engine cancellation/deadline outcomes,
-which take precedence.
-
-The interpreter returns the same bounded result shape for each output mode:
-terminal success/failure, final text, observed session ID, terminal status,
-Engine message-key progress entries, and an optional stable issue code.
-
-## 17. Progress mapping
-
-Conceptual:
-
-~~~json
-{
-  "progress": [
-    {
-      "when": [{"kind": "equals", "selector": "$.type", "value": "turn.started"}],
-      "percentage": 10,
-      "messageKey": "provider_working"
-    }
-  ]
-}
-~~~
-
-Profiles select Engine-owned safe message keys. Raw provider event content is
-not forwarded as user-visible progress.
-
-### Structured activity mapping
-
-JSONL Profiles may also declare an `activity.mappings` array. Each mapping uses
-only bounded declarative predicates and selectors to produce a normalized
-activity type, status, title, optional activity identifier, and safe scalar
-details. Conditions are strict (`equals`, `not_equals`, `one_of`, `type_is`, or
-`exists`); unknown mapping fields, unsupported selectors, unsafe content or
-execution extractors, and executable transforms are invalid. The optional
-percentage is compatibility metadata only. Profile Lab replays a sanitized
-provider fixture for this mapping and binds the result to the candidate digest.
-
-## 18. Session rules
-
-Conceptual:
-
-~~~json
-{
-  "session": {
-    "supported": true,
-    "formatId": "codex-thread-v1",
-    "compatibleFormatIds": ["codex-thread-v1"],
-    "extract": "$.thread_id",
-    "resumeArguments": ["resume", "{{sessionId}}"],
-    "requireObservedIdMatch": true
-  }
-}
-~~~
-
-The Engine implements continuity validation.
-
-When durable session is requested:
-- an observed provider session ID must exist;
-- resumed observed ID must equal the stored expected ID;
-- mismatch is a hard session-resume failure.
-
-`session.executionPolicyBound` (optional, default `false`) declares that the
-provider fixes its sandbox when a native session is created and refuses to
-resume it under another one. Grok Build does this: resuming a `--sandbox
-read-only` session with `--sandbox workspace` exits 1 with `cannot resume this
-session under sandbox profile`. The Engine records the execution policy
-(`provider_default`, `restricted`, `full_access`) with each stored session.
-For a bound Profile, a turn whose policy differs from the stored one does not
-resume: when the request carries a canonical Conversation bootstrap the Engine
-starts a fresh native session from the full bootstrap and replaces the stored
-mapping; without a bootstrap it fails with `session_resume_failed`. Records
-without a stored policy count as different. Unbound Profiles resume across
-policy changes as before.
-
-`formatId` identifies the provider's local session-ID format. A Profile Release
-must include its own format in `compatibleFormatIds`; it may include an older
-format only when it declares that ID safe to resume. The Engine partitions
-session records by logical Worker, Profile definition, provider tool identity,
-and logical Syntila `sessionKey`. It resumes a stored provider ID only when
-the active Profile declares that stored format compatible. Otherwise it starts
-without the stored provider ID and replaces the local mapping after a
-successful new durable session. Profile release metadata never changes the
-signed compatibility declaration. Session files written by the unpartitioned
-development Engine are ignored by this format and will begin a fresh provider
-session on first use.
-
-Conversation-associated mappings also record explicit Conversation/Worker ownership,
-last successful model/effort, and synchronized context revision. Model/effort are
-not part of the session partition. Native handles stay in local state and are never
-returned in protocol results. See [Worker Sessions](CONVERSATION_CONTINUITY_V1.md#phase-6--connect-owned-worker-sessions)
-for format versions, Profile compatibility, and synchronization limits.
-
-## 19. Model mapping
-
-Conceptual:
-
-~~~json
-{
-  "model": {
-    "supported": true,
-    "arguments": ["--model", "{{model}}"],
-    "unknownModelPolicy": "pass_through"
-  }
-}
-~~~
-
-v1 may support:
-- `pass_through`;
-- `profile_allowlist`.
-
-No silent model substitution is permitted.
-
-Optional `model.selectionMode` declares `separate` (default) or `combined`
-selection metadata. Native resolution stays inside the Profile/Engine boundary;
-it does not authorize inferred effort combinations. See the additive
-[Worker execution options v2 contract](WORKER_EXECUTION_OPTIONS_V2.md).
-
-Optional `model.executionOptions` declares version 1 generic capabilities:
-`discovery: "profile_catalog"`, `modelSwitchSupported`, `effortSupported`, optional
-nullable `defaultModelId`, and optional `effortMapping`. Catalog and global/model
-reasoning values remain in their existing fields. Provider-specific effort names
-are mapped into `{{reasoningEffort}}` locally while persisted selection metadata
-retains the requested value. Explicitly unsupported model switches fail resume;
-they do not silently replace the native session. See
-[Worker execution options](CONVERSATION_CONTINUITY_V1.md#phase-7--generic-worker-execution-options)
-for normalization, validation, discovery limits, and rollout.
-
-
-## 20. Timeouts
-
-A Profile may map the assignment timeout to a provider argument:
-
-~~~json
-{
-  "timeout": {
-    "providerArguments": ["--print-timeout", "{{timeoutSeconds}}s"],
-    "providerReserveMs": 1500
-  }
-}
-~~~
-
-For `{{timeoutSeconds}}`, the Engine supplies
-`max(1, ceil((assignmentTimeoutMs - providerReserveMs) / 1000))`. The provider
-reserve is independent from the Engine's own hard process deadline and cleanup
-grace. The Engine deadline always wins if the CLI ignores its provider timeout.
-The Engine owns the cleanup grace; Profiles cannot change it.
-
-## 21. Sandbox/permission mapping
-
-Profile maps an Engine-approved execution policy:
-
-~~~text
-restricted
-provider_default
-full_access
-~~~
-
-to bounded provider arguments.
-
-`full_access` is usable only when Connect/product policy explicitly permits
-it. Normal v8 assignment execution does not permit it. A Profile cannot
-independently broaden local permissions.
-
-## 22. Error mappings
-
-Profiles may map bounded provider evidence to stable Syntila issue codes.
-
-The approved `session_unavailable` stderr matcher identifies a missing or
-unavailable session/thread/conversation. Mapping it to `session_resume_failed`
-allows the Engine to invalidate a rejected native handle and reconstruct once
-from canonical context within the same assignment. Generic error mappings do not
-authorize reconstruction; final response/success or work-progress evidence also
-prevents automatic replay. This additive schema-v1 matcher requires an updated
-Engine and a newly signed Profile release; existing releases remain immutable.
-
-Evidence types v1:
-- exit code;
-- terminal status value;
-- Engine-approved bounded stderr matcher/pattern;
-- missing terminal result;
-- structured provider-error selector.
-
-Stable codes include:
-
-~~~text
-provider_authentication_required
-provider_tool_unavailable
-unsupported_provider_tool_version
-model_not_supported
-permission_denied
-quota_exhausted
-provider_unavailable
-deadline_exceeded
-cancelled
-session_resume_failed
-provider_failure
-~~~
-
-## 23. Version-specific overrides
-
-A release may contain small bounded compatibility overrides.
-
-Requirements:
-- bounded number;
-- non-overlapping provider-version ranges (a CLI version that matches no
-  override runs the base Profile; overrides never reject a version);
-- only `executionArguments`, `versionProbeArguments`, `progress`, and
-  `errorMappings` may be overridden in v1;
-- fixtures for every range.
-
-Materially different behavior should become a new Profile release instead.
-
-## 24. Retired capability metadata
-
-The former top-level `capabilities` array is not part of Tool Profile v1.
-Strict readers reject it. The development cutover migration deletes releases,
-channel pointers, and evidence created with that field, so there is no legacy
-release compatibility path. Workflow enablement, Worker selection,
-model/effort choices, and product restrictions are owned by the web app and
-Cloud workflow policy.
-
-## 25. Profile release envelope
-
-Connect verifies a Tool Profile Release v1 envelope before passing the
-payload to the generic CLI Worker Engine. The payload digest is lowercase
-hexadecimal SHA-256 over the canonical JSON encoding of the complete validated
-Profile v1 object. The Ed25519 signature is over UTF-8 bytes of:
-
-~~~text
-syntila-tool-profile-release-v1\n<canonical envelope JSON>
-~~~
-
-The canonical envelope JSON has exactly these signing claims:
-
-~~~text
-domain = syntila-tool-profile-release-v1
-publisher
-signingKeyId
-payloadDigest
-profileDefinitionId
-releaseVersion
-logicalWorkerTypeId
-engineFamily
-schemaVersion
-engineCompatibility
-providerToolName
-providerCompatibility
-~~~
-
-`providerCompatibility` is the signed payload's
-`providerTool.supportedVersions`. Connect recomputes the payload digest,
-compares every repeated envelope claim against the payload and Cloud release
-metadata, then checks the publisher/key ID against its Ed25519 trust roots.
-Changing behavior, identity, release version, logical Worker binding, Engine
-compatibility, provider compatibility, publisher, or key ID invalidates
-admission.
-
-Lifecycle state, channel, promotion pointers, audit fields, display name, and
-timestamps are registry metadata outside the signed envelope. Connect may
-accept a trusted signed release at a permitted channel, but those fields cannot
-change signed behavior or compatibility claims. Connect also rejects a
-revoked payload digest, `<profileDefinitionId>@<releaseVersion>`, publisher, or
-signing key ID. Key rotation adds a new key ID and public key to the Connect
-trust roots before signing with it; key IDs cannot be relabeled after signing.
-
-## 26. Immutability and Lifecycle
-
-The complete lifecycle state machine and promotion rules are defined by the
-Tool Profile Lifecycle Specification.
-
-Once a Profile release is published beyond draft:
-- payload bytes, version, and digest do not change;
-- compatibility claims do not mutate in place;
-- any modification produces a new sequential release version;
-- lifecycle promotion changes channel pointers and lifecycle state only, never the payload;
-- rollback moves a channel pointer to an earlier valid release;
-- revocation permanently invalidates the release across Cloud and Workers.
-
-## 27. Validation levels
-
-### Static validation
-
-- exact schema;
-- bounds;
-- identifiers;
-- placeholders;
-- selectors;
-- actions;
-- compatibility ranges;
-- forbidden environment names;
-- forbidden shell constructs.
-
-### Fixture validation
-
-- version parsing;
-- passive probe;
-- normal result extraction;
-- errors;
-- progress;
-- session start/resume;
-- version-specific variations.
-
-### Real acceptance
-
-- real installed provider CLI;
-- passive probe and explicit live probe;
-- representative assignment and Thread write where the Profile can write
-  local files;
-- durable session start and resume when the Profile supports sessions;
-- bounded timeout and assignment cancellation through the Connect process
-  tree supervisor.
-
-### Draft testing lifecycle & signed-release invariant
-
-The profile testing workflow incorporates an iterative draft testing lifecycle inside **Syntila Profile Lab** (`apps/profile_lab`) without weakening production signed-release guarantees:
-
-1. **Unsigned Local Draft Candidate (`LocalDraftProfileCandidate`):**
-   - Represents a mutable, in-development draft profile stored locally in Profile Lab.
-   - Evaluates `isSigned => false`.
-   - Executed **strictly** within Profile Lab's isolated test sandbox via `PlatformProcessSupervisor`.
-   - **MUST NOT** enter Syntila Connect's trusted profile store (`ToolProfileReleaseStore`), local worker registry, or Cloud scheduling.
-
-2. **Admitted Cryptographic Release (`ToolProfileReleaseAdmission`):**
-   - Represents an immutable, published release signed by Syntila Cloud Ed25519 private key.
-   - Evaluates `isSigned => true`.
-   - Syntila Connect strictly requires `isSigned => true` for admission. Unsigned draft objects are rejected by static types and runtime verifiers (`WorkerTrustPolicy`).
-
-3. **Evidence-Bound Transition:**
-   - The supported Profile Lab sandbox emits an execution-contract result after applicable Engine scenarios pass. Cloud checks the submitted contract's identity, canonical digest, reported version ranges, freshness, and scenario map, then stores it for lifecycle gating. This is an authenticated client assertion, not remote attestation that a local provider binary executed the scenarios; see the [evidence contract](TOOL_PROFILE_EVIDENCE_CONTRACT.md).
-   - Any edit to a draft payload recalculates its SHA-256 `payloadDigest` and immediately invalidates all accumulated evidence.
-   - Cloud verifies evidence completeness and signs the payload upon publication (`POST /api/admin/workers/definitions/:id/releases`).
-
-Stable promotion for first-party official Profiles requires all applicable
-levels. The controlled acceptance runner records a JSON evidence artifact bound
-to the exact Profile digest, release identity, Engine version, provider CLI
-version, and required scenario results. Evidence must be no older than 90 days
-and must use Engine/provider versions allowed by the signed Profile. The stable
-promotion API requires this artifact and retains it as immutable release
-evidence. Normal CI must not enable real acceptance or consume provider
-allowance.
-
-Run one controlled profile from `apps/connect` with:
-
-~~~sh
-SYNTILA_TEST_REAL_PROFILE_CHATGPT=1 \
-SYNTILA_PROFILE_ACCEPTANCE_EVIDENCE_DIR=/secure/path/profile-evidence \
-flutter test test/tool_profile_real_acceptance_test.dart
-~~~
-
-Use `SYNTILA_TEST_REAL_PROFILE_GEMINI=1` for the Gemini Profile. Live
-assignment acceptance (`test/tool_profile_assignment_acceptance_test.dart`) uses
-separate `SYNTILA_TEST_ASSIGNMENT_PROFILE_CHATGPT=1` and
-`SYNTILA_TEST_ASSIGNMENT_PROFILE_GEMINI=1` opt-in variables. The evidence
-artifact contains version and scenario metadata only; it does not retain
-credentials, prompts, provider output, or Thread file contents.
-
-## 28. Initial official Profiles
-
-Architecture v8 starts with:
-
-~~~text
-chatgpt-codex
-gemini-antigravity
-~~~
-
-They must reproduce the already-passing provider-specific Dart Worker behavior
-before those provider-specific binaries are removed.
-
-## 29. Non-goals
-
-Tool Profile v1 is not:
-- a shell script format;
-- a Workflow language;
-- a prompt-template product;
-- user-editable v8 functionality;
-- arbitrary third-party executable extensions;
-- a permission bypass mechanism;
-- a replacement for future non-CLI Engine families.
-
-## 30. Evolution rule
-
-If Profile v1 cannot represent a provider safely:
-
-1. If the missing concept is generic across multiple CLI tools, add a typed
-   Engine/Profile execution option in a new schema version.
-2. If it is provider-specific, prefer a specialized driver/engine rather than
-   making the Profile schema a programming language.
-
-## 31. Machine bounds
-
-The canonical validator publishes the exact hard limits in
-`TOOL_PROFILE_LIMITS`. In v1 these include: 256 KiB serialized payload; 4,096
-characters per general string; 256 characters per short label; 64 items per
-general array; 128 arguments; 128 event rules; 64 progress and error rules;
-16 selector conditions per rule; selector depth 16 and selector length 256;
-JSON template nesting depth 16;
-64 environment names; 8 config checks with a 64 KiB maximum file size; and
-16 compatibility overrides. More specific schema fields may have tighter
-limits. Pattern IDs are finite Engine-owned enum values, not user-provided
-regular expressions.
-
-## 32. Deterministic rule processing
-
-Event rules and progress rules are evaluated in Profile source order. Event
-actions within a matched rule execute in source order. A progress event emits
-the action from the first matching progress rule only. Stable failure mappings
-are ordered; the Engine uses the first matching mapping. An Engine may still
-report its own hard deadline or protocol-integrity failure regardless of
-Profile mappings.
-
-
-When `model.executionOptions.modelSwitchSupported` is false, a different selected
-model requires a new native session bootstrapped from bounded canonical Syntila
-history. The generic Engine uses the Profile's existing first-invocation argument
-layout, without resume arguments; successful execution replaces the local native
-mapping while retaining the Conversation scope. Failure preserves the previous
-mapping. No provider-specific executable or Profile schema addition is introduced.
-See [Conversation Continuity Phase 14](CONVERSATION_CONTINUITY_V1.md#phase-14--same-worker-different-model).
-
-## Generic CLI model discovery (Engine 1.1.0)
-
-Optional `model.discovery` declares version 1 provider discovery:
-`schemaVersion`, `arguments` (1–32), `timeoutMs` (100–10000), `format`, and
-`idPrefix`. It runs without a shell on the Profile's resolved provider CLI.
-`format: "tsv"` parses bounded rows of
-`model-id<TAB>label<TAB>effort1,effort2<TAB>default-effort` (the last two
-fields are optional). `format: "codex_app_server"` starts the declared Codex
-app-server command, performs the JSON-RPC `initialize` handshake, then calls
-`model/list`; its `displayName`, `id`, `supportedReasoningEfforts`, and
-`defaultReasoningEffort` fields become the sanitized catalog. Codex `id` is the
-logical selection identity; `model` is retained as nativeId locally for CLI
-invocation (falling back to id when absent). Engine catalog v2 is stripped of
-nativeId before Connect inventory publication; its public projection follows
-[Worker execution options v2](WORKER_EXECUTION_OPTIONS_V2.md). Runtime inventory
-supplies the matching versioned catalog; it cannot widen a Profile without that
-declaration. For discovery-backed Profiles, the runtime catalog is the only
-source of model and effort choices: the Profile must not contain a fallback
-catalog or guessed effort rules. The one exception is
-`format: "clap_possible_values"`, which runs a value-taking flag without a value
-(for example `copilot --model`), ignores the expected non-zero exit, and reads
-the `[possible values: a, b, c]` list from stdout and stderr. That list carries
-IDs only, so the Profile supplies efforts: a `model.catalog` entry gives a known
-model's name and `supportedReasoningEfforts` (an empty list means no effort
-choice), every other listed ID gets `model.supportedReasoningEfforts` and a name
-derived from its ID (`gpt-5.3-codex` -> `GPT-5.3 Codex`). Discovered IDs in
-`discovery.excludeIds` are never offered. A catalog entry never adds a model the
-CLI did not list. The starter Copilot Profile no longer uses this format: the
-`--model` list is what the CLI recognizes, not what the account may select
-(Free plans allow Auto only, so explicit IDs fail with "model is not
-available").
-
-`format: "indented_list"` (starter Grok Profile, `arguments: ["models"]`)
-reads a human model list from stdout with one model per indented line,
-optionally bulleted with `*` or `-` and followed by a parenthesized note such
-as `(default)`. Unindented lines (headings, sign-in notes) and stderr are
-ignored. Names and efforts come from `model.catalog` for known IDs and
-otherwise from `model.supportedReasoningEfforts`, exactly as for
-`clap_possible_values`; `excludeIds` is honored. An empty list fails
-discovery.
-
-`discovery.effortProbe` (optional, `format: "use_one_of"`) discovers each
-model's efforts from the CLI itself instead of a Profile list. For each
-discovered model (at most 32) the Engine runs the declared `arguments` with
-`{{model}}` replaced by the model ID, within `timeoutMs`, and reads the list
-after `use one of:` in stdout or stderr, for example Grok Build's
-`unknown effort level 'syntila-effort-probe'; use one of: xhigh, high,
-medium, low`. Efforts are ordered lowest first. A model whose output names no
-efforts (Grok: `grok-4.6 isn't in the model catalog`), or whose probe fails or
-times out, is offered without an effort choice. The arguments must pass an
-effort the CLI rejects before any model request; Grok 1.0.67 does so in about
-one second and records only an empty local session (system prompt and probe
-input, no model turn). Results are cached with the discovered catalog per
-Profile digest and CLI version. The TypeScript reference interpreter skips the
-static effort check when a Profile declares discovery and no effort list; the
-Engine validates against the discovered catalog.
-
-`format: "copilot_sdk_rpc"` (starter Copilot Profile, `arguments:
-["--headless", "--stdio"]`) asks the CLI's own SDK server, over
-Content-Length-framed JSON-RPC, for the signed-in account's models. The Engine
-calls `auth.getStatus`; when it is not authenticated discovery fails with
-`provider_authentication_required` and the message "Run `copilot login`, or
-sign in with `gh auth login`" (a sign-in failure is never hidden behind a stale
-cached list). It then calls `models.list`; each model's `id`, `name`,
-`supportedReasoningEfforts` and `defaultReasoningEffort` become the catalog,
-and models whose `policy.state` is `disabled` are skipped. No `auto` entry is
-added: Copilot run without `--model` already picks a model automatically, which
-is exactly the client's own provider-default "Auto" choice. A Free account
-(empty `models.list`) therefore offers only that Auto. The Profile
-carries no catalog or effort rules for this format. Model Auto remains the provider default;
-explicit discovered IDs and per-model efforts are checked locally and by Cloud
-with no substitution. The app-server protocol is used only for discovery;
-execution remains generic CLI Worker Engine behavior.
-
-`format: "claude_models_api"` (starter Claude Profile; `arguments` is required
-by the schema but unused) calls the Anthropic Models API (`GET /v1/models`)
-because the Claude CLI has no list command. The credential is
-`ANTHROPIC_API_KEY` or the Claude Code sign-in (macOS keychain or
-`~/.claude/.credentials.json`), sent only to `api.anthropic.com`. The full
-`id` is the execution value, `display_name` the shown name, and
-`capabilities.effort` the efforts; retired models are skipped and `idPrefix`
-filters IDs. A missing or rejected sign-in fails with
-`provider_authentication_required`. The Profile carries no catalog or effort
-rules for this format.
-
-Optional `probe.live.requiredForReadiness` binds scheduling readiness to a
-successful explicit live test for the current Profile digest and CLI version.
-Passive discovery does not authenticate the account. See
-[Gemini/AGY implementation contract](../architecture/GEMINI_AGY_PROFILE.md)
-for cache ownership, wire metadata, availability states, security and release gates.
-
-Optional signed `model.selectionMapping` schema version 1 requires Engine 1.2.0.
-Optional `model.discovery.effortVariants` (`source: label_parenthesized_suffix`, one-character `separator`) derives families and efforts from discovery output instead; it requires `selectionMode: combined`, Engine 1.3.0 and excludes `selectionMapping`.
-Its exact native rows, effort/default rules and provider version gates are defined
-in [Provider discovery and normalization](MODEL_DISCOVERY_NORMALIZATION.md).
-
-## Optional `usage` command
-
-A Profile may declare a top-level `usage` object:
-
-~~~json
-"usage": { "arguments": ["-p", "/usage"], "timeoutMs": 30000 }
-~~~
-
-- `arguments` are templated provider CLI arguments (same placeholders as other
-  commands); `timeoutMs` is 1000-60000. The only other allowed field is
-  `jsonRpc`.
-- Optional `jsonRpc: { "method": "..." }` marks `arguments` as a stdio JSON-RPC
-  server (for example `codex app-server --listen stdio://`). The Engine sends
-  `initialize`, calls the one parameterless method, and returns the raw result
-  as pretty-printed JSON in `output`. The starter ChatGPT Profile uses
-  `account/rateLimits/read`. The result is still never interpreted.
-- Optional `jsonRpc.framing` selects the transport: `newline` (default) is the
-  Codex newline-JSON transport with the `initialize` handshake above;
-  `content_length` uses LSP-style `Content-Length: <n>\r\n\r\n<JSON>` framing,
-  sends no handshake, calls the method with empty `params`, skips unrelated
-  messages, and caps each frame at 64 KiB.
-- The generic Engine runs the declared provider executable with these arguments
-  on a `usage.request` frame and answers with `usage.result` (`output`,
-  `errorOutput`, `exitCode`, `truncated`). Terminal escape sequences are removed
-  and each stream is capped at 64 KiB; nothing else is changed.
-- **Cloud, Connect and the Engine never parse the report.** Providers
-  calculate usage differently, so the Profile owns how usage is read and the
-  text travels unchanged. AX alone may normalize it for display
-  (`worker_usage_parser.dart`): the format is detected from the text (Claude
-  `Current session/week` lines, Codex `rateLimits` JSON, Copilot
-  `quotaSnapshots` JSON, Gemini tab-separated rows) and shown as per-window
-  used percent and a live reset countdown. Gemini rows marked `disabled` are
-  retained as notes; exhausted rows with `0%` remaining display as `100% used`.
-  Session/5-hour windows use `Resets in 1 hr 29 min`; weekly windows use
-  `Resets in 2 d 2 hr 30 min`, as does any reset two or more days away.
-  Copilot shows chat and completion allowances as used/entitled requests;
-  unlimited or plan-excluded allowances (for example premium requests on
-  Free) become notes. Its `resetDate` has been observed equal to the snapshot
-  time, so only a future reset is shown. Countdown minutes round up; elapsed resets
-  prompt a usage refresh. Claude named-zone reset text is resolved with the
-  bundled IANA timezone database against the report fetch date (next occurrence
-  when the year or date is omitted); unrecognized reset text stays as printed.
-  Missing reset times stay unlabelled. Summary notes omit Claude's local
-  seven-day request statistics and Codex's plan; the Original view retains both.
-  Usage bars use the theme-aware brand foreground fill and a neutral track in
-  light/dark themes. Original/Summary is a keyboard-accessible text link styled
-  like the adjacent fetch timestamp. A report that does
-  not match a known format exactly is never partially shown; AX displays the
-  original text, and `Original` always shows it for a normalized report.
-- A Profile without `usage` yields status `unavailable`. The starter Claude
-  Profile declares `-p /usage`; Gemini declares `-p /usage` (agy) and ChatGPT
-  uses the Codex app-server rate-limit call. Copilot calls `account.getQuota`
-  on `copilot --headless --stdio` with `content_length` framing (CLI 1.0.103
-  answers `-p /usage` as an ordinary prompt, which would spend credits).
-  Grok declares `grok models`: Grok Build has no account quota command
-  (`grok usage <SESSION_ID>` reports one session's spend, and `-p /usage` is
-  sent to the model), so its report shows the sign-in state and available
-  models, with no model call. `grok models` exits 0 even when signed out
-  (it prints `You are not authenticated.`), so this check proves the CLI
-  runs, not that it is signed in.
-  See the local Copilot verification
-  for captured statistics, model/effort limits, and the framing distinction.
-- Cloud relays on demand: `POST /api/workers/:workerId/workers/:workerId/usage`
-  (Connect owner only) sends `worker.usage.request`; the Service replies with
-  `worker.usage.result`. Results are never stored in Cloud or posted to a Thread.
-- AX exposes it as `Usage` in the composer `+` menu and as the `/usage` command.
-
-Grok CLI discovery additionally permits the reviewed home-relative installation
-location `{{home}}/.grok/bin`; executable selection still uses the generic Engine
-discovery path.
+```
+
+Conditional argument forms are fixed constructs, not expressions. Allowed conditions:
+a known field present, absent, equal, not equal, one of bounded constants or of a
+JSON type; session-policy equality; the bounded Engine execution policy. Every
+argument list has exactly one `{"sandboxPolicyMapping": true}` slot and one
+`{"providerTimeoutArguments": true}` slot, one `{"modelArguments": true}` slot when
+model arguments are declared, and one `{"sessionResumeArguments": true}` slot when
+sessions are supported; each inserts the matching section's fixed vector at that
+position.
+
+- **Additional folders.** At most one `{"forEachAdditionalDirectory": [...]}` slot
+  (1–8 values, one containing `{{additionalDirectory}}`) repeats once per
+  Connect-verified folder in `execute.request.additionalDirectories`. When an
+  assignment has additional folders, the base list and every override that replaces it
+  must contain the slot, otherwise Connect fails the assignment rather than run
+  without them.
+- **MCP configuration.** At most one `{"mcpConfigArguments": ["--mcp-config",
+  "{{mcpConfigPath}}"]}` slot (1–8 values). With the slot, the Engine always writes a
+  per-execution file `{"mcpServers": {name: {command, args, env}}}` (empty map when
+  the request has none) from the servers the user consented to for that Step, in a
+  fresh owner-only directory deleted afterwards, and emits the slot arguments;
+  Profiles must use the CLI's isolation flags so other MCP configuration is not merged.
+  If servers exist and the Profile has no slot, execution fails ("Worker Profile does
+  not support MCP servers"); servers are never dropped silently. Bounds: 8 servers,
+  names `[a-z0-9][a-z0-9_-]{0,63}`, absolute command, 32 arguments, 16 environment
+  entries, no `SYNTILA_*` names. CLIs that only read a global settings file are not
+  covered ([ADR-028](../decisions/ADR-028-mcp-integration.md),
+  [authorization model](AUTHORIZATION_MODEL.md#mcp-server-configuration)).
+- **Stdin.** `raw_text`, or `json_object` with a template the Engine serializes
+  (`appendNewline` optional); raw JSON strings are never interpolated.
+- **Output modes.** `plain_text`, `single_json`, `jsonl` (blank lines ignored; a
+  malformed non-empty line or output over the limits is a controlled provider
+  failure). Bounds: prompt and stdin 1 MiB, expanded argv 128 KiB, total output 4
+  MiB, JSONL line 512 KiB, 10,000 events, normalized final text 512 KiB, session ID
+  256 characters.
+- **Sandbox mapping.** `sandbox.mappings` define finite vectors for `restricted`,
+  `provider_default` and `full_access`. Connect assignments (protocol 4.0+) select
+  only `restricted` or `provider_default` (default `restricted`); `full_access` is a
+  schema-level mapping for a separate explicit authorization path and is not
+  representable in normal assignments. A Profile cannot broaden local permissions.
+- **Timeouts.** `timeout.providerArguments` maps the assignment timeout (for example
+  `["--print-timeout", "{{timeoutSeconds}}s"]`) and `providerReserveMs` is
+  subtracted; the Engine's own hard deadline and cleanup grace always win.
+
+## Selectors, events and results
+
+Selectors (`$.type`, `$.item.text`) start at the root, traverse object properties
+only, address own data properties (no prototype properties), and have bounded depth
+(16) and length (256); no filters, recursive descent or scripts.
+
+Event rules map provider events to Engine semantics; progress rules are evaluated in
+source order and the **first matching rule wins** (put specific rules before
+fallbacks), and actions in a matched event rule run in order. Actions are fixed:
+`set_session`, `set_final_text`, `append_final_text`, `clear_final_text`,
+`set_terminal_status`, `set_provider_error`, `emit_progress`, `mark_success`,
+`mark_failure`.
+
+- `append_final_text` supports providers that stream the answer in chunks;
+  `clear_final_text` (no selector) discards what was built so far, so text written
+  before a tool call stays narration (Grok clears on each `tool_call`). Both share the
+  512 KiB limit.
+- `set_provider_error` accepts a selector yielding a list: a non-empty list means the
+  provider refused actions (for example AGY `denied_actions`) and is reported as
+  `permission_denied` even if the turn says success.
+- Optional `execution.failureExtraction` selectors (`nativeErrorCode`,
+  `providerErrorText`, `failedRunResponse`, optional `source`) extract the provider's
+  own failure details from the failing event; native codes never come from exit codes.
+  Profiles without it produce canonical-only failures. The details contract and
+  encryption are in [Work v1](WORK_V1_CONTRACT.md#run-details-and-provider-failures).
+
+**Terminal result.** Structured output succeeds only with exit code zero, a
+`mark_success` action and non-empty final text; `mark_failure`, a provider error,
+cancellation or an Engine timeout fails it. `plain_text` needs non-empty text and
+exit zero. A failed result uses the first matching error mapping, except Engine
+cancellation and deadline outcomes, which take precedence. The interpreter returns
+one bounded shape: terminal success or failure, final text, observed session ID,
+terminal status, Engine message-key progress and an optional issue code.
+
+**Progress.** `progress` rules pick Engine-owned safe message keys (with an optional
+percentage); raw provider content is never forwarded. JSONL Profiles may declare
+`activity.mappings`: strict bounded conditions (`equals`, `not_equals`, `one_of`,
+`type_is`, `exists`) producing a normalized activity type (`execution.*`,
+`model.*`, `message.updated`, `tool.started|completed|failed`), status, title,
+optional ID and safe scalar details. Unknown fields, unsafe extractors and executable
+transforms are invalid, and Profile Lab replays a sanitized fixture bound to the
+candidate digest ([Worker activity](WORKER_ACTIVITY_V1.md)).
+
+**Errors.** `errors.mappings` map bounded evidence (exit code, terminal status value,
+an Engine-approved stderr pattern, missing terminal result, or a structured
+provider-error selector) to stable codes: `provider_authentication_required`,
+`provider_tool_unavailable`, `unsupported_provider_tool_version`,
+`model_not_supported`, `permission_denied`, `quota_exhausted`, `provider_unavailable`,
+`deadline_exceeded`, `cancelled`, `session_resume_failed`, `context_limit_exceeded`,
+`provider_failure`. The first matching mapping wins; the Engine may still report its
+own deadline or protocol-integrity failure. Stderr pattern IDs are a finite enum. The
+`session_unavailable` pattern mapped to `session_resume_failed` is what permits the
+Engine to invalidate a rejected native handle and reconstruct once
+([Conversation continuity](CONVERSATION_CONTINUITY_V1.md#local-session-safety)); it
+needs an updated Engine and a newly published Profile. `context.overflow.markers`
+(case-insensitive text matched against stderr, provider error and terminal status)
+identify a context-window overflow, `context.autoCompaction` arguments (placed by an
+`autoCompactionArguments` slot) keep the CLI's own compaction on, and
+`context.compaction` sends an on-demand prompt such as `/compact` to a resumed
+session.
+
+## Sessions
+
+```json
+{ "session": { "supported": true, "formatId": "codex-thread-v1",
+  "compatibleFormatIds": ["codex-thread-v1"], "extract": "$.thread_id",
+  "resumeArguments": ["resume", "{{sessionId}}"], "requireObservedIdMatch": true } }
+```
+
+For a durable session an observed provider session ID must exist, and a resumed ID
+must equal the stored one; a mismatch is a hard `session_resume_failed`. `formatId`
+identifies the provider's local session format and a Profile must list its own format
+in `compatibleFormatIds` (older formats only when declared safe). The Engine
+partitions records by logical Worker, Profile definition, provider tool and logical
+`sessionKey`, resumes a stored ID only when the active Profile declares the stored
+format compatible, and otherwise starts fresh and replaces the mapping after
+success. `session.executionPolicyBound` (default false) declares that the provider
+fixes its sandbox at creation and refuses to resume under another (Grok Build):
+the Engine stores the policy with each session and, on a mismatch, rebuilds from the
+canonical bootstrap or fails with `session_resume_failed`; records without a stored
+policy count as different. Ownership, last model and effort, and synchronized
+revisions are in [Worker sessions](CONVERSATION_CONTINUITY_V1.md#worker-sessions).
+
+## Model, effort and discovery
+
+```json
+{ "model": { "supported": true, "arguments": ["--model", "{{model}}"],
+  "unknownModelPolicy": "pass_through" } }
+```
+
+`unknownModelPolicy` is `pass_through` or `profile_allowlist`; there is no silent
+model substitution. Optional `model.selectionMode` (`separate` default, or
+`combined`), `model.executionOptions` (`discovery: "profile_catalog"`,
+`modelSwitchSupported`, `effortSupported`, `defaultModelId`, `effortMapping`) and
+`model.selectionMapping` (Engine 1.2.0) shape what is offered; see
+[Worker execution options v2](WORKER_EXECUTION_OPTIONS_V2.md) and
+[Provider discovery and normalization](MODEL_DISCOVERY_NORMALIZATION.md). When
+`modelSwitchSupported` is false, a different model needs a new native session
+bootstrapped from canonical history, and a failed attempt keeps the previous mapping.
+
+`model.discovery` (schema 1: `arguments`, `timeoutMs` 100–10000, `format`,
+`idPrefix`, optional `excludeIds`) runs on the resolved CLI without a shell. For a
+discovery-backed Profile the runtime catalog is the only source of choices; the
+Profile carries no fallback catalog or guessed effort rules, except where noted.
+
+| `format` | Source | Notes |
+| --- | --- | --- |
+| `tsv` | `id<TAB>label<TAB>efforts<TAB>default` rows | Last two fields optional. With `effortVariants` (`label_parenthesized_suffix` + `separator`, requires `selectionMode: combined`, Engine 1.3.0, excludes `selectionMapping`) families and efforts are derived from the rows (Gemini). |
+| `codex_app_server` | JSON-RPC `initialize`, then `model/list` | `id` is the logical selection, `model` the native ID kept locally. |
+| `clap_possible_values` | `[possible values: a, b]` from a flag run without a value | IDs only; efforts come from `model.catalog` / `supportedReasoningEfforts`. |
+| `indented_list` | One model per indented stdout line | Grok; optional bullet and `(default)` note. |
+| `copilot_sdk_rpc` | `auth.getStatus` then `models.list` over Content-Length JSON-RPC | Fails with `provider_authentication_required` when signed out; skips `disabled` models; adds no `auto` entry. |
+| `claude_models_api` | Anthropic `GET /v1/models` | Credential from `ANTHROPIC_API_KEY` or the Claude Code sign-in, sent only to `api.anthropic.com`; skips retired models. |
+
+`discovery.effortProbe` (`use_one_of`) runs `arguments` per discovered model (at most
+32, `{{model}}` replaced) with an effort the CLI rejects before any model request, and
+reads the list after `use one of:`; a model whose output names no efforts, or whose
+probe fails, is offered without an effort choice. Results are cached per Profile
+digest and CLI version. Discovered IDs in `excludeIds` are never offered, and a
+catalog entry never adds a model the CLI did not list. Discovery needs no model call.
+
+## Version-specific overrides
+
+At most 16 bounded `compatibilityOverrides` with non-overlapping `providerVersion`
+ranges (a CLI version matching none runs the base Profile; overrides never reject a
+version). Only `executionArguments`, `versionProbeArguments`, `progress`,
+`errorMappings` and `activity` may be overridden, each with fixtures. Materially
+different behavior should be a new revision.
+
+## Usage command
+
+Optional `usage: { "arguments": [...], "timeoutMs": 1000-60000 }` (optionally
+`jsonRpc: { "method", "framing" }`, where framing is `newline`, the default with an
+`initialize` handshake, or `content_length`, LSP-style with no handshake and 64 KiB
+frames). The Engine runs the declared provider executable, answers a `usage.request`
+frame with `usage.result` (`output`, `errorOutput`, `exitCode`, `truncated`), strips
+terminal escapes and caps each stream at 64 KiB. Cloud, Connect and the Engine never
+parse the report: the Profile owns how usage is read and the text travels unchanged;
+only the app normalizes it for display (`worker_usage_parser.dart`), showing the
+original text whenever a report does not match a known format exactly. A Profile
+without `usage` reports `unavailable`. Cloud relays on demand through
+`/api/workers/:workerId/usage` (Connect owner only), never storing the result. Pick a
+command that spends no model credits: Copilot uses `account.getQuota` over
+`content_length` (its `-p /usage` would be an ordinary prompt), and Grok uses
+`grok models`, which proves the CLI runs but not that it is signed in.
+
+## Signing, immutability and validation
+
+A published Profile revision is immutable: its payload, revision and digest never
+change, and any change is a new sequential revision. Cloud keeps one current Profile
+and retained history; there are no channels, promotion or rollback pointers
+([Worker Profile V9](WORKER_PROFILE_V9.md)). The digest is the lowercase SHA-256 of the
+canonical JSON of the complete validated Profile. Cloud signs that digest when it
+delivers a Profile and Connect verifies the proof against build-time trust roots, then
+rechecks the digest, schema, Worker identity and Engine compatibility
+([Connect CLI and services](CONNECT_CLI_AND_SERVICES.md)). Revocation invalidates a
+digest everywhere.
+
+An unsigned local candidate (Profile Lab) runs only in Profile Lab's isolated sandbox
+and never enters Connect's trusted Profile store or Cloud scheduling, apart from the
+explicit loopback development path in [Profile Lab](PROFILE_LAB.md#development-access-and-unsigned-execution).
+Editing a candidate changes its digest and invalidates earlier evidence.
+
+Validation levels:
+
+- **Static:** exact schema, bounds, identifiers, placeholders, selectors, actions,
+  compatibility ranges, forbidden environment names and shell constructs.
+- **Fixture:** version parsing, probes, result extraction, errors, progress, session
+  start and resume, version-specific variations.
+- **Real acceptance (opt-in):** the installed provider CLI, passive and live probes, a
+  representative assignment and Thread write, durable session start and resume, and
+  bounded timeout and cancellation through the Connect supervisor. Run from
+  `apps/connect` with `SYNTILA_TEST_REAL_PROFILE_<CHATGPT|GEMINI>=1` and
+  `SYNTILA_PROFILE_ACCEPTANCE_EVIDENCE_DIR=<path>` for
+  `test/tool_profile_real_acceptance_test.dart`, or the
+  `SYNTILA_TEST_ASSIGNMENT_PROFILE_*=1` variables for
+  `test/tool_profile_assignment_acceptance_test.dart`. Artifacts hold versions and
+  scenario results only, never credentials, prompts, output or file contents. Normal
+  CI never enables real acceptance.
+
+## Limits
+
+`TOOL_PROFILE_LIMITS` is the exact list. Highlights: 256 KiB payload, 4,096
+characters per general string, 256 per short label, 64 items per general array, 128
+arguments, 128 event rules, 64 progress and error rules, 16 selector conditions per
+rule, selector depth 16 and length 256, JSON template depth 16, 64 environment names,
+8 config checks, 128 activity mappings, 16 compatibility overrides. Specific fields
+may be tighter.
+
+## Non-goals
+
+Tool Profile v1 is not a shell script format, a Workflow language, a prompt-template
+product, user-editable functionality, an arbitrary third-party extension mechanism,
+a permission bypass, or a replacement for future non-CLI Engine families. If a
+provider cannot be represented safely, a generic concept belongs in a new schema
+version; a provider-specific one belongs in a specialized driver, not in a schema that
+becomes a programming language.

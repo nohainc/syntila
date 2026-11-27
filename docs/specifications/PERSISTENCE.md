@@ -8,7 +8,7 @@ The canonical Thread timeline is stored in `discussion_messages`, including huma
 
 ## Schema lifecycle
 
-Apply new migrations in order and verify the schema lock. Migration 0050 removes retired execution stream rows and old correlation columns; it preserves active streams. Backups and restore validation remain deployment responsibilities.
+Apply new migrations in order and verify the schema lock. Backups and restore validation remain deployment responsibilities.
 
 ## Work state and files
 

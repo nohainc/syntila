@@ -78,4 +78,4 @@ Connect opens `/api/worker-agent/gateway` for the paired Worker and its current 
 
 ## Invariants
 
-`check-invariants.sql` adds: no open session on a revoked credential, no live credential or session on a removed Worker, no session past its lease for over an hour.
+`apps/backend/scripts/check-invariants.sql` adds: no open session on a revoked credential, no live credential or session on a removed Worker, no session past its lease for over an hour.

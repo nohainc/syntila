@@ -7,10 +7,10 @@ step IDs. Definitions, prompts and signed Profiles are not copied into preferenc
 ```json
 {
   "schemaVersion": 1,
-  "workflowId": "full_cycle",
+  "workflowId": "research",
   "enabled": true,
   "defaults": { "worker": "worker-id", "model": "model-id", "effort": "high" },
-  "stepOverrides": { "verify": { "worker": "review-worker-id" } }
+  "stepOverrides": { "synthesis": { "worker": "review-worker-id" } }
 }
 ```
 

@@ -1,4 +1,4 @@
-# Scaling decision (P11, ADR-039 activation gate)
+# Scaling decision (ADR-039 activation gate)
 
 Decides whether one backend node is enough. **Status: single node; revisit when load grows (ADR-039).** Nothing has been measured yet. Fill in the tables from a run on the production VPS size, then record the decision at the bottom.
 

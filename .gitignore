@@ -44,3 +44,4 @@ _perf/
 # Local tool settings and Connect runtime outputs
 .claude/settings.local.json
 .syntila/outputs/
+docs/operations/PERFORMANCE_RESULTS.md

@@ -1,6 +1,6 @@
 /// Best-effort redaction for text that leaves the plugin host: stderr, error
 /// and progress messages, and probe check messages. Pattern matching is not a
-/// guarantee (see WORKER_PLUGIN_PROTOCOL_V1.md §7). It is never applied to
+/// guarantee (see WORKER_PLUGIN_PROTOCOL_V1.md, Redaction). It is never applied to
 /// `result.output`, which is the user's work product.
 class ExternalWorkerRedactor {
   ExternalWorkerRedactor({Iterable<String> secrets = const []})

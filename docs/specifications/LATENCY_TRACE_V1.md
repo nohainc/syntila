@@ -14,14 +14,18 @@ points are ordinary diagnostic events with `stage: "trace"` and a closed
 | T2    | `cloud_accepted`            | `routes/work-creation.ts`           | Submission durably persisted                          |
 | T3    | `workflow_dispatch_started` | `workflow.ts`                       | Workflow step begins dispatching the task             |
 | T4    | `gateway_queued`            | `worker-gateway.ts`              | `assignment.start` written to WebSocket or HTTP queue |
-| T5    | `service_received`          | `cloud_connection.dart`             | Service reads the command off the transport           |
-| T6    | `service_accepted`          | `cloud_connection.dart`             | Admission `assignment.ack` written                    |
+| T5    | `service_received`          | Connect (see note below)           | Service reads the command off the transport           |
+| T6    | `service_accepted`          | Connect (see note below)           | Admission `assignment.ack` written                    |
 | T7    | `profile_resolved`          | `runtime.dart`            | Tool Profile resolved and its execution file located  |
 | T8    | `slot_reserved`             | `runtime.dart`            | Local Worker execution slot reserved                  |
 | T9    | `engine_process_created`    | `cli_worker_engine_supervisor.dart` | Engine OS process exists                              |
-| T10   | `provider_started`          | `cloud_connection.dart`             | Provider CLI start evidence                           |
-| T11   | `terminal_persisted`        | `worker-gateway.ts`              | Terminal outcome written to D1                        |
+| T10   | `provider_started`          | Connect (see note below)           | Provider CLI start evidence                           |
+| T11   | `terminal_persisted`        | `worker-gateway.ts`              | Terminal outcome written to PostgreSQL                |
 | T12   | `web_received`              | Web `ax_work_latency_trace.dart`    | Web receives the final update                         |
+
+The Connect-side stages (T5–T10) are defined by the diagnostic event schema
+(`packages/protocol/src/diagnostic-events.ts`); verify that the Connect build under
+test emits them before relying on a baseline.
 
 Auxiliary stages are not numbered: `cloud_ack_received` (command round trip
 and the Service's reported load), `workflow_observed_terminal` (lag between
@@ -117,7 +121,7 @@ startup behavior, and record it with the build under test.
 
 1. Run 20-30 Work requests: a mix against an idle Service and against one with
    an active assignment, plus a few `delivery-probe` calls.
-2. Collect Cloud logs (`wrangler tail --format json > cloud.log`), the
+2. Collect Cloud logs (`scripts/backend-logs.sh`, or `journalctl -u syntila-backend -o cat > cloud.log` on the server), the
    Service `worker.jsonl*` files, and the browser console lines.
 3. Run `pnpm latency:baseline -- --cloud cloud.log --service worker.jsonl
 --web console.txt --json baseline.json`.
@@ -127,13 +131,7 @@ largest interval for each trace (before delivery, transport, Service
 admission, queueing, after Engine launch, result delivery), and warnings for
 traces that had to use an uncorrected Service clock.
 
-## Phase 5 addendum
-
-Auxiliary startup milestones (worker_resolved, profile_ready, waiting_for_space, queued_for_slot, engine_initialized) are recorded without renumbering T1-T12. T7 is stamped after any Space wait. See SERVICE_STARTUP_V9.md.
-
-## Phase 6 addendum
-
-`workflow_observed_terminal` now measures the lag between the terminal row and the Workflow's wake-up by `assignment-terminal` event (or, on a lost event, the reconciliation timeout), not a 2 s poll. See WORKFLOW_TERMINAL_EVENTS_V9.md.
+Auxiliary startup milestones (`worker_resolved`, `profile_ready`, `waiting_for_space`, `queued_for_slot`, `engine_initialized`) are recorded without renumbering T1–T12, and T7 is stamped after any Space wait. `workflow_observed_terminal` measures the lag between the terminal row and the Workflow's wake-up by the `assignment-terminal` event (or, on a lost event, the reconciliation timeout), not a poll ([Workflow terminal events](WORKFLOW_TERMINAL_EVENTS_V9.md)).
 
 ## Release performance gate
 

@@ -1,4 +1,4 @@
-# VPS operations (Phase 5)
+# VPS operations
 
 Single VPS, single PostgreSQL: every failure of that server is an outage.
 
@@ -30,20 +30,9 @@ command.
 External uptime: monitor `https://api.syntila.app/health/ready` from outside
 (UptimeRobot, Better Stack). An on-server monitor cannot report its own death.
 
-## Runbooks
+## Client behaviour
 
-**Retire backups (one-time, on an existing VPS):**
-
-```sh
-sudo systemctl disable --now syntila-dump.timer
-sudo rm -f /etc/systemd/system/syntila-dump.{service,timer}
-sudo systemctl daemon-reload
-sudo rm -f /usr/local/lib/syntila/syntila-dump.sh /usr/local/lib/syntila/restore-test.sh
-sudo rm -rf /var/backups/syntila
-sudo sed -i '/^DUMP_/d' /etc/syntila/monitor.env
-```
-
-**Client behaviour on restarts:** a deploy closes sockets with code 1012 and
+A deploy closes sockets with code 1012 and
 the API is back within about a second; clients reconnect with backoff and
 resync from their last `seq`. Connect Workers receive open assignments again
 on reconnect; results are idempotent by assignment attempt.

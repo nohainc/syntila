@@ -49,14 +49,13 @@ Direct Space available to both users, who can create Threads
   People Space and reset it to the other person's current profile name. The
   choice is stored per user, follows them across devices, and does not rename
   the person or change what the other participant sees.
-- **Deployment:** Apply migration `0107_optional_direct_general_thread.sql` before deploying Cloud code that creates personal Spaces without a default Thread. Existing General Threads and their references are preserved.
 
 ## Personal support Space
 
 `POST /api/people/support` (authenticated) returns the caller's personal support Space with the configured support account: `201` with `{ spaceId }` when created, `200` when it already exists.
 
 - **Configuration:** `SYNTILA_SUPPORT_ACCOUNT_EMAIL` names the support account (trimmed, case-insensitive). It is resolved to an immutable user ID on each request and must be an active user. Missing or unresolvable configuration returns `503`; the support account itself gets `409`; a block in either direction returns `403`. Nothing is created in these cases.
-- **Shape:** The Space is an ordinary Direct Space (owner: the user; collaborator: the support account) with no default Thread, and no `person_connections` row, so support is not a personal connection. `support_spaces (user_id, support_user_id)` marks it, enforcing one per user per support identity; migration `0108_support_spaces.sql`.
+- **Shape:** The Space is an ordinary Direct Space (owner: the user; collaborator: the support account) with no default Thread, and no `person_connections` row, so support is not a personal connection. `support_spaces (user_id, support_user_id)` marks it, enforcing one per user per support identity.
 - **Idempotency and races:** The Space, memberships, Direct Space row, per-user state, and marker are written in one atomic batch. A concurrent loser fails on the unique pair or marker, re-reads, and returns the winner's Space.
 - **Existing history:** If a Direct Space already exists for the pair (for example from a prior connection), it is adopted and marked rather than duplicated, preserving its Threads and messages.
 - **Identity changes:** Changing the configured account leaves earlier support Spaces with the previous account and provisions a new one on the next request. The support account's access is limited to its membership in each user's Space.
@@ -66,14 +65,12 @@ Direct Space available to both users, who can create Threads
 - **Sidebar:** The support Space is hidden by default for its owner (`direct_space_user_state.hidden = 1`). Replies and unread state never change that; the user can change it using the setting (Settings → Show Syntila Support in sidebar, `PATCH /api/spaces/:id {hidden}`), which applies to every device. `GET /api/people/support` reads `{spaceId|null, hidden}` without provisioning. "Message Syntila" in the application menu creates or opens the Space, enables the sidebar setting, and shows a loading notice and a Retry action on failure. The configured support account is excluded from the People directory. Ordinary Direct Spaces keep their open/reply-unhides behavior.
 - **Messaging only:** For both participants, Chat, Work, and own Workers are denied in a support Space (`loadSpacePermissions` returns `isSupport` and cleared rights; `requireWorkflowPermission` and the execution-selection path reject with 403). Space responses carry `isSupport`; the client shows only the human composer and no AI History.
 - **Two-user workflow:** (1) The operator configures `SYNTILA_SUPPORT_ACCOUNT_EMAIL` for an existing active account. (2) User A chooses Message Syntila; the Space is created or reopened and made visible in the sidebar; A sends a message. (3) The support account sees the Space with unread state and replies as a human; A's sidebar stays visible. (4) A can hide it again using the Settings switch. (5) B repeats independently and receives a separate Space.
-- **Deployment prerequisites:** Apply migrations `0108_support_spaces.sql` and `0109_support_space_default_hidden.sql` before deploying Cloud and app. Local and production Wrangler configurations set `SYNTILA_SUPPORT_ACCOUNT_EMAIL` to `syntila@nohainc.com`; without a valid configuration support returns 503 and the app shows a retryable error. The support account must be an active user and is a member of every user's support Space.
-- **Validation status:** Flutter analyze is clean; focused app tests pass; the full app suite has 2 failures that predate this work (Research workflow configuration, phased-queue badge). Cloud: all 8 `support-space` tests and the thread read-model test pass, and the typecheck is clean except `implement-plan.ts` (a `loadSpaceWorkflowConfigurations` signature mismatch from separate in-progress work). The full Cloud run still has about 27 failures in older Direct Space suites (`direct-space-*`, assignment races, `implement-plan`), caused by in-progress changes not made here (optional General Thread, own-Worker selection, missing delete guard) and not by support code. They must be resolved or updated before `pnpm validate:cloud` is green.
-
+- **Configuration:** Local and production configurations set `SYNTILA_SUPPORT_ACCOUNT_EMAIL` to `syntila@nohainc.com`; without a valid configuration support returns 503 and the app shows a retryable error. The support account must be an active user and is a member of every user's support Space.
 ## Persistence and identity
 
 Membership derivation alone cannot retain People after the last shared Space disappears. `people_relationships` therefore stores one canonical undirected pair of user IDs and its establishment timestamp. The ordered composite primary key prevents duplicates and self relationships. Both identities reference users. A membership insertion trigger establishes pairs atomically with membership creation; membership and Space deletion leave those pairs intact.
 
-Migration `0023_people_relationships.sql` backfills accepted co-members across all Spaces, using their earliest shared membership timestamp. It consolidates duplicate pending invitations by retaining the oldest and revoking the rest, then enforces one pending invitation per Space and case-insensitive email. Expired pending invitations may be replaced. The migration does not send invitations or modify historical accepted memberships.
+At most one pending invitation exists per Space and case-insensitive email, and expired pending invitations may be replaced.
 
 ## Authenticated APIs
 
@@ -104,7 +101,7 @@ The session-wide `['people']` query contains immutable domain models, shared by 
 
 Existing authorized Space events refresh People after acceptance, membership changes, and Space deletion. Better Auth profile updates publish durable, ID-only `people.updated` events to established peers' user streams. This event cannot contain profile fields or execution/Space identity. User and Space reconnect recovery refresh registered People even when its page is closed. The invitation picker submits stable user IDs; email remains available for someone new.
 
-Apply migrations 0023 and 0025 before deploying Cloud and AX changes. Migration 0025 removes obsolete member-level invitation rights from persisted Space snapshots; invitation management is owner-only. Relationship retention currently has no manual removal control; account deletion cascades relationship rows. Direct administrative profile SQL changes require an explicit synchronization signal or reconnect; application profile changes use the authentication hook.
+Invitation management is owner-only. Relationship retention currently has no manual removal control; account deletion cascades relationship rows. Direct administrative profile SQL changes require an explicit synchronization signal or reconnect; application profile changes use the authentication hook.
 
 ## People page and details
 
@@ -148,9 +145,9 @@ Space → Invite people and People → Person → Add to Space use the same `Spa
 
 Both paths expose the same per-Space permission editor. Read access is inherent in membership; Chat, Work, and own Thread management (the three Space member rights; own Workers in Chat follows Chat) are bounded by the owner's selected rights. Invitation management is owner-only and is not a member permission. Cloud validates those rules again. Each selected Person creates a normal invitation, never a direct membership. Partial multi-person failures retain only unsent selections; successful recipients are not retried. Resend preserves recipient identity and selected permissions, bounded by current rights.
 
-Migration `0024_space_invitation_identity.sql` adds nullable `invitee_user_id` to Space invitations. Known-Person requests persist this identity; email is a delivery-address snapshot. Inbox, Accept, Reject, pending detection, and notifications use the user ID whenever present, so email changes or reuse cannot transfer consent. Unknown/legacy pending email invitations remain email-addressed until accepted; acceptance binds them to the authenticated user ID. Existing accepted invitations are backfilled from `accepted_by_user_id`. A unique pending Space/user index supplements the pending email index. Account deletion cascades invitations addressed to that deleted identity rather than falling back to a reusable email.
+Space invitations carry a nullable `invitee_user_id`. Known-Person requests persist this identity; email is a delivery-address snapshot. Inbox, Accept, Reject, pending detection, and notifications use the user ID whenever present, so email changes or reuse cannot transfer consent. Unknown/legacy pending email invitations remain email-addressed until accepted; acceptance binds them to the authenticated user ID. A unique pending Space/user index supplements the pending email index. Account deletion cascades invitations addressed to that deleted identity rather than falling back to a reusable email.
 
-Apply migration 0024 after 0023, then 0025, before deploying these Cloud/AX changes. These migrations preserve accepted memberships and People relationships while cleaning persisted invitation identity and obsolete member-level invitation rights. The obsolete email-only AX writer and unused email-only authentication invitation reader are removed. There is no separate membership or global discovery API.
+The obsolete email-only AX writer and unused email-only authentication invitation reader are removed. There is no separate membership or global discovery API.
 
 ## Personal Connections, Lifecycle, Privacy, and Account Deletion
 
@@ -178,8 +175,6 @@ deleting the account, including interrupted-upload leftovers; storage failures
 stop deletion so it can be retried. Existing single-object avatars remain readable
 and are removed when replaced. No schema migration is required. Deploy Cloud and
 AX together because the upload request now requires both multipart files.
-
-Apply migration 0106 (three Space member rights) before deploying the matching Cloud and AX changes; it removes the derived `useOwnWorkers` key from member and invitation snapshots.
 
 Connected people can use **Open Space** to create or reopen their personal Space, including after it was deleted. This does not create or select a Thread. `POST /api/people/connections/:userId/space` requires an active connection and rejects blocks in either direction.
 

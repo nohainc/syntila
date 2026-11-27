@@ -31,18 +31,23 @@ A file that fails under parallel load is re-run once alone; if it then passes it
 
 | Command | Purpose |
 | --- | --- |
-| `scripts/start-local-backend.sh` | Local backend on `:8788` with local PostgreSQL. |
+| `scripts/local-start.sh` | Starts the local app, auth Worker and backend; `--proxy` uses production Cloud data. |
+| `scripts/local-start-backend.sh` | Local backend on `:8788` with local PostgreSQL. |
+| `scripts/local-start-ios.sh` | Runs the iOS app in a simulator against the local stack by default. |
+| `scripts/local-run-connect.sh` | Runs Connect from source using a local development Worker directory. |
+| `scripts/local-run-profile-lab.sh` | Runs Profile Lab against local Cloud. |
+| `scripts/local-migrate-db.sh` | Applies local auth D1 and backend PostgreSQL migrations, creating the local PostgreSQL database if needed. `--d1-only` applies only the auth migrations. Refuses non-local PostgreSQL hosts. |
 | `scripts/regenerate-schema-lock.sh [--check]` | Rebuilds `apps/backend/migrations/schema.lock` from the migrations in a scratch database (`--check` only compares; exit 1 when out of date). Uses the local credentials (`syntila_app` / `devpass`). Never leaves an empty lock file. |
-| `scripts/cleanup-local-stale-execution.sh` | Clears orphaned leases, never-sent assignments and Agent commands, and stuck queued Work Requests in the local PostgreSQL database. Refuses non-local hosts. |
+| `scripts/local-cleanup-stale-execution.sh` | Clears orphaned leases, never-sent assignments and Agent commands, and stuck queued Work Requests in the local PostgreSQL database. Refuses non-local hosts. |
 
 pnpm aliases include `db:schema-lock`, `db:schema-lock:check`, and `test:two-node`.
 
-## Local performance (`perf-*.sh`)
+## Local performance
 
 | Command | Purpose |
 | --- | --- |
-| `scripts/perf-local.sh` | Runs the local performance suite against `pnpm start:local` (`:8788`) and checks p95 latency limits in `scripts/perf-thresholds.json`. Exits 1 when a threshold is exceeded. |
-| `scripts/perf-local.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and available timing percentiles) without failing on threshold limits. |
+| `scripts/local-perf.sh` | Runs the local performance suite against `pnpm start:local` (`:8788`) and checks p95 latency limits in `scripts/perf-thresholds.json`. Exits 1 when a threshold is exceeded. |
+| `scripts/local-perf.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and available timing percentiles) without failing on threshold limits. |
 | `scripts/test-perf.sh` | Short perf run with history in `_perf/` and comparison against configured limits. `scripts/test-all.sh --perf` adds it as the last step (opt-in). See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md). |
 
 Options (`--chats N`, `--workflow chat|work`, `--json out.json`, `--thresholds file.json`, `--no-thresholds`) control the Workflow benchmark and reporting.
@@ -92,7 +97,13 @@ With the backend deploy, normally. Code and schema ship together, the code rollb
 
 ### Connect releases for macOS and Linux
 
-Run on the Mac, from a clean `main` equal to `origin/main` (same flags as the other `prod-*` scripts: `--dry-run`, `--yes`, `--allow-dirty`). First run `scripts/set-connect-version.sh <major.minor.patch>` to update and commit the Connect versions; a version that already has a GitHub Release is refused.
+Run on the Mac, from a clean `main` equal to `origin/main`. First establish each product's series with `scripts/set-version.sh connect <major.minor>` or `scripts/set-version.sh web <major.minor>`. These commands require a full Git history, fetch tags, enforce an increasing series, then commit, annotate a `connect-series-vX.Y` or `web-series-vX.Y` tag, and atomically push the commit and tag. Use a clean tree: unrelated changes are never included. If the push fails, the command reports the local commit and tag and gives the command to retry.
+
+Release builds calculate `X.Y.N`, where `N` is the number of first-parent commits since the product's series tag. Builds fail if the series tag is missing, history is shallow, the tree is dirty, the commit does not match fetched `origin/main`, or an existing release conflicts. `--allow-dirty` does not bypass these version guarantees. Release tags such as `connect-vX.Y.N` remain separate from series tags. Build every platform of a Connect release from the same commit; the web app is versioned independently. Flutter's web build receives the calculated version as its build name. No ignored version file is used.
+
+The tracked `release-versions/connect` and `release-versions/web` files contain the active major/minor series. Package metadata and the Connect source fallback remain useful for local builds; production scripts override them with the Git-derived release version. Production builds fetch `origin/main` and tags before calculating the version. For the initial transition, establish new series (for example, Connect `0.3` and web `0.2`) after these changes are committed and pushed; until then production builds fail because the series tags do not exist.
+
+`prod-deploy-all.sh` checks the web version before deploying the backend, so a missing web series cannot cause a partial deployment.
 
 | Command | What it does |
 | --- | --- |

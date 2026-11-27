@@ -66,7 +66,7 @@ The backend runs without a global writer lock (project doc
 
 - **Every invariant is a constraint.** If two rows must never coexist, add a
   unique (or partial unique) index; a race then fails loudly instead of
-  leaving bad data. Add the matching check to `scripts/check-invariants.sql`.
+  leaving bad data. Add the matching check to `apps/backend/scripts/check-invariants.sql`.
 - **Number children from a counter on the parent row**, never with
   `MAX(...) + 1`. Conversation history uses
   `syntila_next_history_sequence(conversation_id)`; any new history trigger

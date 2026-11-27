@@ -1,13 +1,11 @@
 # Worker Profile V9
 
-**Status:** Canonical architecture contract for V9 implementation
-**Date:** 2026-10-12
+**Status:** Canonical contract, implemented
 **Scope:** Syntila Cloud, Profile Lab, Connect, CLI Worker Engine, and the logical Worker catalog
 
-This specification defines the V9 identity, publication, verification,
-activation, and execution-snapshot contract for Worker Profiles. It supersedes
-the V8 Profile release/channel lifecycle. V8 ADRs and implementation documents
-remain historical records; they are not silently rewritten.
+This specification defines the identity, publication, verification,
+activation, and execution-snapshot contract for Worker Profiles. There is one
+current published Profile per Worker Type and no release channels.
 
 The normative terms **MUST**, **MUST NOT**, **SHOULD**, and **MAY** describe
 requirements for V9 implementation work.
@@ -273,16 +271,6 @@ needed by in-flight executions. Refresh is periodic or event-triggered, not
 part of every assignment. A fetched snapshot is verified, staged, and then
 activated for new executions; the resolver never searches a release list.
 
-On first access after upgrade, Connect may read the legacy approved stable
-snapshot exactly once, validate its digest and schema, and materialize it as a
-V9 current snapshot with migration metadata. The legacy per-definition,
-per-version directory is removed only after that V9 snapshot has been written
-and verified. An invalid or untrusted legacy cache is left untouched for
-recoverability and is never activated. New runtime code does not read
-`release-state.json`, channel pointers, or legacy release directories.
-
-Legacy release metadata is accepted only for this bounded on-disk migration
-adapter; newly fetched Cloud snapshots use the V9 current-snapshot shape.
 Explicit revocation of current must not fall back to last-known-good. Each execution
 opens an immutable `revision-digest` payload, so activation of a later Profile
 cannot rewrite the bytes used by an execution already in progress.
@@ -331,58 +319,25 @@ and fixture providers use the same execution pipeline.
 | CLI Worker Engine | Interpret the finite Profile schema, supervise provider CLI processes, enforce limits/security/session integrity, and emit provider-neutral results. | Must not contain provider-specific Worker executables or bypass Profile/Connect admission. |
 | AX / product workflows | Select logical Workers and display safe readiness/diagnostic metadata. | Must not edit or directly activate Profiles. |
 
-## 9. Explicitly removed from the V9 contract
+## 9. Persistence contract
 
-The following V8 concepts are not compatibility targets for V9:
-
-- draft-to-testing-to-beta-to-stable Profile promotion;
-- testing, beta, and stable channel pointers;
-- multiple competing active Profile releases;
-- channel-specific Connect selection;
-- release-number administration as the identity of current behavior;
-- channel rollback APIs.
-
-V9 still permits unpublished Profile Lab candidates, immutable published
-history, automatic revisions, digest verification, and one-click
-known-good restoration through a new atomic publication.
-
-## 10. D1 persistence and migration contract
-
-Cloud stores the current published state in one `worker_profiles` row keyed by
-`worker_type_id`. The row contains the canonical JSON, schema version, Cloud
-revision, digest, publishing actor, and timestamp.
+Cloud stores the current published state in one PostgreSQL `worker_profiles`
+row keyed by `worker_type_id`. The row contains the canonical JSON, schema
+version, Cloud revision, digest, publishing actor, and timestamp.
 
 The Worker catalog also retains the configured Profile identity
 (`profile_definition_id` and `provider_tool_name`). This metadata is needed
 only while a Worker has no current Profile, so Profile Lab can create its
-first local candidate without consulting removed V8 definition tables or
-inventing provider-specific defaults. Once a Profile is published, its JSON
-is authoritative for execution behavior.
+first local candidate without inventing provider-specific defaults. Once a
+Profile is published, its JSON is authoritative for execution behavior.
 
 Cloud stores prior published snapshots in `worker_profile_history`, keyed by
 `(worker_type_id, revision)`, with the snapshot JSON, digest, actor, publication
-timestamp, and optional restoration reason.
-History is for audit and restoration only; it is never selected through a
-channel pointer.
+timestamp, and optional restoration reason. History is for audit and
+restoration only; it is never selected through a channel pointer. Migrations
+are forward-only (see the backend migrations README).
 
-The D1 migration sequence is mandatory:
-
-1. create `worker_profiles` and `worker_profile_history` first;
-2. migrate the currently approved stable Profile for each Worker into the
-   single current row;
-3. validate JSON shape and digest format through destination constraints,
-   failing closed on malformed data;
-4. preserve earlier published snapshots in V9 history where they can be
-   mapped unambiguously;
-5. deploy and verify the V9 readers and writers;
-6. remove legacy Profile release/channel tables only in a later cleanup
-   migration.
-
-Existing migrations MUST remain in order and production migration history MUST
-NOT be deleted or renumbered. The first replacement migration MUST NOT delete
-or rewrite the V8 Profile tables it reads.
-
-## 11. Cloud API contract
+## 10. Cloud API contract
 
 The V9 Cloud API exposes one current Profile identity per logical Worker:
 
@@ -404,13 +359,10 @@ identity and freshness. Client evidence demonstrates
 what Profile Lab reported from its local Engine/CLI test; it is not treated as
 cryptographic proof of local execution.
 
-The V9 endpoints do not accept channel names, promotion actions, release
-statuses, or draft-publication transitions. The consumer cutover is complete:
-the production Cloud routes no longer expose the V8 lifecycle endpoints, and
-the later `0044_remove_v8_profile_lifecycle.sql` migration removes their D1
-tables. Migration history remains append-only.
+The endpoints accept no channel names, promotion actions, release statuses,
+or draft-publication transitions.
 
-## 12. Shared validation and interpretation
+## 11. Shared validation and interpretation
 
 Cloud, Profile Lab, Connect, and the CLI Worker Engine MUST use the same
 provider-neutral V9 validation contract. The shared contract is implemented by
@@ -443,7 +395,7 @@ digest. Identity metadata continues to refer to the admitted canonical
 snapshot while version-specific behavior is selected only after provider
 version discovery.
 
-## 13. Acceptance contract
+## 12. Acceptance contract
 
 The V9 contract is accepted when all four runtime/control-plane components
 reference this specification and agree on these facts:
@@ -457,15 +409,7 @@ reference this specification and agree on these facts:
 - Connect activation and Engine execution use a verified immutable snapshot;
 - no component requires Profile testing, beta, or stable channels.
 
-## 14. V8 lifecycle cleanup
-
-V8 lifecycle documents and retained audit/event records are historical
-references only. They do not describe a supported runtime API. The cleanup
-removes release definitions, release rows, channel pointers, promotion
-evidence, and channel assignments after the V9 readers and writers
-are deployed. It preserves `worker_catalog`, current/history snapshots,
-diagnostic event history, security audit records, local test scenarios, and the
-Profile Lab sandbox boundary for unpublished candidates.
+## 13. Connect cache
 
 Connect keeps only the verified current snapshot and one verified
 last-known-good snapshot. A last-known-good snapshot is an offline recovery

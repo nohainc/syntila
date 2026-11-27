@@ -34,8 +34,7 @@ SYNTILA_PROFILE_ACCEPTANCE_EVIDENCE_DIR=/path/to/evidence \
   dart test test/tool_profile_real_acceptance_test.dart
 ~~~
 
-From `apps/connect`, the live assignment suite covers Work (`direct`), Plan & Implement,
-Implement & Verify, and Full Cycle for both logical Workers. It uses provider
+From `apps/connect`, the live assignment suite covers Chat and Work (`direct`) for the official logical Workers. It uses provider
 allowance and does not replace the evidence-producing release acceptance
 suite.
 
@@ -57,11 +56,3 @@ process, whose stdout is reserved for the local worker protocol.
 
 Live-provider acceptance remains a release gate. The generic Engine fixture
 suite provides deterministic coverage without provider accounts or allowance.
-
-The 2026-10-03 local result record is at
-`docs/acceptance/real-provider/2026-10-03`.
-Codex passed all four assignments. Gemini's Profile evidence suite passed, but
-two assignment workflows still need to be rerun after configuring a scoped
-headless command permission for the isolated acceptance folder. The Testing
-Connect channel-store test passed locally; no Cloud release or remote channel
-was changed.

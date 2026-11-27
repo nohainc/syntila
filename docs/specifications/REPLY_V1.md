@@ -18,12 +18,11 @@ entries use `message`; live Work answers use `response`).
 
 - Clients send `replyTo: {kind, id}` only, on `POST /api/threads/:id/discussion`
   (Chat) and in `input.replyTo` / `replyTo` when creating a Work Request.
-- Cloud (`apps/cloud/src/routes/reply-references.ts`) verifies the target is in
+- Cloud (`apps/backend/src/domain/routes/reply-references.ts`) verifies the target is in
   the **same Thread** and builds the snapshot
   `{kind, id, authorName, excerpt}` (excerpt ≤ 1000 chars). Removed messages and
   responses without text cannot be replied to (HTTP 400).
-- The snapshot is stored: `discussion_messages.reply_to_json` (migration
-  `0089_reply_references.sql`) for Chat, and the immutable Work Request
+- The snapshot is stored: `discussion_messages.reply_to_json` for Chat, and the immutable Work Request
   `input.replyTo` for requests. Quotes therefore survive edits or deletion of
   the original.
 - Read APIs return `replyTo` on discussion messages and Work Requests.

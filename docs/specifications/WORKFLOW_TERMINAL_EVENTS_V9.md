@@ -1,99 +1,77 @@
-# Workflow terminal events V9 (Phase 6)
+# Workflow terminal events
 
-Goal: wake the Cloud Workflow as soon as an assignment is terminal, instead of
-reading D1 every two seconds. D1 remains the only authority for the outcome.
+A Workflow wakes as soon as one of its assignments is terminal, instead of polling
+PostgreSQL every two seconds. PostgreSQL remains the only authority for the outcome;
+the wake-up is a hint.
+
+The Workflow runtime is a PostgreSQL-backed host (`apps/backend/src/platform/workflows.ts`)
+that implements the durable-step subset the run Workflow uses: memoised `step.do`,
+`step.sleep`, `step.waitForEvent` (events sent before a wait are buffered) and
+`sendEvent`. Instances are replayed from the start on resume and claimed with a lease,
+so a crashed process's instances are picked up by another.
 
 ## Sequence
 
-1. Service reports `assignment.result` / `error` / `cancelled`.
-2. Cloud persists the terminal status in D1 (existing guarded writers).
-3. Cloud sends `assignment.ack` to the Service.
+1. Connect reports `assignment.result`, `error` or `cancelled`.
+2. Cloud persists the terminal status in PostgreSQL through the guarded writers.
+3. Cloud sends `assignment.ack` to Connect.
 4. Cloud sends the `assignment-terminal` event to the run's Workflow instance
-   (`signalAssignmentTerminal`) and stamps `worker_assignments.workflow_signaled_at`.
-5. The Workflow wakes, re-reads the assignment from D1 and classifies the
-   outcome with the existing `classifyStepAssignmentOutcome`.
-6. Existing publication to the Web app is unchanged.
+   (`apps/backend/src/domain/assignment-workflow-signal.ts`) and stamps
+   `worker_assignments.workflow_signaled_at`.
+5. The Workflow wakes, re-reads the assignment and classifies the outcome with
+   `classifyStepAssignmentOutcome`.
+6. Publication to the web app is unchanged.
 
-Signalling is never a precondition for step 3, and a failure in step 4 cannot
-change the outcome or the acknowledgement.
-
-## Identity and mapping
-
-`worker_assignments(run_id, task_id, attempt_id)` joined to
-`runs.workflow_instance_id` is the instance/task/assignment/attempt mapping.
-The event payload carries `assignmentId`, `attemptId`, `taskId`, `runId` and
-`status`. It is a hint only: the Workflow never trusts it, it re-reads D1.
-
-The event type is `assignment-terminal` (Workflows event types cannot contain
-dots).
+Signalling is never a precondition for the acknowledgement, and a failure to signal
+cannot change the outcome. The event type is `assignment-terminal` (no dots). Its
+payload (`assignmentId`, `attemptId`, `taskId`, `runId`, `status`) identifies the
+instance, task and attempt through `worker_assignments` joined to
+`runs.workflow_instance_id`, and is never trusted: a stale, duplicate or forged event
+costs at most one extra read.
 
 ## Outbox and recovery
 
-Migration 0061 adds `workflow_signaled_at` and `workflow_signal_attempts`.
-A terminal row with `workflow_signaled_at IS NULL` _is_ the outbox; there is no
+A terminal assignment with `workflow_signaled_at IS NULL` is the outbox; there is no
 second write path.
 
-- Immediate: the Gateway signals after the terminal acknowledgement.
-- Sweep: the `*/5` cron retries unsignalled terminal rows (last 24 h, fewer
-  than 5 attempts, 50 per run).
-- Waiter: every wait ends by itself after at most 30 s, so a lost event costs
-  at most one reconciliation interval regardless of the sweep.
+- **Immediate:** the gateway signals after the terminal acknowledgement.
+- **Sweep:** a periodic job retries unsignalled terminal rows from the last 24 hours
+  with fewer than 5 attempts (`workflow_signal_attempts`), a bounded batch per run.
+- **Waiter:** every wait ends by itself within
+  `ASSIGNMENT_RECONCILIATION_INTERVAL_MS` (30 s), so a lost event costs at most one
+  reconciliation interval regardless of the sweep.
 - A run without a Workflow instance is stamped as handled.
 
-## Workflow waiting
+## Waiting for a Step
 
-For each Work Step the Workflow dispatches, then loops:
+For each Work Step the Workflow dispatches, then loops: read the assignment (and nudge
+queued work); continue if terminal; apply the phase-deadline revocation; otherwise
+`step.waitForEvent("…assignment-wait:<attempt>:<n>", { type: "assignment-terminal",
+timeout })`, where `timeout` is the time left in the current phase, capped at 30 s and
+floored at 1 s. Wait names are deterministic per attempt and wake-up, so a duplicate
+event cannot repeat a step.
 
-1. read the assignment from D1 (and nudge queued work, as before);
-2. if terminal, continue;
-3. apply the existing phase-deadline revocation;
-4. `step.waitForEvent("...assignment-wait:<attempt>:<n>", { type:
-"assignment-terminal", timeout })` where `timeout` is the time left in the
-   current phase, capped at 30 s and floored at 1 s.
+- An event before the wait is buffered, and the read at the top of the loop sees the
+  terminal row anyway. A lost event makes the wait time out (caught, not an error).
+- A running assignment is treated as timed out when it is past `timeoutMs` plus a
+  two-minute grace measured from `running_at`, so Connect can report its own timeout
+  first.
+- Revocation confirmation uses three 10-second wait rounds, re-sending the cancel
+  between rounds, then one final read.
+- The normal path performs no periodic reads; the remaining reads are the 30-second
+  reconciliation and phase-deadline wake-ups.
 
-Properties:
+Startup deadlines (command delivery, startup, queue wait) are enforced at wake-up
+granularity: exact for the phase being waited on, and up to 30 seconds late when a
+phase change shortens a deadline mid-wait. Queued (`created`) assignments are nudged on
+each wake-up; the gateway's own flush on readiness is the primary path.
 
-- _Event before the wait_: Workflows buffers it, so the wait returns at once;
-  and the read in step 1 sees the terminal row anyway.
-- _Duplicate or stale events_ (another attempt, another task, a replay): they
-  only cause an extra wake-up and one D1 read. Waits have deterministic names
-  per attempt and wake-up, so a duplicate cannot repeat a step.
-- _Lost event_: the wait times out (caught, not an error) and the next read
-  finds the durable state.
-- _Provider overrun_: a running assignment is treated as timed out when it is
-  past `timeoutMs` plus a two-minute grace, measured from `running_at`. The
-  grace lets the Service report its own timeout first.
-- Revocation confirmation: three 10 s wait rounds (previously fifteen 2 s
-  polls) re-sending the cancel between rounds, then one final read.
+## Latency
 
-The normal path (event arrives) performs no periodic D1 reads. Remaining
-periodic reads are the 30 s reconciliation and the phase-deadline wake-ups.
-
-## Behavior changes
-
-- Startup deadlines (command delivery 30 s, startup 30 s, queue wait) are
-  still enforced, but detection is now at wake-up granularity: exact for the
-  phase being waited on, up to 30 s late when a phase change shortens the
-  deadline mid-wait.
-- Queued (`created`) assignments are nudged on each wake-up (≤30 s) instead of
-  every 2 s; the Gateway's own flush on readiness is the primary path.
-- A Workflow step count per Work Step drops from hundreds to a handful.
-
-## Dispatch and Workflow-creation latency review (task 12)
-
-Not changed in this phase; findings for follow-up, measurable with the
-existing T2→T3 interval (`cloud_accepted` → `workflow_dispatch_started`):
-
-- Before the dispatch step, `runVersioned` performs sequential, un-checkpointed
-  work: prompt-input load, request-mode read, a status batch, task persistence,
-  the `work_request.started` event, `step.queued` events and the queued task
-  state write. Several are independent and could run concurrently; ordering of
-  `started` before `step.queued` must be preserved.
-- The dispatch step is itself a durable step; its own cost is the dispatcher
-  (target selection, assignment insert, Gateway call).
-- Workflow instance creation (`create`) is asynchronous; the instance start
-  delay is outside Cloud's control and shows up as T2→T3.
-
-## Deploy
-
-Migration 0061, then Cloud. The Service is unchanged.
+The interval from `cloud_accepted` to `workflow_dispatch_started` (T2→T3 in
+[Latency trace](LATENCY_TRACE_V1.md)) includes sequential work before the dispatch step
+(prompt-input load, request-mode read, a status batch, task persistence, the
+`work_request.started` and `step.queued` events, the queued task write), then the
+dispatch step itself (target selection, assignment insert, gateway call). Several of
+those reads are independent and could run concurrently; `started` must stay ordered
+before `step.queued`.

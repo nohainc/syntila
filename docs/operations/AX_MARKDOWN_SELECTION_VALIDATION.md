@@ -41,14 +41,14 @@ path.
 
 ```bash
 cd /Users/vitaliinoha/Documents/Syntila/Syntila
-./scripts/start-local.sh
+./scripts/local-start.sh
 ```
 
 For a release-mode browser check:
 
 ```bash
 cd /Users/vitaliinoha/Documents/Syntila/Syntila
-./scripts/start-local.sh --web-release
+./scripts/local-start.sh --web-release
 ```
 
 Check Chrome, Safari, and Firefox with a Worker response containing:

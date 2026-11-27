@@ -89,7 +89,7 @@ the GET stream) are never sent.
 | Tools per server | 128 |
 | Call timeout | min(assignment deadline, 10 min) |
 | Concurrent calls per server | manifest `limits.maxConcurrent` (default 1) |
-| Idle server TTL (warm pool) | 5 min; the pool lives in the Engine process, which the supervisor starts per assignment, so it spans calls within one assignment only (see `docs/acceptance/MCP_LATENCY.md`) |
+| Idle server TTL (warm pool) | 5 min; the pool lives in the Engine process, which the supervisor starts per assignment, so it spans calls within one assignment only |
 
 ## 4. Tool definition pinning
 
@@ -139,9 +139,9 @@ that no new wire enum value is introduced.)
 
 ## 7. Conformance vectors
 
-Protocol and Engine tests cover these cases; a dedicated `mcp-vectors` directory has not been delivered. Task polling and subscriptions are not implemented.
+Golden vectors are in [`docs/specifications/mcp-vectors`](mcp-vectors/README.md); protocol and Engine tests cover these cases. Task polling and subscriptions are not implemented.
 
-Phase 2 coverage: `packages/syntila_mcp_protocol/test/modern_test.dart` (every
+Coverage: `packages/syntila_mcp_protocol/test/modern_test.dart` (every
 legacy revision via `initialize`; the stateless revision via `server/discover`;
 fallback and no-downgrade cases; `resultType`; golden pin vectors) and
 `engines/cli_worker/test/mcp_http_transport_test.dart` (per-family HTTP headers,

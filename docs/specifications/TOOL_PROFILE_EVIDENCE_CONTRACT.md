@@ -1,9 +1,9 @@
 # Tool Profile Evidence-Bound Promotion Contract
 
-**Status:** Canonical Architecture v8 Promotion & Evidence Specification  
+**Status:** Promotion and Evidence Specification  
 **Decisions:** ADR-018, ADR-019  
 **Lifecycle Contract:** Tool Profile Lifecycle  
-**Authority:** Cloud Evidence Validator (`apps/cloud/src/tool-profile-validation.ts`) & D1 qualification/acceptance evidence stores
+**Authority:** Cloud Evidence Validator (`apps/backend/src/domain/tool-profile-validation.ts`) and the PostgreSQL qualification/acceptance evidence tables
 
 **Manual Profile lifecycle: COMPLETE** for the implemented control path and
 fixture-backed acceptance. This status does not assert deployed Cloud or
@@ -38,7 +38,7 @@ Before computing the cryptographic digest, the Profile payload must be normalize
 1. **Key Sorting:** Object keys are sorted lexicographically at every nesting depth.
 2. **Whitespace:** Compact representation without pretty-printing indentations or trailing whitespace.
 3. **Encoding:** Strict UTF-8 character encoding.
-4. **Implementation:** Governed by `canonicalReleaseJson()` in `apps/cloud/src/release-trust.ts`.
+4. **Implementation:** The same canonical form is computed by Cloud and verified by Connect and Profile Lab.
 
 ### 2.2 Canonical Payload Digest Calculation
 The canonical digest is the SHA-256 cryptographic hash of the canonical payload bytes:
@@ -83,7 +83,7 @@ Draft v19 (Payload B)
 
 ## 4. Normalized Evidence Schema
 
-Local qualification and post-publication acceptance use the same shape validated by `ToolProfileAcceptanceEvidence` in `apps/cloud/src/tool-profile-validation.ts`. It retains all eight scenario keys. Cloud derives applicability from the actual signed execution contract: supported scenarios must be `passed`, while unsupported or untestable scenarios must be `not_applicable`. Failed or incomplete run details stay in the local Test Workbench result and are never submitted as qualification or acceptance evidence.
+Local qualification and post-publication acceptance use the same shape validated by `ToolProfileAcceptanceEvidence` in `apps/backend/src/domain/tool-profile-validation.ts`. It retains all eight scenario keys. Cloud derives applicability from the actual signed execution contract: supported scenarios must be `passed`, while unsupported or untestable scenarios must be `not_applicable`. Failed or incomplete run details stay in the local Test Workbench result and are never submitted as qualification or acceptance evidence.
 
 ```json
 {
@@ -243,7 +243,7 @@ submissions and does not prove which client produced them or observe a provider
 CLI on the operator's machine. This workflow is not device attestation.
 
 ### Gate 3: Stable Promotion Validation Invariants
-As enforced by `validateToolProfileAcceptanceEvidence()` in `apps/cloud/src/tool-profile-validation.ts`:
+As enforced by `validateToolProfileAcceptanceEvidence()` in `apps/backend/src/domain/tool-profile-validation.ts`:
 1. **Digest Equality:** `evidence.profileDigest === release.payload_digest`.
 2. **Identity Alignment:** Definition ID, release version, and logical worker type must match the database record.
 3. **Engine Version Recorded:** `evidence.engineVersion` must be a non-empty string. It is not compared with `profile.engineCompatibility`; Connect enforces that range at runtime.

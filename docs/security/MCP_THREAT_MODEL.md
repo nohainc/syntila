@@ -1,4 +1,4 @@
-# MCP threat model (draft)
+# MCP threat model
 
 Assets: user files in the Thread directory, provider logins, MCP credentials and
 OAuth tokens, model context integrity, Cloud data.
@@ -17,6 +17,6 @@ OAuth tokens, model context integrity, Cloud data.
 | T10 | Spec/version confusion | Explicit supported-version list; refuse unknown |
 | T11 | Duplicate side effects from retries | No auto-retry for write-capable tools |
 
-Required tests (added in M1/M3/M5): drift blocks call; oversize rejected; no
+Required tests: drift blocks call; oversize rejected; no
 sampling/roots honoured; token absent from Cloud payloads; untrusted label
 present in rendered context; undeclared Step tools unreachable.

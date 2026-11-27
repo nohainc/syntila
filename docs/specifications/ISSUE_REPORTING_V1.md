@@ -77,7 +77,7 @@ attempt while the reports retain the same Work request relationship.
 
 ## Storage and assembly
 
-Migration `0039_issue_reports.sql` creates:
+Storage:
 
 - `issue_reports` for the durable report identity, execution correlation,
   normalized failure classification, attempt idempotency key, grouping
@@ -87,9 +87,9 @@ Migration `0039_issue_reports.sql` creates:
 - `issue_report_events` for creation, views, status transitions, and support
   audit information.
 
-Migration `0040_issue_report_investigation.sql` adds denormalized worker/model,
-effort, application/Engine/Profile/provider version fields for safe filtering and creates
-`issue_report_groups`. Groups are investigator-managed and may combine or
+Reports also hold denormalized worker/model,
+effort, application/Engine/Profile/provider version fields for safe filtering, and
+`issue_report_groups` exist. Groups are investigator-managed and may combine or
 split reports independently of the diagnostic fingerprint; the fingerprint is
 only a useful grouping signal, not a root-cause claim. Group list responses
 include report count, first/last occurrence, and affected worker, Engine,

@@ -56,7 +56,7 @@ gaps recover the Space entity and its Thread list; Thread gaps recover forward
 Discussion cursors and active Work Requests. Worker gaps recover the affected
 Worker state. Cached data remains visible, immutable older pages are not
 refetched, and no reconnect frame loads a bootstrap snapshot. See
-[AX server state](../architecture/AX_SERVER_STATE.md#phase-10-scoped-reconnect-recovery).
+[AX server state](../architecture/AX_SERVER_STATE.md#realtime).
 
 The web app routes Space/Thread signals to keyed caches. `discussion.created`
 follows the newest known creation cursor without refetching older pages.
