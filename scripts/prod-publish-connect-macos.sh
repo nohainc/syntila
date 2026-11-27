@@ -58,7 +58,7 @@ publish_homebrew() {
   confirm "Push the formula and cask for Syntila Connect $version to $owner/$tap."
   if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would commit and push to $owner/$tap"
   else
-    ( cd "$tmp/tap" && git -c user.name="Syntila Releases" -c user.email="support@conclaveax.com" commit -q -m "Syntila Connect $version" \
+    ( cd "$tmp/tap" && git -c user.name="Syntila Releases" -c user.email="syntila@nohainc.com" commit -q -m "Syntila Connect $version" \
         && git push origin HEAD:main )
     echo "Install: brew install $owner/tap/syntila-connect    (desktop app: brew install --cask $owner/tap/syntila-connect-app)"
   fi

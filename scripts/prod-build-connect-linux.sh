@@ -27,7 +27,7 @@ if [ "$DRY_RUN" = 1 ]; then
   exit 0
 fi
 engine_version=$(awk '/^version:/ {print $2; exit}' "$ROOT/engines/cli_worker/pubspec.yaml")
-maintainer="${SYNTILA_PACKAGE_MAINTAINER:-Syntila <support@conclaveax.com>}"
+maintainer="${SYNTILA_PACKAGE_MAINTAINER:-Syntila <syntila@nohainc.com>}"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 rm -rf "$out"; mkdir -p "$out"
 ( cd "$ROOT/engines/cli_worker" && dart pub get >/dev/null )

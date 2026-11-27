@@ -84,7 +84,13 @@ if [ "$1" = api ] && [ "$2" != -X ]; then
 fi
 [ "$FAKE_PAGES" != update-fail ] || exit 1
 ''',
-        'gpg': '#!/bin/sh\nexit 0\n',
+        'gpg': '''#!/bin/bash
+echo "gpg $*" >> "$FAKE_LOG"
+if [ "${FAKE_GPG_NEEDS_IMPORT:-0}" = 1 ]; then
+  if [ "$1" = --list-secret-keys ] && [ ! -f "$FAKE_GPG_MARKER" ]; then exit 1; fi
+  if [ "$1" = --batch ] && [ "$2" = --import ]; then touch "$FAKE_GPG_MARKER"; fi
+fi
+''',
         'gpgconf': '#!/bin/sh\nexit 0\n',
         'python3': '#!/bin/sh\nexit 0\n',
     }
@@ -104,13 +110,24 @@ fi
     assert result.returncode == 0, result.stderr
     assert 'git push origin HEAD:apt-repository' in calls
     assert "gh api -X PUT repos/test/repo/pages" in calls
+    assert calls.index('gh api -X PUT') < calls.index('git push origin')
+    assert 'user.email=syntila@nohainc.com' in calls
+    assert 'commit --allow-empty' in calls
     result, calls = publish('legacy apt-repository /')
     assert result.returncode == 0, result.stderr
     assert 'gh api -X PUT' not in calls
     result, calls = publish('fail')
     assert result.returncode != 0 and 'git push origin' not in calls
     result, calls = publish('update-fail')
-    assert result.returncode != 0 and 'git push origin' in calls
+    assert result.returncode != 0 and 'git push origin' not in calls
     result, calls = publish('workflow main /', '--dry-run')
     assert result.returncode == 0 and 'git push origin' not in calls and 'gh api -X PUT' not in calls
+    key = Path(env['HOME']) / '.config/syntila/release-keys/apt-private-key.asc'
+    key.parent.mkdir(parents=True)
+    key.write_text('test fixture')
+    env.update(FAKE_GPG_NEEDS_IMPORT='1', FAKE_GPG_MARKER=str(tmp / 'imported'))
+    env.pop('SYNTILA_APT_PRIVATE_KEY_FILE', None)
+    result, calls = publish('legacy apt-repository /')
+    assert result.returncode == 0, result.stderr
+    assert f'gpg --batch --import {key}' in calls
 print('APT publication verification checks passed')

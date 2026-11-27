@@ -7,7 +7,7 @@
 #
 # Needs gpg and the repository signing key: either already in your gpg keyring or
 # exported with SYNTILA_APT_PRIVATE_KEY_FILE (imported into a throwaway keyring); if neither,
-# ~/.config/conclave/release-keys/apt-private-key.asc is used when it exists.
+# ~/.config/syntila/release-keys/apt-private-key.asc is used when it exists.
 # SYNTILA_APT_SIGNING_FINGERPRINT defaults to the current repository key.
 # --prune-legacy removes the old Workspace packages (syntila, syntila-gui).
 # --keep N keeps only the newest N versions of syntila-connect in the repository (at least 1).
@@ -38,7 +38,7 @@ publish_apt() {
   local base="https://$owner.github.io/$repo" tmp; tmp=$(mktemp -d)
   trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$tmp"' RETURN
   # Where the key was exported when the repository was set up on this Mac.
-  local default_key="$HOME/.config/conclave/release-keys/apt-private-key.asc"
+  local default_key="$HOME/.config/syntila/release-keys/apt-private-key.asc"
   if [ -z "${SYNTILA_APT_PRIVATE_KEY_FILE:-}" ] && ! gpg --list-secret-keys "$fp" >/dev/null 2>&1 && [ -f "$default_key" ]; then
     SYNTILA_APT_PRIVATE_KEY_FILE="$default_key"
   fi
@@ -61,18 +61,20 @@ publish_apt() {
   local change_pages=0
   [ "$pages" = "legacy apt-repository /" ] || change_pages=1
   confirm "Push syntila-connect $version to the APT repository branch of $owner_repo$([ "$prune" = 1 ] && echo ', removing the legacy Workspace packages')$([ -z "$keep" ] || echo ", keeping only the newest $keep version(s)")$([ "$change_pages" = 1 ] && echo ', and change GitHub Pages to serve that branch at / (replacing the current Pages site)')."
-  if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would commit and push to apt-repository"
-  else
-    ( cd "$tmp/repo" && if ! git diff --cached --quiet; then
-        git -c user.name="Syntila Releases" -c user.email="support@conclaveax.com" commit -q -m "Publish Syntila Connect $version"
-      fi && git push origin HEAD:apt-repository )
-  fi
   if [ "$change_pages" = 1 ]; then
     if [ "$DRY_RUN" = 1 ]; then
       echo "[dry-run] would configure GitHub Pages to serve apt-repository at /"
     else
       gh api -X PUT "repos/$owner_repo/pages" -f build_type=legacy -f 'source[branch]=apt-repository' -f 'source[path]=/' >/dev/null
     fi
+  fi
+  # The source must be selected before the push: selecting it afterwards does
+  # not reliably schedule a Pages deployment. An empty commit also makes a
+  # retry trigger a build when the branch already contains the desired files.
+  if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would commit and push to apt-repository"
+  else
+    ( cd "$tmp/repo" && git -c user.name="Syntila Releases" -c user.email="syntila@nohainc.com" \
+        commit --allow-empty -q -m "Publish Syntila Connect $version" && git push origin HEAD:apt-repository )
   fi
   if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would verify live signed indexes and both architecture packages at $base"
   else verify_apt_publication "$base" "$tmp/repo" "$version"; fi
