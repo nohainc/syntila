@@ -2805,6 +2805,11 @@ class _ThreadPageState extends State<ThreadPage>
           isMe: isMe && !answer,
           replyTo: message.replyTo,
           failureStep: failedStep,
+          answeredRequest: answer
+              ? requests
+                  .where((request) => request.id == message.workRequestId)
+                  .firstOrNull
+              : null,
           aiWorkRequestId: message.isAiEntry ? message.workRequestId : null,
           aiKind: message.isAiEntry ? message.kind : null);
     }).toList();

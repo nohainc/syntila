@@ -3891,7 +3891,12 @@ class _DiscussionItem {
     this.workRequest,
     this.attachments = const [],
     this.replyTo,
+    this.answeredRequest,
   });
+
+  /// The Work Request an archived AI answer belongs to, when still loaded; it
+  /// supplies the Worker type, model and effort shown with the sender.
+  final AxWorkRequest? answeredRequest;
 
   /// The message this one replies to (Reply v1).
   final AxReplyReference? replyTo;
@@ -4025,6 +4030,108 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
     if (confirmed == true && widget.onDelete != null) {
       widget.onDelete!();
     }
+  }
+
+  /// The sender line of an archived AI answer: Worker icon and name, then the
+  /// model and effort the answer was produced with, like the live Work card.
+  Widget _aiAnswerHeader(BuildContext context, bool isDark, Color metaColor) {
+    final request = widget.item.answeredRequest;
+    final isResearchV2 =
+        request?.workflowId == 'research' && request?.workflowVersion == 2;
+    final steps = request?.steps ?? const <AxWorkRequestStep>[];
+    final step = isResearchV2
+        ? steps.where((s) => s.id == 'synthesis').firstOrNull
+        : steps
+                .where((s) =>
+                    s.status == 'completed' &&
+                    s.resultText?.trim().isNotEmpty == true)
+                .lastOrNull ??
+            steps.lastOrNull;
+    final turn = request?.turns
+        .where((t) => t.assignmentId == step?.assignmentId)
+        .lastOrNull;
+    String? pick(String? first, String? second) {
+      final value = first?.trim();
+      return value != null && value.isNotEmpty ? value : second?.trim();
+    }
+
+    final failureStep = widget.item.failureStep;
+    final workerId =
+        pick(turn?.workerId, step?.workerId) ?? failureStep?.workerId;
+    final workerType = (pick(turn?.workerTypeId, step?.workerTypeId) ??
+            failureStep?.workerTypeId)
+        ?.toLowerCase();
+    final modelId = pick(turn?.modelId, step?.model);
+    final modelLabel = pick(turn?.modelName, step?.modelName);
+    final effort = pick(turn?.effort, step?.reasoningEffort);
+    final worker = WorkerPresentation.resolve(workerType, widget.item.author);
+    final hasModel =
+        (modelId?.isNotEmpty ?? false) || (modelLabel?.isNotEmpty ?? false);
+    final model = ModelPresentation.resolve(
+      modelId: modelId,
+      modelDisplayName: modelLabel,
+      fallbackWorkerTypeId: workerType,
+      fallbackWorkerDisplayName: widget.item.author,
+    );
+    final brightness = Theme.of(context).brightness;
+    final icon = hasModel
+        ? (model.iconAssetForBrightness(brightness) ??
+            worker.iconAssetForBrightness(brightness))
+        : worker.iconAssetForBrightness(brightness);
+    final textStyle = TextStyle(fontSize: 12, color: metaColor);
+    final identity = Row(mainAxisSize: MainAxisSize.min, children: [
+      Opacity(
+        opacity: isDark ? 0.72 : 0.85,
+        child: icon != null
+            ? Image.asset(icon,
+                width: 24,
+                height: 24,
+                fit: BoxFit.contain,
+                semanticLabel: '${widget.item.author} icon')
+            : CircleAvatar(
+                radius: 12,
+                backgroundColor: SyntilaColors.primarySoftColor(isDark),
+                child: Icon(Icons.auto_awesome_rounded,
+                    size: 13, color: SyntilaColors.primaryForeground(isDark)),
+              ),
+      ),
+      const SizedBox(width: 6),
+      Text(widget.item.author,
+          style: textStyle.copyWith(fontWeight: FontWeight.w600)),
+    ]);
+    final select = widget.onSelectExecutionParameters;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (select != null)
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => select(
+                workerId: workerId,
+                workerTypeId: workerType,
+                workerDisplayName: widget.item.author,
+                model: modelId,
+                reasoningEffort: effort,
+              ),
+              child: Tooltip(
+                  message: 'Select ${widget.item.author}', child: identity),
+            ),
+          )
+        else
+          identity,
+        if (hasModel)
+          Text('· ${model.name}',
+              key: const ValueKey('response-model-label'), style: textStyle),
+        if (request != null)
+          Text(
+              '${hasModel ? '' : '· '}${effort?.isNotEmpty == true ? executionEffortDisplayName(effort) : 'Default effort'}',
+              key: const ValueKey('response-effort-label'),
+              style: textStyle),
+      ],
+    );
   }
 
   @override
@@ -4162,51 +4269,8 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (!isMe && !widget.grouped) ...[
-                              if (widget.item.isAiAnswer &&
-                                  widget.onSelectExecutionParameters != null)
-                                MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: GestureDetector(
-                                    onTap: () =>
-                                        widget.onSelectExecutionParameters!(
-                                      workerId:
-                                          widget.item.failureStep?.workerId,
-                                      workerTypeId:
-                                          widget.item.failureStep?.workerTypeId,
-                                      workerDisplayName: widget.item.author,
-                                    ),
-                                    child: Tooltip(
-                                      message: 'Select ${widget.item.author}',
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 12,
-                                            backgroundColor:
-                                                SyntilaColors.primarySoftColor(
-                                                    isDark),
-                                            child: Icon(
-                                                Icons.auto_awesome_rounded,
-                                                size: 13,
-                                                color: SyntilaColors
-                                                    .primaryForeground(isDark)),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            widget.item.author,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color:
-                                                  SyntilaColors.textSecondary(
-                                                      isDark),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                )
+                              if (widget.item.isAiAnswer)
+                                _aiAnswerHeader(context, isDark, metaColor)
                               else
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -4216,20 +4280,16 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                       backgroundColor:
                                           SyntilaColors.primarySoftColor(
                                               isDark),
-                                      child: widget.item.isAiAnswer
-                                          ? Icon(Icons.auto_awesome_rounded,
-                                              size: 13,
-                                              color: SyntilaColors
-                                                  .primaryForeground(isDark))
-                                          : Text(
-                                              initials,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: SyntilaColors
-                                                    .primaryForeground(isDark),
-                                              ),
-                                            ),
+                                      child: Text(
+                                        initials,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color:
+                                              SyntilaColors.primaryForeground(
+                                                  isDark),
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(width: 6),
                                     Text(

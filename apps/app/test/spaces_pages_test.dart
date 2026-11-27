@@ -2909,7 +2909,7 @@ void main() {
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('chat-history-scroll')),
-            matching: find.byIcon(Icons.auto_awesome_rounded)),
+            matching: find.bySemanticsLabel('ChatGPT icon')),
         findsOneWidget);
     expect(
         find.byWidgetPredicate((widget) =>
