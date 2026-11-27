@@ -17,4 +17,4 @@ files=(); for f in "$dir"/*.deb "$dir"/Syntila-Connect-*.tar.gz "$dir/SHA256SUMS
 create_connect_release linux "connect-linux-v$version" "Syntila Connect $version for Linux" \
   "Syntila Connect $version for Linux (amd64 and arm64): .deb packages and tarballs. Install from the APT repository or download a .deb; verify downloads with SHA256SUMS." \
   "${files[@]}"
-echo "Next: scripts/prod-publish-connect-packages.sh --apt"
+echo "Next: scripts/prod-publish-connect-linux.sh"

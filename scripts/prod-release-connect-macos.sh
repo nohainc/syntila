@@ -17,4 +17,4 @@ files=(); for f in "$dir"/Syntila-Connect-*.tar.gz "$dir"/Syntila-Connect-*-app.
 create_connect_release macos "connect-macos-v$version" "Syntila Connect $version for macOS" \
   "Syntila Connect $version for macOS. Ad-hoc signed, not notarized: if macOS blocks the app, run xattr -dr com.apple.quarantine on it. Verify downloads with SHA256SUMS." \
   "${files[@]}"
-echo "Next: scripts/prod-publish-connect-packages.sh --homebrew"
+echo "Next: scripts/prod-publish-connect-macos.sh"

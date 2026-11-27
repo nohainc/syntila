@@ -87,8 +87,8 @@ echo extra > "$R/dist/connect/release/linux/extra.deb"
 FAIL_ON="" run_case relextra "$R/scripts/prod-release-connect-linux.sh" --dry-run
 [ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "not listed in SHA256SUMS" && ok "release refuses files that are not in SHA256SUMS" || fail "unlisted artifact check"
 rm -f "$R/dist/connect/release/linux/extra.deb"
-FAIL_ON="" run_case pubnone "$R/scripts/prod-publish-connect-packages.sh" --dry-run
-[ "$CODE" != 0 ] && ok "publish needs --apt or --homebrew" || fail "publish without target"
+FAIL_ON="" run_case pubflag "$R/scripts/prod-publish-connect-linux.sh" --create-tap --dry-run
+[ "$CODE" != 0 ] && ok "each publish script rejects the other platform's flags" || fail "publish flag check"
 
 # 2. web app step order, and nothing mutating ran in the dry run
 FAIL_ON="" run_case web "$R/scripts/prod-deploy-web-app.sh" --dry-run
