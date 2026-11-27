@@ -35,7 +35,7 @@ STUB
   chmod +x "$T/bin/$tool"
 done
 mkdir -p "$R/apps/connect"; printf 'name: syntila_connect\nversion: 0.1.0\n' > "$R/apps/connect/pubspec.yaml"
-git -C "$R" init -q -b main && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -qm t
+git -C "$R" init -q -b main && git -C "$R" remote add origin https://github.com/test/repo.git && git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -qm t
 # Fake Connect builds of this commit for the release scripts.
 head=$(git -C "$R" rev-parse HEAD)
 for platform in macos linux; do

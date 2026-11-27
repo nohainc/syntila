@@ -170,6 +170,12 @@ create_connect_release() {
   local platform="$1" tag="$2" title="$3" notes="$4"; shift 4
   require gh
   if gh release view "$tag" >/dev/null 2>&1; then die "$tag already exists; releases are immutable. Bump version: in apps/connect/pubspec.yaml."; fi
-  confirm "Publish GitHub Release $tag with: $(printf '%s ' "$@" | sed "s#$CONNECT_RELEASE_DIR/$platform/##g")"
-  run gh release create "$tag" "$@" --target "$(git -C "$ROOT" rev-parse HEAD)" --title "$title" --notes "$notes"
+  # The release points at the commit the artifacts were built from; GitHub needs it pushed.
+  local commit repo
+  commit=$(sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$CONNECT_RELEASE_DIR/$platform/build.json")
+  repo=$(git -C "$ROOT" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+  gh api "repos/$repo/commits/$commit" --jq .sha >/dev/null 2>&1 \
+    || die "The build commit ${commit:0:8} is not on GitHub. Push it first (git push origin main), then run this again."
+  confirm "Publish GitHub Release $tag (commit ${commit:0:8}) with: $(printf '%s ' "$@" | sed "s#$CONNECT_RELEASE_DIR/$platform/##g")"
+  run gh release create "$tag" "$@" --target "$commit" --title "$title" --notes "$notes"
 }
