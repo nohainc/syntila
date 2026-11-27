@@ -60,7 +60,7 @@ Connect runs your Workers on a computer. See [Connect onboarding](docs/operation
 sudo apt install syntila-connect
 # macOS (Apple silicon)
 brew install nohainc/tap/syntila-connect
-# Windows: download the installer from the GitHub Release connect-windows-v<version>
+# Windows: download the installer from the GitHub Release connect-v<version>
 ```
 
 ## Build, test and release

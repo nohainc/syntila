@@ -25,11 +25,11 @@ publish_homebrew() {
   check_connect_build macos "$version"
   local tap="homebrew-tap" dir="$CONNECT_RELEASE_DIR/macos" tmp; tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' RETURN
-  local arch tarball app url_base="https://github.com/$owner_repo/releases/download/connect-macos-v$version"
+  local arch tarball app url_base="https://github.com/$owner_repo/releases/download/connect-v$version"
   arch=$(sed -n 's/.*"arch": *"\([^"]*\)".*/\1/p' "$dir/build.json")
   [ "$arch" = arm64 ] || die "The macOS build is $arch; the formula supports Apple silicon (arm64) only."
   tarball="Syntila-Connect-$version-macos-$arch.tar.gz"
-  [ "$DRY_RUN" = 1 ] || gh release view "connect-macos-v$version" >/dev/null 2>&1 || die "Release connect-macos-v$version does not exist. Run scripts/prod-release-connect-macos.sh first."
+  [ "$DRY_RUN" = 1 ] || gh release view "connect-v$version" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$tarball" || die "Release connect-v$version has no $tarball. Run scripts/prod-release-connect-macos.sh first."
   if ! gh repo view "$owner/$tap" >/dev/null 2>&1; then
     [ "$create_tap" = 1 ] || die "The tap $owner/$tap does not exist. Run again with --create-tap to create it (public)."
     confirm "Create the public repository $owner/$tap."

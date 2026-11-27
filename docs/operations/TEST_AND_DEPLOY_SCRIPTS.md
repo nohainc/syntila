@@ -97,11 +97,13 @@ Run on the Mac, from a clean `main` equal to `origin/main` (same flags as the ot
 | Command | What it does |
 | --- | --- |
 | `scripts/prod-build-connect-macos.sh [--skip-gui]` | Builds the CLI, Worker Engine and desktop app for this Mac's architecture (arm64) with the production Profile trust roots (`SYNTILA_PROFILE_TRUST_ROOTS`, or the GitHub variable via `gh`). Writes `Syntila-Connect-<v>-macos-<arch>.tar.gz`, `...-app.zip`, `SHA256SUMS` and `build.json` to `dist/connect/release/macos/`. Ad-hoc signed, not notarized. |
-| `scripts/prod-release-connect-macos.sh` | Checks the build is this commit and version and the checksums match, then creates the GitHub Release `connect-macos-v<v>` with those files. |
+| `scripts/prod-release-connect-macos.sh` | Checks the build is this commit and version and the checksums match, then puts those files on the GitHub Release `connect-v<v>` (see below). |
 | `scripts/prod-build-connect-linux.sh` | Cross-compiles the CLI and Engine for linux x64 and arm64 with the Dart SDK, builds `syntila-connect_<v>_amd64.deb` and `_arm64.deb` (`scripts/internal/make-deb.py`, no dpkg needed) and two tarballs in `dist/connect/release/linux/`. The `.deb` installs `/usr/bin/syntila-connect` and `/usr/bin/syntila-worker`. |
-| `scripts/prod-release-connect-linux.sh` | Same checks, then the GitHub Release `connect-linux-v<v>`. |
+| `scripts/prod-release-connect-linux.sh` | Same checks, then the Linux files on `connect-v<v>`. |
 | `scripts/prod-publish-connect-linux.sh` | Adds the `.deb` files to the signed APT repository (branch `apt-repository`, site `https://nohainc.github.io/syntila`) and signs it with the key `SYNTILA_APT_SIGNING_FINGERPRINT` (default: the current repository key; use your gpg keyring or `SYNTILA_APT_PRIVATE_KEY_FILE`). `--prune-legacy` removes the old Workspace packages. GitHub Pages must serve the `apt-repository` branch; the script prints the one command that switches it if it does not. |
 | `scripts/prod-publish-connect-macos.sh` | Generates the formula (`syntila-connect`) and cask (`syntila-connect-app`) from the macOS build and the Release URL, and pushes them to the tap `nohainc/homebrew-tap` (`--create-tap` creates it). Run the macOS release first. |
+
+**One release per version.** All platforms share the GitHub Release `connect-v<v>` titled "Syntila Connect <v>": the first platform creates it, the others add their files (the Windows release workflow does the same). A platform may add its files only when the release is on the same commit as its build and does not already have a file of that name; otherwise bump `version:` or rebuild from that commit. Each platform uploads its checksums as `SHA256SUMS-windows`, `-macos` or `-linux`.
 
 Order: `prod-build-connect-<os>.sh`, `prod-release-connect-<os>.sh`, then `prod-publish-connect-<os>.sh` (APT for Linux, Homebrew for macOS). The Windows build and release stay on GitHub ([GitHub Actions](GITHUB_ACTIONS.md)).
 

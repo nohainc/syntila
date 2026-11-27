@@ -7,7 +7,7 @@ Syntila uses these manual (`workflow_dispatch`) workflows for Windows builds and
 | `build-connect-windows.yml` | Manual | Build and test the Windows x64 installer and portable archive; download them from the run artifacts. |
 | `release-windows.yml` | Manual | Publish the artifacts from a selected successful build run. |
 
-Run **Build Connect for Windows** first. The installer and binaries are unsigned. To publish, run **Release Connect for Windows** on `main` and provide the build run ID and optional release notes. The selected build must be a successful manual run on `main`. The release verifies its checksums and publishes the same installer and archive without rebuilding. Actions artifacts expire according to the repository retention policy, so release them before expiry. The release creates a tag at the build commit using its version; an existing release cannot be replaced by this workflow.
+Run **Build Connect for Windows** first. The installer and binaries are unsigned. To publish, run **Release Connect for Windows** on `main` and provide the build run ID and optional release notes. The selected build must be a successful manual run on `main`. The release verifies its checksums and publishes the same installer and archive without rebuilding. Actions artifacts expire according to the repository retention policy, so release them before expiry. The release is the shared `connect-v<version>` (macOS and Linux add their files with the `prod-release-connect-*` scripts): it is created at the build commit if missing, or the Windows files are added when it is on that same commit. Existing files are never replaced.
 
 Windows may show publisher or SmartScreen warnings for these unsigned downloads.
 
@@ -26,7 +26,7 @@ The Windows installer and portable archive put `Syntila Connect.exe`, `syntila-c
 1. Bump `version:` in `apps/connect/pubspec.yaml` (x.y.z). The workflows read it and refuse a version that already has a release.
 2. Merge to `main`.
 3. Run **Build Connect for Windows** on `main`; note the run ID. It runs `dart test`, builds, runs `scripts/test-connect-windows-installer.ps1` (per-user install under `%LOCALAPPDATA%\Programs\Syntila\Connect`, no administrator rights, upgrade and uninstall) and uploads the installer, portable zip and checksums.
-4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS`, and that the checksum verifies.
+4. Run **Release Connect for Windows** with that run ID. Check the Release has the installer, the portable zip and `SHA256SUMS-windows`, and that the checksum verifies.
 5. Install it on a Windows machine and follow [Connect onboarding](CONNECT_ONBOARDING.md).
 
 Shared setup lives in `.github/actions/` (`setup-flutter`, which uses `scripts/ci/setup-flutter-linux-arm64.sh` on Linux ARM64). Production deploys do not run on GitHub; they use the `scripts/prod-*.sh` scripts on the dev machine.

@@ -59,18 +59,24 @@ describe("CI acceptance orchestration", () => {
       // PowerShell writes CRLF; the release must still verify it.
       writeFileSync(join(release, "SHA256SUMS"), hashes.stdout.replace(/\n/g, "\r\n"));
       const gh = join(bin, "gh");
-      writeFileSync(gh, '#!/bin/sh\nif [ "$1" = release ] && [ "$2" = view ]; then exit 1; fi\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
+      writeFileSync(gh, '#!/bin/sh\nif [ "$1" = release ] && [ "$2" = view ]; then\n  if [ "$RELEASE_EXISTS" = 1 ]; then case "$*" in *--json*) printf "SHA256SUMS-macos\\n";; esac; exit 0; fi\n  exit 1\nfi\nif [ "$1" = api ]; then printf "%s\\n" "$TAG_COMMIT"; exit 0; fi\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
       chmodSync(gh, 0o755);
       const workflow = source(".github/workflows/release-windows.yml");
       const script = workflow.split("      - name: Verify artifacts and create release\n")[1]
         .split("        run: |\n")[1].split("\n").map((line) => line.slice(10)).join("\n");
-      const run = () => spawnSync("bash", ["-c", script], {
+      const run = (extra = {}) => spawnSync("bash", ["-c", script], {
         cwd: root, encoding: "utf8", env: {...process.env, PATH: `${bin}:${process.env.PATH}`,
-          BUILD_RUN_ID: "123", BUILD_SHA: sha, NOTES: "", RELEASE_LOG: join(root, "release.log")},
+          BUILD_RUN_ID: "123", BUILD_SHA: sha, NOTES: "", GH_REPO: "o/r", RELEASE_LOG: join(root, "release.log"), ...extra},
       });
       const result = run();
       expect(result.status, result.stderr).toBe(0);
-      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release create connect-windows-v${version}`);
+      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release create connect-v${version}`);
+      // Another platform already created the release on this commit: the Windows files are added to it.
+      const added = run({RELEASE_EXISTS: "1", TAG_COMMIT: sha});
+      expect(added.status, added.stderr).toBe(0);
+      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release upload connect-v${version}`);
+      // A release on another commit must not receive these files.
+      expect(run({RELEASE_EXISTS: "1", TAG_COMMIT: "b".repeat(40)}).status).not.toBe(0);
       writeFileSync(join(release, installer), "modified");
       expect(run().status).not.toBe(0);
     } finally {

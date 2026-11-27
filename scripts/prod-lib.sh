@@ -164,18 +164,37 @@ check_connect_build() {
   done
 }
 
-# create_connect_release <platform> <tag> <title> <notes> <file...>: GitHub Release
-# for a verified build; refuses an existing tag.
+# create_connect_release <platform> <title> <notes> <file...>: puts a verified build on
+# the one GitHub Release connect-v<version> (all platforms share it). Creates the
+# release when it does not exist; otherwise adds the files when the release is on the
+# same commit as the build. Never replaces an existing file. SHA256SUMS is uploaded as
+# SHA256SUMS-<platform> so the platforms do not collide.
 create_connect_release() {
-  local platform="$1" tag="$2" title="$3" notes="$4"; shift 4
+  local platform="$1" title="$2" notes="$3"; shift 3
   require gh
-  if gh release view "$tag" >/dev/null 2>&1; then die "$tag already exists; releases are immutable. Bump version: in apps/connect/pubspec.yaml."; fi
-  # The release points at the commit the artifacts were built from; GitHub needs it pushed.
-  local commit repo
+  local version tag commit repo tmp files=() f
+  version=$(connect_version); tag="connect-v$version"
   commit=$(sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$CONNECT_RELEASE_DIR/$platform/build.json")
   repo=$(git -C "$ROOT" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+  # The release points at the commit the artifacts were built from; GitHub needs it pushed.
   gh api "repos/$repo/commits/$commit" --jq .sha >/dev/null 2>&1 \
     || die "The build commit ${commit:0:8} is not on GitHub. Push it first (git push origin main), then run this again."
-  confirm "Publish GitHub Release $tag (commit ${commit:0:8}) with: $(printf '%s ' "$@" | sed "s#$CONNECT_RELEASE_DIR/$platform/##g")"
-  run gh release create "$tag" "$@" --target "$commit" --title "$title" --notes "$notes"
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
+  for f in "$@"; do
+    if [ "$(basename "$f")" = SHA256SUMS ]; then cp "$f" "$tmp/SHA256SUMS-$platform"; files+=("$tmp/SHA256SUMS-$platform"); else files+=("$f"); fi
+  done
+  local names; names=$(for f in "${files[@]}"; do basename "$f"; done | tr '\n' ' ')
+  if gh release view "$tag" >/dev/null 2>&1; then
+    local tag_commit; tag_commit=$(gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)
+    [ "$tag_commit" = "$commit" ] || die "$tag is on commit ${tag_commit:0:8}, this build is ${commit:0:8}. Files from different commits cannot share a release: build again from that commit, or bump version: in apps/connect/pubspec.yaml."
+    local existing; existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
+    for f in "${files[@]}"; do
+      printf '%s\n' "$existing" | grep -qx "$(basename "$f")" && die "$tag already has $(basename "$f"); releases are immutable."
+    done
+    confirm "Add to the existing release $tag (commit ${commit:0:8}): $names"
+    run gh release upload "$tag" "${files[@]}"
+  else
+    confirm "Create GitHub Release $tag (commit ${commit:0:8}) with: $names"
+    run gh release create "$tag" "${files[@]}" --target "$commit" --title "$title" --notes "$notes"
+  fi
 }

@@ -78,7 +78,7 @@ for s in prod-build-connect-macos prod-build-connect-linux prod-release-connect-
   [ "$CODE" = 0 ] && ok "$s --dry-run" || { fail "$s --dry-run (exit $CODE)"; printf '%s\n' "$OUT" | tail -6; }
 done
 FAIL_ON="" run_case relmac "$R/scripts/prod-release-connect-macos.sh" --dry-run
-printf '%s' "$OUT" | grep -q "gh release create connect-macos-v0.1.0" && ok "macOS release names the tag and uploads the build" || fail "macOS release plan"
+printf '%s' "$OUT" | grep -q "gh release create connect-v0.1.0" && ok "macOS release names the tag and uploads the build" || fail "macOS release plan"
 echo stale > "$R/dist/connect/release/linux/Syntila-Connect-0.1.0-linux.tar.gz"
 FAIL_ON="" run_case relstale "$R/scripts/prod-release-connect-linux.sh" --dry-run
 [ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "Checksum verification failed" && ok "release refuses artifacts that do not match SHA256SUMS" || fail "checksum check"
