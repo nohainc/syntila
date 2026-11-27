@@ -453,7 +453,7 @@ class AgentRuntime {
     Duration stepTimeout = const Duration(seconds: 30),
     Duration permitTimeout = const Duration(minutes: 2),
     Duration permitResend = const Duration(seconds: 5),
-    String clientVersion = '0.1.0',
+    String clientVersion = '0.2.0',
   }) async {
     await paths.ensure();
     final lock = await AgentLock.acquire(paths.lockFile);
