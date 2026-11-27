@@ -1,0 +1,14 @@
+Package: syntila-connect
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Syntila <support@conclaveax.com>
+Installed-Size: 19895
+Section: utils
+Priority: optional
+Depends: libc6 (>= 2.31)
+Homepage: https://syntila.app
+Description: Syntila Connect: runs your Workers on this computer
+Filename: pool/main/s/syntila-connect/syntila-connect_0.1.0_amd64.deb
+Size: 8115638
+SHA256: 5de56e11797ee536ab4c22a77d983462b042d01c165a637058ade0c1b1a73d93
+
