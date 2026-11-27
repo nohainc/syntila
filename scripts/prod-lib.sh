@@ -107,19 +107,22 @@ stage_backend() {
 }
 
 # Migrations in the build that the production database has not applied yet.
-# Reading the list needs the database login of the syntila user; when that is
+# Reading the list needs sudo on the VPS (one password prompt); when that is
 # not possible the function says so instead of listing every migration.
 pending_migrations() {
   local applied
-  if ! applied=$(ssh -o BatchMode=yes "$PROD_VPS" 'set -a; . /etc/syntila/backend.env; set +a
-      PGPASSWORD="$(cat /etc/syntila/postgres-password 2>/dev/null)" psql -XAtq -h "${PGHOST:-127.0.0.1}" -U "${PGUSER:-syntila_app}" -d "${PGDATABASE:-syntila}" -c "SELECT version FROM schema_migrations"' 2>/dev/null) \
-     || [ -z "$applied" ]; then
+  # The login user cannot read the database password, so the query runs as the
+  # postgres user over sudo, as in "prod-migrate-db.sh status". The password
+  # prompt goes to the terminal (stdout may be captured by the caller) and the
+  # result travels through a file in the home directory.
+  ssh -t "$PROD_VPS" 'sudo -u postgres psql -XAtq -d syntila -c "SELECT version FROM schema_migrations ORDER BY version" > ~/.applied-migrations.txt' >/dev/tty 2>&1 </dev/tty || true
+  applied=$(ssh -o BatchMode=yes "$PROD_VPS" 'cat ~/.applied-migrations.txt; rm -f ~/.applied-migrations.txt' 2>/dev/null \
+    | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort || true)
+  if [ -z "$applied" ]; then
     echo "unknown (could not read schema_migrations; the VPS run lists them before applying)"
     return 0
   fi
-  printf '%s\n' "$applied" | sort > /tmp/prod-applied.$$
-  ls "$ROOT/apps/backend/migrations" | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort | comm -23 - /tmp/prod-applied.$$
-  rm -f /tmp/prod-applied.$$
+  ls "$ROOT/apps/backend/migrations" | grep -E '^[0-9]{4}_[a-z0-9_]+\.sql$' | sort | comm -23 - <(printf '%s\n' "$applied")
 }
 
 # Pending auth (D1) migrations as printed by wrangler.
