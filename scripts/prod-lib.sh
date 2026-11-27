@@ -140,12 +140,12 @@ connect_version() { awk '/^version:/ {print $2; exit}' "$ROOT/apps/connect/pubsp
 # Public Profile trust roots baked into a release build (JSON). From the
 # environment, or the GitHub variable the Windows build uses.
 connect_trust_roots() {
-  local v="${SYNTILA_PROFILE_TRUST_ROOTS:-${SYNTILA_RELEASE_TRUST_KEYS_JSON:-}}"
+  local v="${SYNTILA_PROFILE_TRUST_ROOTS:-}"
   if [ -z "$v" ] && command -v gh >/dev/null 2>&1; then
-    v=$(gh variable get SYNTILA_PROFILE_TRUST_ROOTS 2>/dev/null || gh variable get SYNTILA_RELEASE_TRUST_KEYS_JSON 2>/dev/null || true)
+    v=$(gh variable get SYNTILA_PROFILE_TRUST_ROOTS 2>/dev/null || true)
   fi
-  [ -n "$v" ] || die "No Profile trust roots: set SYNTILA_PROFILE_TRUST_ROOTS (public keys that match the backend's SYNTILA_PROFILE_SIGNING_KEY_ID)."
-  printf '%s' "$v"
+  [ -n "$v" ] || die "No Profile trust roots: set SYNTILA_PROFILE_TRUST_ROOTS to a flat public key map."
+  printf '%s' "$v" | node "$ROOT/scripts/validate-connect-trust-roots.mjs"
 }
 
 # check_connect_build <platform> <version>: the artifacts in dist are the build of

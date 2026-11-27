@@ -39,7 +39,7 @@ jobs:
     env:
       SYNTILA_CONNECT_VERSION: ${{ needs.read-version.outputs.version }}
       # Releases never fall back to the compile-only CI trust root.
-      SYNTILA_PROFILE_TRUST_ROOTS: ${{ vars.SYNTILA_PROFILE_TRUST_ROOTS || vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+      SYNTILA_PROFILE_TRUST_ROOTS: ${{ vars.SYNTILA_PROFILE_TRUST_ROOTS }}
       SYNTILA_UPDATE_KEYS: ${{ vars.SYNTILA_UPDATE_KEYS || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,7 +49,7 @@ jobs:
       - name: Require release configuration
         shell: pwsh
         run: |
-          if (-not $env:SYNTILA_PROFILE_TRUST_ROOTS) { throw 'vars.SYNTILA_PROFILE_TRUST_ROOTS (or vars.SYNTILA_RELEASE_TRUST_KEYS_JSON) is required.' }
+          if (-not $env:SYNTILA_PROFILE_TRUST_ROOTS) { throw 'vars.SYNTILA_PROFILE_TRUST_ROOTS is required.' }
       - name: Install pinned Inno Setup compiler
         shell: pwsh
         run: |

@@ -16,7 +16,7 @@
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
 parse_flags "$@"
-require dart; require python3
+require node; require dart; require python3
 version=$(connect_version)
 say "Connect for Linux $version: $(git_state)"
 require_clean_main

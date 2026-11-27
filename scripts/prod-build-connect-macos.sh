@@ -17,7 +17,7 @@ PROD_EXTRA_FLAGS="--skip-gui"
 parse_flags "$@"
 gui=1; for a in "$@"; do [ "$a" = --skip-gui ] && gui=0; done
 [ "$(uname -s)" = Darwin ] || die "This build must run on macOS."
-require dart; [ "$gui" = 0 ] || require flutter
+require node; require dart; [ "$gui" = 0 ] || require flutter
 
 version=$(connect_version); arch=$(uname -m)
 say "Connect for macOS $version ($arch): $(git_state)"

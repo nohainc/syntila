@@ -18,7 +18,7 @@ try {
   const jwk = key.export({ format: "jwk" });
   const publicBytes = Buffer.from(createPublicKey(key).export({ format: "jwk" }).x, "base64url");
   const roots = JSON.parse(readFileSync(rootsPath, "utf8"));
-  const root = roots[keyId] ?? roots.syntila?.[keyId];
+  const root = roots[keyId];
   if (typeof root !== "string" || !/^[A-Za-z0-9+/_-]{43}=?$/.test(root)) throw new Error("Trust root for the key ID is missing or invalid.");
   const expected = Buffer.from(root, "base64url");
   if (expected.length !== 32 || !timingSafeEqual(publicBytes, expected)) throw new Error("Seed does not match the specified public trust root.");

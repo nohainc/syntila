@@ -26,10 +26,10 @@ if (-not $SkipGui -and -not (Get-Command flutter -ErrorAction SilentlyContinue))
 }
 
 if ($Production) {
-    $TrustRoots = if ($env:SYNTILA_PROFILE_TRUST_ROOTS) { $env:SYNTILA_PROFILE_TRUST_ROOTS } else { $env:SYNTILA_RELEASE_TRUST_KEYS_JSON }
+    $TrustRoots = $env:SYNTILA_PROFILE_TRUST_ROOTS
     $UpdateKeys = if ($env:SYNTILA_UPDATE_KEYS) { $env:SYNTILA_UPDATE_KEYS } else { '' }
     if (-not $TrustRoots) {
-        throw 'A production build needs SYNTILA_PROFILE_TRUST_ROOTS (or SYNTILA_RELEASE_TRUST_KEYS_JSON).'
+        throw 'A production build needs a flat SYNTILA_PROFILE_TRUST_ROOTS map.'
     }
 } else {
     & node (Join-Path $Root 'scripts/setup-local-profile-signing.mjs')
@@ -37,6 +37,9 @@ if ($Production) {
     $TrustRoots = Get-Content (Join-Path $Root '.development/local-profile-signing/trust-roots.json') -Raw
     $UpdateKeys = if ($env:SYNTILA_UPDATE_KEYS) { $env:SYNTILA_UPDATE_KEYS } else { '' }
 }
+
+$TrustRoots = $TrustRoots | & node (Join-Path $Root 'scripts/validate-connect-trust-roots.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'Invalid Profile trust roots.' }
 
 $EngineVersionLine = (Select-String -Path (Join-Path $EngineDir 'pubspec.yaml') -Pattern '^version:').Line
 $EngineVersion = ($EngineVersionLine -replace '^version:\s*', '').Trim().Split('+')[0]

@@ -18,7 +18,7 @@ Production readiness also requires the device, real-provider, and security evide
 | `SYNTILA_AUTH_GITHUB_CLIENT_ID`, `SYNTILA_AUTH_GITHUB_CLIENT_SECRET` | GitHub → Settings → Developer settings → OAuth Apps. |
 | `SYNTILA_AUTH_GOOGLE_CLIENT_ID`, `SYNTILA_AUTH_GOOGLE_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials. |
 
-Connect release builds (`scripts/prod-build-connect-*.sh`) also need `SYNTILA_PROFILE_TRUST_ROOTS` (public Profile roots; falls back to the GitHub variable via `gh`). Publishing to APT needs the repository signing key in your gpg keyring or `SYNTILA_APT_PRIVATE_KEY_FILE`, and optionally `SYNTILA_APT_SIGNING_FINGERPRINT`; the Homebrew tap needs `gh` logged in with write access to `nohainc/homebrew-tap`.
+Connect release builds (`scripts/prod-build-connect-*.sh`) also need `SYNTILA_PROFILE_TRUST_ROOTS` (public Profile roots; falls back to the GitHub variable via `gh`). The value must be a flat JSON map of key IDs to public keys; nested publisher maps are rejected. `SYNTILA_RELEASE_TRUST_KEYS_JSON` is a separate publisher-scoped configuration and is not a fallback for Connect. Publishing to APT needs the repository signing key in your gpg keyring or `SYNTILA_APT_PRIVATE_KEY_FILE`, and optionally `SYNTILA_APT_SIGNING_FINGERPRINT`; the Homebrew tap needs `gh` logged in with write access to `nohainc/homebrew-tap`.
 
 Optional settings: `PROD_VPS`, `PROD_STAGE`, `PROD_API_URL`, `PROD_APP_URL`, `SYNTILA_API_URL`.
 
@@ -31,7 +31,13 @@ node scripts/profile-signing-env.mjs /path/to/seed.base64 /path/to/public-trust-
 node scripts/profile-signing-env.mjs /path/to/seed.base64 /path/to/public-trust-roots.json KEY_ID --output /path/to/new-private-env
 ```
 
-The script checks the public key before writing a new owner-only file and refuses to overwrite an existing file. It accepts the flat `SYNTILA_PROFILE_TRUST_ROOTS` mapping or the `syntila` publisher mapping in `SYNTILA_RELEASE_TRUST_KEYS_JSON`. The output contains the private key: transfer it securely, add its two assignments to the protected `/etc/syntila/backend.env` on the VPS, and securely remove temporary copies. Preserve existing configuration and restrict access to the file. Restart `syntila-backend` after updating it. Verify Profile delivery with a released Connect client. A new signing key requires distributing its public root in Connect builds before using it.
+The script checks the public key before writing a new owner-only file and refuses to overwrite an existing file. It accepts the flat `SYNTILA_PROFILE_TRUST_ROOTS` mapping. The output contains the private key: transfer it securely, add its two assignments to the protected `/etc/syntila/backend.env` on the VPS, and securely remove temporary copies. Preserve existing configuration and restrict access to the file. Restart `syntila-backend` after updating it. Verify Profile delivery with a released Connect client. A new signing key requires distributing its public root in Connect builds before using it.
+
+## Profile signing key ID rollout
+
+Use `syntila-profile-v1` for the current Profile signing key. Configure the GitHub repository or Windows release environment variable `SYNTILA_PROFILE_TRUST_ROOTS` as a flat JSON map, for the current production key as `{"syntila-profile-v1":"JWm4CR8Sfke3q60SaD1AP8QhEH8ISmAWlUi6C/+zEOY="}`, using the public key that corresponds to the existing backend private JWK. Remove any stale local `SYNTILA_PROFILE_TRUST_ROOTS` override or update it to the same value; local overrides take precedence over GitHub. Keep the separate publisher-scoped `SYNTILA_RELEASE_TRUST_KEYS_JSON` unchanged unless its own consumers require a change.
+
+Build and publish a new Connect version on all platforms using that flat map. Change only `SYNTILA_PROFILE_SIGNING_KEY_ID` to `syntila-profile-v1` in `/etc/syntila/backend.env` and restart the backend after the new clients are available; preserve the existing private JWK. Until backend and clients use the same ID, Profile downloads fail closed. Existing clients that trust only the old ID must upgrade; users of the broken 0.1.0 release must upgrade too. Reconnect Workers and refresh models to verify. No database migration or re-pairing is required. Roll back by restoring the old backend key ID and using clients built with the old flat trust map. On a future actual key rotation, use a new ID and coordinate rollout separately.
 
 ## First-release rehearsal
 
@@ -39,7 +45,7 @@ Run on the dev machine (the Mac) from a clean `main` equal to `origin/main`. Com
 
 1. **Prerequisites on the VPS** (asks for the sudo password; prints no secrets):
    `ssh -t syntila@46.225.103.109 'psql --version; systemctl is-active postgresql caddy syntila-backend syntila-monitor.timer; sudo grep -c . /etc/syntila/backend.env; sudo grep SYNTILA_PROFILE_SIGNING_KEY_ID /etc/syntila/backend.env'`
-   PostgreSQL must be 16 or newer. The printed key id must be the one in the GitHub variable `SYNTILA_PROFILE_TRUST_ROOTS` (or `SYNTILA_RELEASE_TRUST_KEYS_JSON`; `gh variable list`), otherwise Connect refuses every Profile.
+   PostgreSQL must be 16 or newer. The printed key id must be the one in the GitHub variable `SYNTILA_PROFILE_TRUST_ROOTS` (`gh variable list`), otherwise Connect refuses every Profile.
 2. **State:** `scripts/prod-status.sh`, then `scripts/prod-migrate-db.sh status` (the migration list needs the sudo password; run it in a terminal).
 3. **Plan, then release:** `scripts/prod-deploy-all.sh --site --dry-run`, then `scripts/prod-deploy-all.sh --site`. Note the deployed commit from the first line of each script's output.
 4. **Smoke test** (a clean sign-up; tick each item):

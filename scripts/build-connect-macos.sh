@@ -61,6 +61,8 @@ else
   }
 fi
 
+TRUST_ROOTS="$(printf '%s' "$TRUST_ROOTS" | node "$ROOT/scripts/validate-connect-trust-roots.mjs")"
+
 ENGINE_VERSION="$(awk '/^version:/ {print $2; exit}' "$ENGINE_DIR/pubspec.yaml")"
 AGENT_VERSION="$(sed -n "s/^const agentVersion = '\(.*\)';/\1/p" "$AGENT_DIR/lib/src/cli.dart")"
 OUT="$ROOT/dist/connect/macos-$TARGET_ENV"
