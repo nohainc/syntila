@@ -15,7 +15,7 @@ Related: [CONNECT_CLI_AND_SERVICES.md](../specifications/CONNECT_CLI_AND_SERVICE
 
 ## macOS
 
-- **Homebrew:** `brew install nohainc/syntila/syntila-connect` (CLI and Worker Engine, Apple silicon) and optionally `brew install --cask nohainc/syntila/syntila-connect-app` for the desktop app.
+- **Homebrew:** `brew install nohainc/tap/syntila-connect` (CLI and Worker Engine, Apple silicon) and optionally `brew install --cask nohainc/tap/syntila-connect-app` for the desktop app.
 - **Manual:** download `Syntila-Connect-<version>-macos-arm64.tar.gz` from the GitHub Release `connect-macos-v<version>`, check it against `SHA256SUMS`, unpack it and put `syntila-connect` and `syntila-worker` in the same folder on your `PATH`. The builds are ad-hoc signed, not notarized: if macOS blocks the app, run `xattr -dr com.apple.quarantine "Syntila Connect.app"`.
 - Pair and start as for Windows: `syntila-connect pair --pairing-code CODE --auto-start` (a launchd agent for your user). Data: `~/Library/Application Support/Syntila/Workers/<worker-id>/`.
 
