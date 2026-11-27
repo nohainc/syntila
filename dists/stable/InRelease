@@ -5,21 +5,21 @@ Origin: Syntila
 Label: Syntila Connect
 Suite: stable
 Codename: stable
-Date: Fri, 27 Nov 2026 19:26:57 GMT
+Date: Fri, 27 Nov 2026 20:14:35 GMT
 Architectures: amd64 arm64
 Components: main
 Acquire-By-Hash: yes
 Description: Syntila Connect packages
 SHA256:
- b77d280ac1b78211d92f06602339fa754703e21e7308f435c334865b41ce48d9 878 main/binary-amd64/Packages
- 7584e60cc1f2b7537265e3f7eb1d57801317ff1d7da17fe90d17dc4245ad8fcb 393 main/binary-amd64/Packages.gz
- dc5127d73ecd82a7a6ed00d661a6d3640a922e7cc6edfd1ce2a628b17ca2d515 878 main/binary-arm64/Packages
- 64cc4456aed8a2381e25a3d35fde89c73d0dc945704ecac3c268ea6577208d09 394 main/binary-arm64/Packages.gz
+ 0da069a50bd32df06ad19882d5611a83d8aa5cccf546807be1b3108f6ffd3481 1317 main/binary-amd64/Packages
+ f774b6811af16f266246418eb4154a04aeff118c39d590fdfad124c91fc4fcd5 449 main/binary-amd64/Packages.gz
+ 8cf4d1c22af27d8d649df944f93cfe99f714d3aba6562a2af4983efa9d1a2441 1317 main/binary-arm64/Packages
+ b679a74be26f800e04a1ea98a5cadf0c3dbc85fb69df86591b66e70bb7985a58 447 main/binary-arm64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iJEEARYIADkWIQRuoBPRLvecvcNNZgWBgszPz0F18gUCawnZgRsUgAAAAAAEAA5t
-YW51MiwyLjUrMS4xMiwwLDMACgkQgYLMz89BdfJYuAD9HoLF5HY66LBlOfA6bAny
-ySDpi2Ks97Zvc67I8GwghdcA/ik/yRZEjEQHGLzQx3wY+bRNKitL3BK02DWsx+Lm
-KL4E
-=9pDi
+iJEEARYIADkWIQRuoBPRLvecvcNNZgWBgszPz0F18gUCawnkqxsUgAAAAAAEAA5t
+YW51MiwyLjUrMS4xMiwwLDMACgkQgYLMz89BdfLkxgD8CYBu4NV0dpMSyiGs2gZN
+7IQcr7RqLVqjUVGbEE7P2NYA/iCb0gfO90wNGKJJJMsnGGYApiYYnBpbMsFDlfqK
+M5EG
+=J5wf
 -----END PGP SIGNATURE-----

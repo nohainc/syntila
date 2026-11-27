@@ -26,3 +26,17 @@ Filename: pool/main/s/syntila-connect/syntila-connect_0.2.0_amd64.deb
 Size: 8115634
 SHA256: 4c35abc65e3a3e27923c3a9b31cd263b27466b091f180ef595c660fb9ff15ba7
 
+Package: syntila-connect
+Version: 0.2.1
+Architecture: amd64
+Maintainer: Syntila <support@conclaveax.com>
+Installed-Size: 19895
+Section: utils
+Priority: optional
+Depends: libc6 (>= 2.31)
+Homepage: https://syntila.app
+Description: Syntila Connect: runs your Workers on this computer
+Filename: pool/main/s/syntila-connect/syntila-connect_0.2.1_amd64.deb
+Size: 8115554
+SHA256: 4d44df5efde2032b44df3789300afdab64387753da2562e4e1cb3b63a2dc8293
+
