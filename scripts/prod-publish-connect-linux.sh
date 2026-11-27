@@ -6,7 +6,8 @@
 #   scripts/prod-publish-connect-linux.sh [--prune-legacy] [--yes] [--dry-run] [--allow-dirty]
 #
 # Needs gpg and the repository signing key: either already in your gpg keyring or
-# exported with SYNTILA_APT_PRIVATE_KEY_FILE (imported into a throwaway keyring).
+# exported with SYNTILA_APT_PRIVATE_KEY_FILE (imported into a throwaway keyring); if neither,
+# ~/.config/conclave/release-keys/apt-private-key.asc is used when it exists.
 # SYNTILA_APT_SIGNING_FINGERPRINT defaults to the current repository key.
 # --prune-legacy removes the old Workspace packages (syntila, syntila-gui).
 set -euo pipefail
@@ -27,6 +28,11 @@ publish_apt() {
   local fp="${SYNTILA_APT_SIGNING_FINGERPRINT:-6EA013D12EF79CBDC34D66058182CCCFCF4175F2}"
   local base="https://$owner.github.io/$repo" tmp; tmp=$(mktemp -d)
   trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$tmp"' RETURN
+  # Where the key was exported when the repository was set up on this Mac.
+  local default_key="$HOME/.config/conclave/release-keys/apt-private-key.asc"
+  if [ -z "${SYNTILA_APT_PRIVATE_KEY_FILE:-}" ] && ! gpg --list-secret-keys "$fp" >/dev/null 2>&1 && [ -f "$default_key" ]; then
+    SYNTILA_APT_PRIVATE_KEY_FILE="$default_key"
+  fi
   if [ -n "${SYNTILA_APT_PRIVATE_KEY_FILE:-}" ]; then
     export GNUPGHOME="$tmp/gnupg"; mkdir -m 700 "$GNUPGHOME"
     gpg --batch --import "$SYNTILA_APT_PRIVATE_KEY_FILE" 2>/dev/null
