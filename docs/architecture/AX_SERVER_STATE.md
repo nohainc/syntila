@@ -148,7 +148,11 @@ independent of the selected Space.
   tabs from repopulating. Storage failure falls back to memory.
 - **Local Thread view state** (separate browser namespace, `localStorage`).
   Device-local only: active tab (the composer mode, kept with its drafts), open
-  pane, Chat/Work drafts, last-seen markers, and per-Workflow/per-step choices.
+  pane, Chat/Work drafts, last-seen markers, a resume point per timeline, and
+  per-Workflow/per-step choices. The resume point is the item at the top of the
+  viewport when the reader stopped scrolling away from the end (cleared at the
+  end); reopening puts it back at the top, ahead of the first unread item, which
+  the seen markers still decide.
   Never sent to Cloud. It holds no Worker/model/effort selection for the Thread
   (see Persisted Thread view state). Each Thread has three entries (the view, the
   Chat draft, the Work draft) and a tab writes only the parts it changed since it

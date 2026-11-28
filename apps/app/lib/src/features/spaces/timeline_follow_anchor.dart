@@ -84,6 +84,22 @@ class AxTimelineFollowAnchor {
     return viewport.getOffsetToReveal(render, 0).offset;
   }
 
+  /// The first of [messages] (in the given, chronological order) that is
+  /// mounted and still reaches into the viewport, that is, the row at the top
+  /// of what the reader sees. Null when no listed row is mounted.
+  Object? firstVisible(Iterable<Object> messages) {
+    for (final message in messages) {
+      final context = _keys[message]?.currentContext;
+      final render = context is Element ? context.renderObject : null;
+      if (render is! RenderBox || !render.attached || !render.hasSize) continue;
+      final viewport = RenderAbstractViewport.maybeOf(render);
+      if (viewport is! RenderBox) continue;
+      final top = render.localToGlobal(Offset.zero, ancestor: viewport).dy;
+      if (top + render.size.height > 1) return message;
+    }
+    return null;
+  }
+
   /// Returns true if another layout is needed to mount a virtualized anchor.
   bool reveal(ScrollController controller) {
     final position = controller.position;

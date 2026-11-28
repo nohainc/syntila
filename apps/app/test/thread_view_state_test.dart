@@ -17,6 +17,8 @@ void main() {
       catalogRevision: 'reviewed',
       chatDraft: 'chat draft',
       workDraft: 'work draft',
+      chatResumeId: 'm5',
+      workResumeId: 'r2|response',
       pane: AxThreadViewState.notesPane,
     );
     final restored = AxThreadViewState.decode(state.encode())!;
@@ -24,6 +26,8 @@ void main() {
     expect(restored.chatDraft, 'chat draft');
     expect(restored.workDraft, 'work draft');
     expect(restored.pane, AxThreadViewState.notesPane);
+    expect(restored.chatResumeId, 'm5');
+    expect(restored.workResumeId, 'r2|response');
     expect([
       restored.workerId,
       restored.workerTypeId,
@@ -40,6 +44,8 @@ void main() {
       expect(state.toJson().keys, isNot(contains(key)));
     }
     expect(state.toJson().keys, isNot(contains('threadId')));
+    // A pane this build does not know is ignored.
+    expect(AxThreadViewState.fromJson({'pane': 'other'}).pane, isNull);
   });
 
   test('memory thread view state is isolated by user and thread', () async {
@@ -57,16 +63,6 @@ void main() {
     expect(await store.load(userId: 'u1', threadId: 't2'), isNull);
   });
 
-  test('unknown saved pane is ignored', () {
-    expect(AxThreadViewState.fromJson({'pane': 'other'}).pane, isNull);
-    expect(
-        AxThreadViewState.restore(
-                const AxThreadViewState(pane: AxThreadViewState.aiHistoryPane),
-                {'model': 'cloud'})!
-            .pane,
-        AxThreadViewState.aiHistoryPane);
-  });
-
   test('restore takes the selection from Cloud and the rest from the device',
       () {
     const local = AxThreadViewState(
@@ -74,6 +70,9 @@ void main() {
       workDraft: 'ask ai',
       chatSeenId: 'm9',
       pane: AxThreadViewState.aiHistoryPane,
+      workflowSelections: {
+        'chat': {'workerId': 'w1', 'model': 'm1'},
+      },
     );
     final state = AxThreadViewState.restore(local, {
       'tabIndex': 0, // Left by an older build; never read.
@@ -89,6 +88,7 @@ void main() {
     expect(state.workDraft, 'ask ai');
     expect(state.chatSeenId, 'm9');
     expect(state.pane, AxThreadViewState.aiHistoryPane);
+    expect(state.workflowSelections, local.workflowSelections);
     // Another browser has no local copy: defaults for the local part.
     final fresh = AxThreadViewState.restore(null, {'model': 'm'})!;
     expect(fresh.tabIndex, 0);
@@ -120,20 +120,6 @@ void main() {
       expect(other.stepSelections, isEmpty);
       expect(other.researcherCount, isNull);
     }
-  });
-
-  test('per-workflow selections round-trip and stay local', () {
-    const state = AxThreadViewState(workflowSelections: {
-      'chat': {'workerId': 'w1', 'model': 'm1'},
-      'work': {'workerId': 'w2', 'reasoningEffort': 'high'},
-    });
-    final decoded = AxThreadViewState.decode(state.encode())!;
-    expect(decoded.workflowSelections, state.workflowSelections);
-    expect(
-      AxThreadViewState.restore(decoded, {'workflowReference': 'chat:1'})!
-          .workflowSelections,
-      state.workflowSelections,
-    );
   });
 }
 

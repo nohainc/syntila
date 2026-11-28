@@ -718,6 +718,92 @@ void main() {
     await tester.pump();
     expect(tester.getTopLeft(find.text('First unread')).dy, closeTo(0, 1));
   });
+
+  testWidgets('reopening a Thread returns to where the reader left the chat',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1300, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final chat = AxDiscussionCache(null);
+    final work = AxWorkHistoryCache(null);
+    final store = MemoryAxThreadViewStateStore();
+    work.engine.update(work.query('b'),
+        (_) => AxWorkHistory(requests: const [], initialLoaded: true));
+    chat.engine.update(
+        chat.query('b'),
+        (_) => AxDiscussionHistory(messages: [
+              for (var i = 0; i < 60; i++)
+                AxDiscussionMessage(
+                  id: 'b-$i',
+                  threadId: 'b',
+                  authorUserId: 'other',
+                  authorName: 'Dana',
+                  body: 'Message number $i',
+                  createdAt: '2026-10-15T00:${'$i'.padLeft(2, '0')}:00.000Z',
+                ),
+            ], initialLoaded: true));
+    Widget page() => MaterialApp(
+            home: Scaffold(
+                body: ThreadPage(
+          space: const AxSpace(
+              id: 'space', name: 'Space', branch: '', lastActivity: ''),
+          thread: const AxThread(
+              id: 'b',
+              spaceId: 'space',
+              name: 'Thread b',
+              lead: '',
+              status: 'active',
+              brief: '',
+              queueStatus: ''),
+          currentUserId: 'me',
+          threadViewStateStore: store,
+          discussionCache: chat,
+          workHistoryCache: work,
+          onBackToSpace: () {},
+          onArchive: () {},
+        )));
+    final history = find.byKey(const ValueKey('chat-history-scroll'));
+
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    var controller = tester.widget<CustomScrollView>(history).controller!;
+    // At the end there is nothing to resume.
+    expect(controller.position.extentAfter, lessThan(24));
+    controller.jumpTo((controller.position.minScrollExtent +
+            controller.position.maxScrollExtent) /
+        2);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final resumeId = store.loadSync(userId: 'me', threadId: 'b')?.chatResumeId;
+    expect(resumeId, isNotNull);
+    expect(resumeId, startsWith('b-'));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    controller = tester.widget<CustomScrollView>(history).controller!;
+    expect(controller.position.extentAfter, greaterThan(100));
+    final number = resumeId!.substring(2);
+    final resumed = find.descendant(
+        of: history,
+        matching:
+            find.textContaining('Message number $number', findRichText: true));
+    expect(resumed, findsOneWidget);
+    final top = tester.getTopLeft(history).dy;
+    expect(tester.getTopLeft(resumed).dy, greaterThanOrEqualTo(top));
+    expect(tester.getTopLeft(resumed).dy, lessThan(top + 120));
+
+    // A real scroll releases the anchor; reaching the end clears the resume
+    // point.
+    await tester.drag(history, const Offset(0, -100));
+    await tester.pump();
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(store.loadSync(userId: 'me', threadId: 'b')?.chatResumeId, isNull);
+    await tester.pumpWidget(const SizedBox());
+    chat.clear();
+    work.clear();
+  });
 }
 
 class _DeactivationProbe extends StatefulWidget {

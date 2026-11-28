@@ -21,6 +21,8 @@ class AxThreadViewState {
     this.workDraft = '',
     this.chatSeenId,
     this.workSeenId,
+    this.chatResumeId,
+    this.workResumeId,
     this.pane,
     this.workflowSelections = const {},
     this.stepSelections = const {},
@@ -44,6 +46,13 @@ class AxThreadViewState {
   /// opening a tab scrolls to the first item after it.
   final String? chatSeenId;
   final String? workSeenId;
+
+  /// The item at the top of the viewport when the reader last left a timeline
+  /// scrolled away from its end; null when it was at the end. Reopening puts
+  /// it back at the top. Separate from the seen markers, which decide what is
+  /// unread.
+  final String? chatResumeId;
+  final String? workResumeId;
 
   /// Last open Thread pane: [conversationPane], [aiHistoryPane] or
   /// [notesPane]. Local only, like the drafts.
@@ -75,6 +84,8 @@ class AxThreadViewState {
         if (workDraft.isNotEmpty) 'workDraft': _bounded(workDraft),
         if (chatSeenId != null) 'chatSeenId': chatSeenId,
         if (workSeenId != null) 'workSeenId': workSeenId,
+        if (chatResumeId != null) 'chatResumeId': chatResumeId,
+        if (workResumeId != null) 'workResumeId': workResumeId,
         if (pane != null) 'pane': pane,
         if (workflowSelections.isNotEmpty)
           'workflowSelections': workflowSelections,
@@ -108,6 +119,8 @@ class AxThreadViewState {
       workDraft: local?.workDraft ?? '',
       chatSeenId: local?.chatSeenId,
       workSeenId: local?.workSeenId,
+      chatResumeId: local?.chatResumeId,
+      workResumeId: local?.workResumeId,
       pane: local?.pane,
       workflowSelections: local?.workflowSelections ?? const {},
       stepSelections:
@@ -136,6 +149,8 @@ class AxThreadViewState {
       workDraft: draft('workDraft'),
       chatSeenId: string('chatSeenId'),
       workSeenId: string('workSeenId'),
+      chatResumeId: string('chatResumeId'),
+      workResumeId: string('workResumeId'),
       pane: _panes.contains(json['pane']) ? json['pane'] as String : null,
       workflowSelections: _selections(json['workflowSelections']),
       stepSelections: _selections(json['stepSelections']),

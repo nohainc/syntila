@@ -243,6 +243,12 @@ class _ThreadPageState extends State<ThreadPage>
   bool _openWorkPending = true;
   String? _chatSeenId;
 
+  /// Top-of-viewport item per timeline when the reader last left it scrolled
+  /// away from the end (see [AxThreadViewState.chatResumeId]).
+  String? _chatResumeId;
+  String? _workResumeId;
+  final _resumeTimers = <bool, Timer>{};
+
   /// First Chat message the reader had not seen when the Thread opened. It
   /// always shows its sender line, even inside a same-author group.
   String? _firstUnreadChatId;
@@ -489,11 +495,16 @@ class _ThreadPageState extends State<ThreadPage>
         seen == null ? -1 : items.indexWhere((item) => item.$1 == seen);
     // A last-seen Work item is only found once Work history has loaded; the
     // Work update schedules this step again.
+    final resumeId = isWork ? _workResumeId : _chatResumeId;
+    final resumeIndex =
+        resumeId == null ? -1 : items.indexWhere((item) => item.$1 == resumeId);
+    // The same holds for a resume point on a Work answer.
     if (!isWork &&
-        seenIndex < 0 &&
-        seen != null &&
-        seen.startsWith('work-') &&
-        !_workPresentation.hasData) {
+        !_workPresentation.hasData &&
+        ((seenIndex < 0 && seen != null && seen.startsWith('work-')) ||
+            (resumeIndex < 0 &&
+                resumeId != null &&
+                resumeId.startsWith('work-')))) {
       return false;
     }
     final anchor = isWork ? _workIncomingAnchor : _chatIncomingAnchor;
@@ -504,18 +515,73 @@ class _ThreadPageState extends State<ThreadPage>
       _openChatPending = false;
       _followChat = true;
     }
-    if (seenIndex < 0 || seenIndex >= items.length - 1) {
+    final hasUnread = seenIndex >= 0 && seenIndex < items.length - 1;
+    if (hasUnread && !isWork) _firstUnreadChatId = items[seenIndex + 1].$1;
+    // Where the reader left a timeline mid-history wins over the first unread
+    // item; the unread divider above still marks what is new.
+    final target = resumeIndex >= 0
+        ? resumeIndex
+        : hasUnread
+            ? seenIndex + 1
+            : -1;
+    if (target < 0) {
       anchor.reset();
       return false;
     }
-    if (!isWork) _firstUnreadChatId = items[seenIndex + 1].$1;
-    // Hold the first unread item at the top, sender line included, until the
-    // reader scrolls; rows settling height later must not follow to the end.
-    anchor.anchorAt(items[seenIndex + 1].$2,
-        fraction: (seenIndex + 1) / (items.length - 1), once: false);
+    // Hold the item at the top, sender line included, until the reader
+    // scrolls; rows settling height later must not follow to the end.
+    anchor.anchorAt(items[target].$2,
+        fraction: items.length < 2 ? 1 : target / (items.length - 1),
+        once: false);
     // The anchored row needs its GlobalKey attached by a rebuild first.
     setState(() {});
     return true;
+  }
+
+  void _cancelResumeTimers() {
+    for (final timer in _resumeTimers.values) {
+      timer.cancel();
+    }
+    _resumeTimers.clear();
+  }
+
+  /// Records which item the reader is at once scrolling settles. A reader at
+  /// the end of a timeline has no resume point, so reopening follows the
+  /// latest content as before.
+  void _scheduleTrackResume(bool isWork) {
+    _resumeTimers[isWork]?.cancel();
+    _resumeTimers[isWork] = Timer(const Duration(milliseconds: 250), () {
+      _resumeTimers.remove(isWork);
+      if (mounted) _trackResume(isWork);
+    });
+  }
+
+  void _trackResume(bool isWork) {
+    final controller = isWork ? _workHistoryController : _chatHistoryController;
+    final anchor = isWork ? _workIncomingAnchor : _chatIncomingAnchor;
+    if (!_threadViewStateRestored ||
+        (isWork ? _openWorkPending : _openChatPending) ||
+        !_tabActive(isWork) ||
+        !controller.hasClients ||
+        !controller.position.hasContentDimensions ||
+        // The reader has not moved from an anchored open or incoming answer.
+        anchor.active) {
+      return;
+    }
+    String? id;
+    if (controller.position.extentAfter > 24) {
+      final items = isWork ? _workSequence() : _chatSequence();
+      final visible = anchor.firstVisible([for (final item in items) item.$2]);
+      if (visible == null) return;
+      id = items.firstWhere((item) => item.$2 == visible).$1;
+    }
+    if (id == (isWork ? _workResumeId : _chatResumeId)) return;
+    if (isWork) {
+      _workResumeId = id;
+    } else {
+      _chatResumeId = id;
+    }
+    _scheduleThreadViewStateSave();
   }
 
   void _markSeen(bool isWork, ScrollController controller) {
@@ -800,6 +866,7 @@ class _ThreadPageState extends State<ThreadPage>
   void _onWorkHistoryScroll() {
     if (!_workHistoryController.hasClients) return;
     final position = _workHistoryController.position;
+    _scheduleTrackResume(true);
     if (position.userScrollDirection == ScrollDirection.idle) {
       _markSeen(true, _workHistoryController);
       return;
@@ -819,6 +886,7 @@ class _ThreadPageState extends State<ThreadPage>
   void _onChatHistoryScroll() {
     if (!_chatHistoryController.hasClients) return;
     final position = _chatHistoryController.position;
+    _scheduleTrackResume(false);
     if (position.userScrollDirection == ScrollDirection.idle) {
       _markSeen(false, _chatHistoryController);
       return;
@@ -1242,6 +1310,8 @@ class _ThreadPageState extends State<ThreadPage>
       workDraft: _requestController.text,
       chatSeenId: _chatSeenId,
       workSeenId: _workSeenId,
+      chatResumeId: _chatResumeId,
+      workResumeId: _workResumeId,
       workflowSelections: _workflowSelectionsWithCurrent(),
       stepSelections: pending != null
           ? pending.stepSelections
@@ -1574,6 +1644,8 @@ class _ThreadPageState extends State<ThreadPage>
       _workflowSelections = {...saved.workflowSelections};
       _chatSeenId = saved.chatSeenId;
       _workSeenId = saved.workSeenId;
+      _chatResumeId = saved.chatResumeId;
+      _workResumeId = saved.workResumeId;
       _restorePane(saved.pane);
       _pendingThreadViewState = saved;
       final targetIndex = saved.tabIndex.clamp(0, _tabController.length - 1);
@@ -2105,6 +2177,8 @@ class _ThreadPageState extends State<ThreadPage>
       _workflow = '';
       _followWork = _followChat = true;
       _chatSeenId = _workSeenId = null;
+      _chatResumeId = _workResumeId = null;
+      _cancelResumeTimers();
       _openChatPending = _openWorkPending = true;
       _chatPositioned = _workPositioned = false;
       // Each Thread reopens its own last pane; one never saved starts on the
@@ -2277,6 +2351,7 @@ class _ThreadPageState extends State<ThreadPage>
     _workEventSubscription?.cancel();
     _cancelTerminalActivityChecks();
     _threadViewStateSaveTimer?.cancel();
+    _cancelResumeTimers();
     unawaited(_saveThreadViewState());
     _tabController.dispose();
     _presentation.chat.removeListener(_onChatPresentationChanged);
