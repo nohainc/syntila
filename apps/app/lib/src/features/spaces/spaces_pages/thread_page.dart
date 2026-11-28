@@ -120,6 +120,12 @@ class _ThreadPageState extends State<ThreadPage>
   /// stale device cannot overwrite a newer selection by merely opening a Thread
   /// or switching tabs.
   bool _selectionDirty = false;
+
+  /// The user chose a selection in this visit. Until then the page follows the
+  /// Cloud copy as it changes (a fresher Thread list, another device); after
+  /// it, only the user's own choice counts, so an older echo of an earlier
+  /// write can never revert it.
+  bool _selectionChosen = false;
   final _requestController = TextEditingController();
   bool _requestHistoryOpen = false;
   int _requestHistoryDirection = 1;
@@ -1380,6 +1386,18 @@ class _ThreadPageState extends State<ThreadPage>
       _pendingThreadViewState = null;
     }
     _selectionDirty = true;
+    _selectionChosen = true;
+  }
+
+  /// Applies a changed Cloud selection to a page where the user has not chosen
+  /// anything yet.
+  void _adoptCloudSelection() {
+    final remote = widget.thread.viewState;
+    if (remote.isEmpty) return;
+    final saved = AxThreadViewState.restore(_currentThreadViewState(), remote);
+    if (saved == null) return;
+    _pendingThreadViewState = saved;
+    _reconcilePendingThreadViewState();
   }
 
   void _reconcilePendingThreadViewState() {
@@ -1546,6 +1564,7 @@ class _ThreadPageState extends State<ThreadPage>
     final userId = widget.currentUserId;
     final threadId = widget.thread.id;
     final generation = ++_threadViewStateGeneration;
+    _selectionChosen = false;
     _threadViewStateRestored = false;
     _threadViewReady = false;
     _threadViewRevealScheduled = false;
@@ -2132,6 +2151,11 @@ class _ThreadPageState extends State<ThreadPage>
       _restoreThreadViewState();
     } else if (oldWidget.currentUserId != widget.currentUserId) {
       _restoreThreadViewState();
+    } else if (_threadViewStateRestored &&
+        !widget.isDraft &&
+        !_selectionChosen &&
+        !mapEquals(oldWidget.thread.viewState, widget.thread.viewState)) {
+      _adoptCloudSelection();
     }
     if (oldWidget.initialTab != widget.initialTab) {
       final targetIndex =

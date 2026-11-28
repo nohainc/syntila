@@ -5134,6 +5134,68 @@ void main() {
   });
 
   testWidgets(
+      'an open Thread follows a changed Cloud selection until the user chooses',
+      (tester) async {
+    AxAccountPlanCache.instance.plan = const AxAccountPlan(isPaid: true);
+    addTearDown(() => AxAccountPlanCache.instance.plan = AxAccountPlan.free);
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _CurrentWorkflowUiDataSource();
+    Widget page(String workflow) => MaterialApp(
+            home: Scaffold(
+                body: ThreadPage(
+          initialTab: 1,
+          viewerEmail: 'vitalii@nohainc.com',
+          currentUserId: 'user-owner',
+          threadViewStateStore: MemoryAxThreadViewStateStore(),
+          space: const AxSpace(
+              id: 'space-1',
+              name: 'Space',
+              branch: '',
+              lastActivity: '',
+              role: 'owner'),
+          thread: AxThread(
+              id: 'stream-1',
+              spaceId: 'space-1',
+              name: 'Stream',
+              lead: '',
+              status: 'active',
+              brief: '',
+              queueStatus: '',
+              canConfigureWork: true,
+              metadata: {
+                'viewState': {'workflowReference': workflow}
+              }),
+          dataSource: data,
+          onBackToSpace: _noop,
+          onArchive: _noop,
+          onViewStateChanged: (_) async {},
+        )));
+    bool selected(String id) => tester
+        .widget<Semantics>(find.byKey(ValueKey('work-toggle-$id')))
+        .properties
+        .selected!;
+    await tester.pumpWidget(page('chat:v1'));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+    expect(selected('chat'), isTrue);
+
+    // A fresher copy (another device, or a newer Thread list) is followed.
+    await tester.pumpWidget(page('direct:v2'));
+    await tester.pumpAndSettle();
+    expect(selected('direct'), isTrue);
+
+    // Once the user chooses, an older copy never reverts it.
+    await tester.tap(find.byKey(const ValueKey('work-toggle-chat')));
+    await tester.pumpAndSettle();
+    expect(selected('chat'), isTrue);
+    await tester.pumpWidget(page('direct:v2x'));
+    await tester.pumpWidget(page('direct:v2'));
+    await tester.pumpAndSettle();
+    expect(selected('chat'), isTrue);
+  });
+
+  testWidgets(
       'NewThreadPage shows the Direct Space identity and allows thread creation',
       (tester) async {
     const space = AxSpace(

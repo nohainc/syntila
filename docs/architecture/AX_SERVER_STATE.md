@@ -222,9 +222,10 @@ polling and navigation never repeat the POST.
   reads the Thread's `viewState` and re-binds a vanished Worker by `workerTypeId`
   only when exactly one of the viewer's Workers has that type; a superseded
   Workflow resolves to its current version; a missing one falls back to the
-  default Workflow but keeps the Worker and model. The open page does not
-  re-restore when another device changes the selection; it applies on the next
-  open. Space settings (`spaces.settings_json`) hold
+  default Workflow but keeps the Worker and model. An open Thread follows a
+  changed Cloud copy (a fresher Thread list, another device) until the user makes
+  a choice in that visit; after that only the user's own choice counts, so an
+  older echo of an earlier write cannot revert it. Space settings (`spaces.settings_json`) hold
   `threadOrder`, `sidebarExpanded` and `color`, and only the owner writes them.
 - **Workflows page** (`/workflows`, user-wide). Shows the newest version per
   catalog ID; regular accounts see only the implemented `chat` and Work workflows
