@@ -157,8 +157,9 @@ independent of the selected Space.
   (see Persisted Thread view state). Each Thread has three entries (the view, the
   Chat draft, the Work draft) and a tab writes only the parts it changed since it
   last read or wrote them, so a second tab or window keeps the first one's draft.
-  A write the browser refuses stays in memory for the page's next load; deleting
-  a Thread removes its entries and logout removes the user's. Appearance (Light/Dark/System) is stored in
+  A write the browser refuses stays in memory for the page's next load. Only the
+  100 most recently saved Threads per user are kept; deleting a Thread removes
+  its entries and logout removes the user's. Appearance (Light/Dark/System) is stored in
   `syntila-theme-v1`.
 - **Conditional reads** ([conditional reads v1](../specifications/AX_CONDITIONAL_READS.md)).
   Space detail, Space Threads and the Workflow catalog send the last ETag on

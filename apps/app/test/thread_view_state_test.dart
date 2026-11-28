@@ -213,6 +213,32 @@ void storeTests() {
       expect(tab().loadSync(userId: 'u', threadId: 't')!.workDraft, 'old');
     });
 
+    test('keeps only the most recently saved Threads per user', () async {
+      final store = KeyValueAxThreadViewStateStore(storage, maxThreads: 3);
+      Future<void> save(String user, String thread) => store.save(
+          userId: user,
+          threadId: thread,
+          state: AxThreadViewState(workDraft: 'draft $thread'));
+      for (final thread in ['t1', 't2', 't3']) {
+        await save('u', thread);
+      }
+      await save('other', 'x');
+      await save('u', 't1'); // Reused, so t2 is now the oldest.
+      await save('u', 't4');
+      final reader = KeyValueAxThreadViewStateStore(storage, maxThreads: 3);
+      expect(reader.loadSync(userId: 'u', threadId: 't2'), isNull);
+      for (final thread in ['t1', 't3', 't4']) {
+        expect(reader.loadSync(userId: 'u', threadId: thread)!.workDraft,
+            'draft $thread');
+      }
+      // Another user's Threads do not count against this one's cap.
+      expect(reader.loadSync(userId: 'other', threadId: 'x'), isNotNull);
+      // A removed Thread leaves the list, so it frees its place.
+      await store.remove(userId: 'u', threadId: 't3');
+      await save('u', 't5');
+      expect(reader.loadSync(userId: 'u', threadId: 't1'), isNotNull);
+    });
+
     test('remove and clearUser drop parts and legacy blobs', () async {
       storage.values['syntila-thread-view-v1:u:old'] = '{"workDraft":"big"}';
       final store = tab();

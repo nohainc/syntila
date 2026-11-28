@@ -17,8 +17,14 @@ abstract interface class AxKeyValueStorage {
 /// device-local view (tab, pane, markers, choices) and each draft. An instance
 /// writes only the parts it changed since it last read or wrote them, so
 /// another tab's newer draft survives a save made for an unrelated change.
+///
+/// Only the [maxThreads] most recently saved Threads per user are kept, so
+/// entries of Threads that were deleted elsewhere or never reopened cannot fill
+/// the browser's quota.
 class KeyValueAxThreadViewStateStore implements AxThreadViewStateStore {
-  KeyValueAxThreadViewStateStore(this._storage);
+  KeyValueAxThreadViewStateStore(this._storage, {this.maxThreads = 100});
+
+  final int maxThreads;
 
   static const _prefix = 'syntila-thread-view-v2:';
 
@@ -92,6 +98,7 @@ class KeyValueAxThreadViewStateStore implements AxThreadViewStateStore {
     required AxThreadViewState state,
   }) async {
     _purgeLegacy();
+    _touch(userId, threadId);
     final base = _base(userId, threadId);
     final json = state.toJson();
     final chat = json.remove('chatDraft') as String?;
@@ -118,6 +125,48 @@ class KeyValueAxThreadViewStateStore implements AxThreadViewStateStore {
     _seen[key] = normalized;
   }
 
+  String _recentKey(String userId) =>
+      '$_prefix${Uri.encodeComponent(userId)}:#recent';
+
+  List<String> _recent(String userId) {
+    try {
+      final decoded = jsonDecode(_storage.get(_recentKey(userId)) ?? '[]');
+      return decoded is List ? decoded.whereType<String>().toList() : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Moves [threadId] to the front of the user's recency list and drops the
+  /// entries of the Threads that fall off its end. Written only when the order
+  /// changes, not on every save.
+  void _touch(String userId, String threadId) {
+    final recent = _recent(userId);
+    if (recent.isNotEmpty && recent.first == threadId) return;
+    recent
+      ..remove(threadId)
+      ..insert(0, threadId);
+    while (recent.length > maxThreads) {
+      _drop(userId, recent.removeLast());
+    }
+    try {
+      _storage.set(_recentKey(userId), jsonEncode(recent));
+    } catch (_) {
+      // Without the list nothing is evicted; the next save tries again.
+    }
+  }
+
+  void _drop(String userId, String threadId) {
+    final base = _base(userId, threadId);
+    for (final key in ['$base#meta', '$base#chat', '$base#work']) {
+      _seen.remove(key);
+      _unsaved.remove(key);
+      try {
+        _storage.remove(key);
+      } catch (_) {}
+    }
+  }
+
   /// Entries of the single-blob format are never read again; drop them once so
   /// they stop using the browser's quota.
   void _purgeLegacy() {
@@ -141,14 +190,11 @@ class KeyValueAxThreadViewStateStore implements AxThreadViewStateStore {
     required String userId,
     required String threadId,
   }) async {
-    final base = _base(userId, threadId);
-    for (final key in ['$base#meta', '$base#chat', '$base#work']) {
-      _seen.remove(key);
-      _unsaved.remove(key);
-      try {
-        _storage.remove(key);
-      } catch (_) {}
-    }
+    _drop(userId, threadId);
+    final recent = _recent(userId)..remove(threadId);
+    try {
+      _storage.set(_recentKey(userId), jsonEncode(recent));
+    } catch (_) {}
   }
 
   @override
