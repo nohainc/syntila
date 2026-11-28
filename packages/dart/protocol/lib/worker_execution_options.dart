@@ -64,13 +64,12 @@ class WorkerSelectionCapability {
       this.globalEfforts = const [],
       this.allowedModelIds,
       this.allowsCustomModel = false,
-      this.autoModelSupported = true,
       this.availabilityMessage,
       this.catalogRevision});
   final String id, name;
   final List<ExecutionModelCapability> models;
   final CapabilityState state;
-  final bool modelSupported, allowsCustomModel, autoModelSupported;
+  final bool modelSupported, allowsCustomModel;
   final String? defaultModelId, availabilityMessage, catalogRevision;
   final List<String> globalEfforts;
   final List<String>? allowedModelIds;
@@ -125,12 +124,15 @@ class WorkerSelectionCapability {
             : const [];
   }
 
-  bool get allowsAutoModel =>
-      autoModelSupported &&
-      models.every((value) => value.selectionMode != 'combined');
+  /// A model may be left unset only while the catalog lists nothing to choose.
+  /// Otherwise the selection is one of the listed models; a provider's own
+  /// "auto" is such a model only when the provider reports it.
+  bool get allowsImplicitModel =>
+      !models.any((value) => value.available) &&
+      (allowedModelIds?.isEmpty ?? true);
 
   bool allowsAutoEffort(String? id) {
-    if (id == null && !allowsAutoModel) return false;
+    if (id == null && !allowsImplicitModel) return false;
     final selected = model(id ?? defaultModelId);
     return selected?.selectionMode != 'combined';
   }
@@ -153,7 +155,7 @@ class WorkerSelectionCapability {
       return 'Worker catalog changed; refresh and confirm the selection.';
     if (!supportsModel(value.model))
       return 'The selected model is not supported by this Worker.';
-    if (value.model == null && !allowsAutoModel)
+    if (value.model == null && !allowsImplicitModel)
       return 'Select an explicit model for this Worker.';
     final selected = model(value.model);
     final efforts = effortsForModel(value.model);

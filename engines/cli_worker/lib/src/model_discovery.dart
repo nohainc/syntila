@@ -467,9 +467,8 @@ class ProviderNotAuthenticatedException implements Exception {
 /// Lists the models the signed-in GitHub Copilot account may select, through
 /// the CLI's own SDK server (`auth.getStatus`, then `models.list`). Unlike the
 /// CLI's `--model` value list this is account-aware: plans that only allow
-/// automatic selection return no models. Auto is not listed: running Copilot
-/// without `--model` already selects a model automatically, which is what the
-/// client's own provider-default ("Auto") choice does.
+/// automatic selection return no models. A provider-reported `auto` entry is a
+/// normal model; the client adds no Auto choice of its own.
 Future<List<DiscoveredModel>> discoverCopilotSdkModels({
   required String executable,
   required List<String> arguments,

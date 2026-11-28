@@ -82,7 +82,9 @@ forwarding raw catalog objects.
   inherited from a guessed global value. Duplicate logical model IDs or effort
   values reject the catalog (no first-wins or last-wins merge), as do a
   non-supported default and malformed entries (Cloud's projection fails closed).
-- **Auto.** Null model is provider Auto. Null effort is provider Auto for separate
+- **Auto.** A null model runs with the provider's default; clients no longer offer it
+  while the catalog lists models, and Cloud still accepts it for saved selections.
+  Null effort is provider Auto for separate
   selections; combined families use an explicit signed default or require an
   effort. Showing a default effort never writes an explicit selection. Explicit
   effort with null model is unsupported for discovery-backed Profiles.
@@ -154,11 +156,13 @@ Connect (read-only catalog inspection through authenticated Service IPC) and Pro
 Lab (trusted proposal dialog, grouped by Profile release, never defaulting to the
 first model) all use it, with no provider-specific conditions.
 
-- Controls show Worker, Model and Effort, inherited Auto and Provider default where
-  the Worker advertises them, and loading, stale, unavailable and unsupported states.
-  Combined families advertise neither model Auto nor effort Auto, so the selector
-  shows an explicit-selection placeholder and blocks submission until both are
-  chosen. Dropdowns are keyboard operable with accessibility labels and live-region
+- Controls show Worker, Model and Effort, inherited values, and loading, stale,
+  unavailable and unsupported states. The Model picker lists only models in the
+  Worker's catalog; the client adds no Auto choice of its own. A provider's own
+  "auto" model appears only when the provider reports it during catalog refresh.
+  While the catalog lists any model, a model must be chosen and the selector
+  blocks submission until it is; a Worker whose catalog lists none runs with the
+  provider's default. Combined families also require an effort. Dropdowns are keyboard operable with accessibility labels and live-region
   notices; read-only mode shows the complete matrix.
 - Catalog refreshes never change saved choices; a missing saved ID stays visible as
   unavailable. A model change keeps an explicit effort only if the new model

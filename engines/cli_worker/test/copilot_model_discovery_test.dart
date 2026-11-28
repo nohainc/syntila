@@ -63,7 +63,7 @@ void main() {
         'models': <Object?>[],
         'imageModels': <Object?>[],
       }, '');
-      // The client's provider-default choice (Auto) is all that remains.
+      // Nothing is selectable, so no model is required.
       expect(models, isEmpty);
     });
 

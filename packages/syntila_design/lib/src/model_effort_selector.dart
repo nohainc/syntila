@@ -101,7 +101,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
   Widget build(BuildContext context) {
     final effective = widget.inherited.overlay(widget.value);
     final worker = widget.catalog.worker(effective.worker);
-    final modelAutoAllowed = worker?.allowsAutoModel ?? true;
+    final modelImplicit = worker?.allowsImplicitModel ?? false;
     final effortAutoAllowed = worker?.allowsAutoEffort(effective.model) ?? true;
     if (widget.compact) {
       // Model and effort have no meaning until the compact model-only host
@@ -139,8 +139,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                 effective.model == null
                     ? worker == null
                         ? 'Select model'
-                        : modelAutoAllowed
-                            ? 'Auto'
+                        : modelImplicit
+                            ? 'Provider default'
                             : 'Select model'
                     : worker?.supportsModel(effective.model) == true
                         ? displayModelName!
@@ -310,7 +310,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                   worker != null &&
                   (worker.modelSupported || widget.value.model != null) &&
                   worker.state != CapabilityState.unavailable,
-              modelAutoAllowed, (id) {
+              false, (id) {
             final next = widget.catalog
                 .changeModel(widget.value, id, inherited: widget.inherited);
             final combined = worker?.model(id)?.selectionMode == 'combined';
@@ -379,7 +379,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                 widget.inherited.model != null ||
                 widget.inherited.effort != null))
           _message(
-              'Effective selection: ${worker?.name ?? effective.worker ?? "Auto"} · ${worker?.model(effective.model)?.name ?? effective.model ?? "Auto / Provider default"} · ${effective.effort == null ? "Auto / Provider default" : executionEffortDisplayName(effective.effort!)}'),
+              'Effective selection: ${worker?.name ?? effective.worker ?? "Auto"} · ${worker?.model(effective.model)?.name ?? effective.model ?? "No model selected"} · ${effective.effort == null ? "Auto / Provider default" : executionEffortDisplayName(effective.effort!)}'),
         if (widget.readOnly && widget.showCatalog) ...[
           for (final model
               in worker?.models ?? const <ExecutionModelCapability>[])
@@ -573,14 +573,6 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (worker?.allowsAutoModel == true)
-                  _modelRow(
-                      'Auto',
-                      effective.model == null,
-                      enabled && ready && widget.allowModelChange
-                          ? () => changeModel(null)
-                          : null,
-                      maxTextWidth: maxTextWidth),
                 for (final model in models.entries)
                   _modelRow(
                       model.value,

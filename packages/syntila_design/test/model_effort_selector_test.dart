@@ -496,6 +496,31 @@ void main() {
     expect(executionEffortDisplayName(null), '');
   });
 
+  testWidgets('the model picker lists only catalog models, never a synthetic Auto',
+      (tester) async {
+    const copilot = WorkerSelectionCapability(
+      id: 'copilot',
+      name: 'Copilot',
+      models: [ExecutionModelCapability(id: 'gpt-5', name: 'GPT-5')],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ModelEffortSelector(
+          catalog: const ExecutionSelectionCatalog([copilot]),
+          value: const ExecutionSelection(worker: 'copilot'),
+          onChanged: (_) {},
+        ),
+      ),
+    ));
+    expect(find.text('Auto'), findsNothing);
+    expect(
+        find.text('Select an explicit model for this Worker.'), findsOneWidget);
+    await tester.tap(picker('Model'));
+    await tester.pumpAndSettle();
+    expect(find.text('Auto'), findsNothing);
+    expect(find.text('GPT-5'), findsOneWidget);
+  });
+
   testWidgets('combined provider models require explicit model and effort',
       (tester) async {
     const gemini = WorkerSelectionCapability(

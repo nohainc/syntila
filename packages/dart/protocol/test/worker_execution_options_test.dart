@@ -32,6 +32,19 @@ void main() {
     expect(worker.validate(const ExecutionSelection()),
         contains('Select an explicit model'));
   });
+  test('a model is required only while the catalog lists one', () {
+    const listed = WorkerSelectionCapability(
+        id: 'copilot',
+        name: 'Copilot',
+        models: [ExecutionModelCapability(id: 'auto', name: 'Auto')]);
+    const empty = WorkerSelectionCapability(id: 'free', name: 'Free');
+    expect(listed.allowsImplicitModel, isFalse);
+    expect(listed.validate(const ExecutionSelection()),
+        contains('Select an explicit model'));
+    expect(listed.validate(const ExecutionSelection(model: 'auto')), isNull);
+    expect(empty.allowsImplicitModel, isTrue);
+    expect(empty.validate(const ExecutionSelection()), isNull);
+  });
   test('retains only supported explicit efforts on deliberate model changes',
       () {
     const catalog = ExecutionSelectionCatalog([worker]);
