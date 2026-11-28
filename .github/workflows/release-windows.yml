@@ -7,10 +7,6 @@ on:
         description: Successful Build Connect for Windows run ID
         type: string
         required: true
-      release_notes:
-        description: Release notes for the GitHub Release
-        type: string
-        required: false
 
 permissions:
   contents: read
@@ -28,7 +24,7 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     permissions:
-      contents: write
+      contents: read
       actions: read
     steps:
       - name: Verify selected build
@@ -49,17 +45,26 @@ jobs:
           sha="$(jq -r '.head_sha' <<< "$run")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter .
       - name: Download selected build
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
         run: gh run download "$BUILD_RUN_ID" --name syntila-connect-windows-x64-release --dir release
-      - name: Verify artifacts and create release
+      - name: Verify artifacts and publish to R2
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
           BUILD_SHA: ${{ steps.build.outputs.sha }}
-          NOTES: ${{ inputs.release_notes }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SYNTILA_RELEASE_R2_ACCESS_KEY_ID: ${{ secrets.SYNTILA_RELEASE_R2_ACCESS_KEY_ID }}
+          SYNTILA_RELEASE_R2_SECRET_ACCESS_KEY: ${{ secrets.SYNTILA_RELEASE_R2_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           version="$(jq -r --arg sha "$BUILD_SHA" --arg run "$BUILD_RUN_ID" \
@@ -74,20 +79,5 @@ jobs:
           actual="$(awk '{print $2}' release/SHA256SUMS | sort)"
           [[ "$actual" == "$expected" ]] || { echo 'Unexpected checksum entries.' >&2; exit 1; }
           (cd release && sha256sum --strict -c SHA256SUMS)
-          tag="connect-v$version"
-          cp release/SHA256SUMS release/SHA256SUMS-windows
-          assets=("release/$installer" "release/$portable" release/SHA256SUMS-windows)
-          if gh release view "$tag" >/dev/null 2>&1; then
-            # All platforms share this release: add the Windows files when it is on the same commit.
-            tag_commit="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha)"
-            [[ "$tag_commit" == "$BUILD_SHA" ]] || { echo "$tag is on commit $tag_commit, this build is $BUILD_SHA; bump the version." >&2; exit 1; }
-            existing="$(gh release view "$tag" --json assets --jq '.assets[].name')"
-            for asset in "${assets[@]}"; do
-              if grep -qx "$(basename "$asset")" <<< "$existing"; then echo "$tag already has $(basename "$asset"); releases are immutable." >&2; exit 1; fi
-            done
-            gh release upload "$tag" "${assets[@]}"
-          else
-            gh release create "$tag" "${assets[@]}" --target "$BUILD_SHA" \
-              --title "Syntila Connect $version" \
-              --notes "${NOTES:-Syntila Connect $version for Windows, macOS and Linux. Each platform adds its own files to this release. Builds are not code signed (Windows SmartScreen may warn). Verify downloads with SHA256SUMS-<platform>.}"
-          fi
+          node scripts/publish-connect-r2.mjs windows "$version" "$BUILD_SHA" \
+            "release/$installer" "release/$portable" release/SHA256SUMS

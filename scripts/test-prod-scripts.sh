@@ -56,7 +56,7 @@ run_case() {
   local name="$1"; shift
   export LOG="$T/$name.log"; : > "$LOG"
   OUT=$(cd "$R" && HOME="$T/home" PATH="$T/bin:/usr/bin:/bin" \
-    SYNTILA_PROFILE_TRUST_ROOTS='{"k":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}' CLOUDFLARE_API_TOKEN=x CLOUDFLARE_ACCOUNT_ID=x BETTER_AUTH_SECRET=x SYNTILA_AUTH_GITHUB_CLIENT_ID=x \
+    SYNTILA_PROFILE_TRUST_ROOTS='{"k":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}' CLOUDFLARE_API_TOKEN=x CLOUDFLARE_ACCOUNT_ID=x SYNTILA_RELEASE_R2_ACCESS_KEY_ID=x SYNTILA_RELEASE_R2_SECRET_ACCESS_KEY=x BETTER_AUTH_SECRET=x SYNTILA_AUTH_GITHUB_CLIENT_ID=x \
     SYNTILA_AUTH_GITHUB_CLIENT_SECRET=x SYNTILA_AUTH_GOOGLE_CLIENT_ID=x SYNTILA_AUTH_GOOGLE_CLIENT_SECRET=x \
     "${@}" 2>&1); CODE=$?
 }
@@ -85,7 +85,7 @@ for s in prod-build-connect-macos prod-build-connect-linux prod-release-connect-
   [ "$CODE" = 0 ] && ok "$s --dry-run" || { fail "$s --dry-run (exit $CODE)"; printf '%s\n' "$OUT" | tail -6; }
 done
 FAIL_ON="" run_case relmac "$R/scripts/prod-release-connect-macos.sh" --dry-run
-printf '%s' "$OUT" | grep -q "gh release create connect-v0.1.0" && ok "macOS release names the tag and uploads the build" || fail "macOS release plan"
+printf '%s' "$OUT" | grep -q "publish-connect-r2.mjs macos 0.1.0" && ok "macOS release uploads the build to R2" || fail "macOS release plan"
 echo stale > "$R/dist/connect/release/linux/Syntila-Connect-0.1.0-linux.tar.gz"
 FAIL_ON="" run_case relstale "$R/scripts/prod-release-connect-linux.sh" --dry-run
 [ "$CODE" != 0 ] && printf '%s' "$OUT" | grep -q "Checksum verification failed" && ok "release refuses artifacts that do not match SHA256SUMS" || fail "checksum check"

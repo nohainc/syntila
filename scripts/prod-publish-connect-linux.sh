@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes the Linux .deb files from scripts/prod-build-connect-linux.sh to the signed
-# APT repository (branch apt-repository of this repository, served by GitHub Pages at
-# https://nohainc.github.io/syntila). Run scripts/prod-release-connect-linux.sh first.
+# APT repository at https://downloads.syntila.app/apt, with its source in the
+# apt-repository branch. Run scripts/prod-release-connect-linux.sh first.
 #
 #   scripts/prod-publish-connect-linux.sh [--prune-legacy] [--keep N] [--yes] [--dry-run] [--allow-dirty]
 #
@@ -11,7 +11,6 @@
 # SYNTILA_APT_SIGNING_FINGERPRINT defaults to the current repository key.
 # --prune-legacy removes the old Workspace packages (syntila, syntila-gui).
 # --keep N keeps only the newest N versions of syntila-connect in the repository (at least 1).
-# The confirmation includes switching Pages to the APT branch when necessary.
 # Success requires the live signed indexes and both packages to match this build.
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
@@ -35,7 +34,7 @@ publish_apt() {
   require gpg; require python3
   check_connect_build linux "$version"
   local fp="${SYNTILA_APT_SIGNING_FINGERPRINT:-6EA013D12EF79CBDC34D66058182CCCFCF4175F2}"
-  local base="https://$owner.github.io/$repo" tmp; tmp=$(mktemp -d)
+  local base="https://downloads.syntila.app/apt" tmp; tmp=$(mktemp -d)
   trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$tmp"' RETURN
   # Where the key was exported when the repository was set up on this Mac.
   local default_key="$HOME/.config/syntila/release-keys/apt-private-key.asc"
@@ -56,25 +55,13 @@ publish_apt() {
   sed -e "s#@BASE_URL@#$base#g" -e "s#@FINGERPRINT@#$fp#g" -e "s#@VERSION@#$version#g" \
     "$ROOT/packaging/linux/apt-index.html" > "$tmp/repo/index.html"
   ( cd "$tmp/repo" && git add -A && git status --short | head -8 )
-  local pages
-  pages=$(gh api "repos/$owner_repo/pages" --jq '.build_type + " " + (.source.branch // "") + " " + (.source.path // "")') || die "Cannot determine GitHub Pages configuration; nothing was pushed."
-  local change_pages=0
-  [ "$pages" = "legacy apt-repository /" ] || change_pages=1
-  confirm "Push syntila-connect $version to the APT repository branch of $owner_repo$([ "$prune" = 1 ] && echo ', removing the legacy Workspace packages')$([ -z "$keep" ] || echo ", keeping only the newest $keep version(s)")$([ "$change_pages" = 1 ] && echo ', and change GitHub Pages to serve that branch at / (replacing the current Pages site)')."
-  if [ "$change_pages" = 1 ]; then
-    if [ "$DRY_RUN" = 1 ]; then
-      echo "[dry-run] would configure GitHub Pages to serve apt-repository at /"
-    else
-      gh api -X PUT "repos/$owner_repo/pages" -f build_type=legacy -f 'source[branch]=apt-repository' -f 'source[path]=/' >/dev/null
-    fi
-  fi
-  # The source must be selected before the push: selecting it afterwards does
-  # not reliably schedule a Pages deployment. An empty commit also makes a
-  # retry trigger a build when the branch already contains the desired files.
+  require_secrets CLOUDFLARE_ACCOUNT_ID SYNTILA_RELEASE_R2_ACCESS_KEY_ID SYNTILA_RELEASE_R2_SECRET_ACCESS_KEY
+  confirm "Push the signed APT source branch and publish Connect $version to the public R2 bucket."
   if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would commit and push to apt-repository"
   else
     ( cd "$tmp/repo" && git -c user.name="Syntila Releases" -c user.email="syntila@nohainc.com" \
         commit --allow-empty -q -m "Publish Syntila Connect $version" && git push origin HEAD:apt-repository )
+    node "$ROOT/scripts/publish-apt-r2.mjs" "$tmp/repo" "$version"
   fi
   if [ "$DRY_RUN" = 1 ]; then echo "[dry-run] would verify live signed indexes and both architecture packages at $base"
   else verify_apt_publication "$base" "$tmp/repo" "$version"; fi

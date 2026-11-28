@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes the macOS build from scripts/prod-build-connect-macos.sh to the Homebrew tap
 # nohainc/homebrew-tap: a formula (syntila-connect: CLI and Worker Engine) and a cask
-# (syntila-connect-app: desktop app). Both download the GitHub Release assets, so run
+# (syntila-connect-app: desktop app). Both download public R2 release assets, so run
 # scripts/prod-release-connect-macos.sh first.
 #
 #   scripts/prod-publish-connect-macos.sh [--create-tap] [--prune-legacy] [--yes] [--dry-run] [--allow-dirty]
@@ -25,11 +25,11 @@ publish_homebrew() {
   check_connect_build macos "$version"
   local tap="homebrew-tap" dir="$CONNECT_RELEASE_DIR/macos" tmp; tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' RETURN
-  local arch tarball app url_base="https://github.com/$owner_repo/releases/download/connect-v$version"
+  local arch tarball app url_base="https://downloads.syntila.app/connect/$version"
   arch=$(sed -n 's/.*"arch": *"\([^"]*\)".*/\1/p' "$dir/build.json")
   [ "$arch" = arm64 ] || die "The macOS build is $arch; the formula supports Apple silicon (arm64) only."
   tarball="Syntila-Connect-$version-macos-$arch.tar.gz"
-  [ "$DRY_RUN" = 1 ] || gh release view "connect-v$version" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$tarball" || die "Release connect-v$version has no $tarball. Run scripts/prod-release-connect-macos.sh first."
+  [ "$DRY_RUN" = 1 ] || curl -fsSL "$url_base/$tarball" | shasum -a 256 | grep -q "^$(shasum -a 256 "$dir/$tarball" | cut -d' ' -f1) " || die "The public tarball is missing or does not match the build. Run scripts/prod-release-connect-macos.sh first."
   if ! gh repo view "$owner/$tap" >/dev/null 2>&1; then
     [ "$create_tap" = 1 ] || die "The tap $owner/$tap does not exist. Run again with --create-tap to create it (public)."
     confirm "Create the public repository $owner/$tap."
@@ -47,6 +47,7 @@ publish_homebrew() {
     "$ROOT/packaging/homebrew/syntila-connect.rb.tmpl" > "$tmp/tap/Formula/syntila-connect.rb"
   local zip="Syntila-Connect-$version-macos-$arch-app.zip"
   if [ -f "$dir/$zip" ]; then
+    [ "$DRY_RUN" = 1 ] || curl -fsSL "$url_base/$zip" | shasum -a 256 | grep -q "^$(shasum -a 256 "$dir/$zip" | cut -d' ' -f1) " || die "The public app archive is missing or does not match the build."
     app=$(unzip -Z1 "$dir/$zip" | head -1 | cut -d/ -f1)
     sed -e "s#@VERSION@#$version#" -e "s#@URL@#$url_base/$zip#" -e "s#@SHA256@#$(shasum -a 256 "$dir/$zip" | cut -d' ' -f1)#" -e "s#@APP@#$app#" \
       "$ROOT/packaging/homebrew/syntila-connect-app.rb.tmpl" > "$tmp/tap/Casks/syntila-connect-app.rb"

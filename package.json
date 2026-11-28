@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "test": "vitest run --exclude apps/cloud/test/v8-schema-clean-room-acceptance.test.ts --exclude apps/cloud/test/work-v1-v8-regression.acceptance.test.ts packages/protocol/test packages/worker-agent-protocol/test packages/security/test packages/core/test packages/email/test packages/tool-profile/test apps/cloud/test scripts/verify-cloud-schema-references.test.mjs scripts/verify-branding.test.mjs scripts/verify-production-security.test.mjs scripts/verify-email-config.test.mjs scripts/local-setup-auth.test.mjs scripts/local-migrate-db.test.mjs scripts/local-cloud-proxy.test.mjs scripts/ci-orchestration.test.mjs scripts/execution-acceptance.test.mjs scripts/execution-latency-acceptance.test.mjs scripts/latency-baseline.test.mjs scripts/local-perf-cleanup.test.mjs scripts/perf-worker-load.test.mjs",
+    "test": "vitest run --exclude apps/cloud/test/v8-schema-clean-room-acceptance.test.ts --exclude apps/cloud/test/work-v1-v8-regression.acceptance.test.ts packages/protocol/test packages/worker-agent-protocol/test packages/security/test packages/core/test packages/email/test packages/tool-profile/test apps/cloud/test scripts/verify-cloud-schema-references.test.mjs scripts/verify-branding.test.mjs scripts/verify-production-security.test.mjs scripts/verify-email-config.test.mjs scripts/local-setup-auth.test.mjs scripts/local-migrate-db.test.mjs scripts/local-cloud-proxy.test.mjs scripts/ci-orchestration.test.mjs scripts/release-r2.test.mjs scripts/execution-acceptance.test.mjs scripts/execution-latency-acceptance.test.mjs scripts/latency-baseline.test.mjs scripts/local-perf-cleanup.test.mjs scripts/perf-worker-load.test.mjs",
     "accounts:build": "bash scripts/build-account-manager-macos.sh",
     "app:build:ios": "bash scripts/build-app-ios.sh",
     "app:build:ios:local": "bash scripts/build-app-ios.sh --local",
@@ -84,6 +84,7 @@
     "validate:mcp": "bash scripts/validate-mcp.sh"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1178.0",
     "@eslint/js": "^9.35.0",
     "@types/node": "^24.5.2",
     "eslint": "^9.35.0",

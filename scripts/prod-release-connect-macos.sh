@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Publishes the macOS build from scripts/prod-build-connect-macos.sh as the GitHub
-# Release connect-v<version> (needs the gh CLI, logged in). All platforms share that
-# release: the first one creates it, the others add their files.
-#
-#   scripts/prod-release-connect-macos.sh [--yes] [--dry-run] [--allow-dirty]
-# Refuses when the build is from another commit or version, when the checksums
-# do not verify, when the release exists on another commit, or when it already has one of
-# the files.
+# Publishes the verified Connect build to the public R2 releases bucket.
 set -euo pipefail
 source "$(dirname "$0")/prod-lib.sh"
 parse_flags "$@"

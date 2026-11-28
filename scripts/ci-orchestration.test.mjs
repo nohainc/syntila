@@ -20,22 +20,57 @@ describe("CI acceptance orchestration", () => {
     const root = mkdtempSync(join(tmpdir(), "syntila-engine-output-"));
     try {
       mkdirSync(join(root, "scripts/internal"), { recursive: true });
-      mkdirSync(join(root, "engines/cli_worker/.dart_tool"), { recursive: true });
-      mkdirSync(join(root, "bin"));
-      writeFileSync(join(root, "engines/cli_worker/pubspec.yaml"), "name: fake\nversion: 1.2.3\n");
-      writeFileSync(join(root, "engines/cli_worker/.dart_tool/package_config.json"), "{}");
-      copyFileSync(new URL("./internal/build-cli-worker-engine.sh", import.meta.url), join(root, "scripts/internal/build-cli-worker-engine.sh"));
-      const dart = join(root, "bin/dart");
-      writeFileSync(dart, '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nshift\nprintf engine > "$1"\n');
-      chmodSync(dart, 0o755);
-      const result = spawnSync("bash", [join(root, "scripts/internal/build-cli-worker-engine.sh")], {
-        env: { ...process.env, SYNTILA_DART_EXECUTABLE: dart, SYNTILA_BUILD_TARGET_OS: "", SYNTILA_BUILD_TARGET_ARCH: "" },
-        encoding: "utf8",
+      mkdirSync(join(root, "engines/cli_worker/.dart_tool"), {
+        recursive: true,
       });
+      mkdirSync(join(root, "bin"));
+      writeFileSync(
+        join(root, "engines/cli_worker/pubspec.yaml"),
+        "name: fake\nversion: 1.2.3\n",
+      );
+      writeFileSync(
+        join(root, "engines/cli_worker/.dart_tool/package_config.json"),
+        "{}",
+      );
+      copyFileSync(
+        new URL("./internal/build-cli-worker-engine.sh", import.meta.url),
+        join(root, "scripts/internal/build-cli-worker-engine.sh"),
+      );
+      const dart = join(root, "bin/dart");
+      writeFileSync(
+        dart,
+        '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nshift\nprintf engine > "$1"\n',
+      );
+      chmodSync(dart, 0o755);
+      const result = spawnSync(
+        "bash",
+        [join(root, "scripts/internal/build-cli-worker-engine.sh")],
+        {
+          env: {
+            ...process.env,
+            SYNTILA_DART_EXECUTABLE: dart,
+            SYNTILA_BUILD_TARGET_OS: "",
+            SYNTILA_BUILD_TARGET_ARCH: "",
+          },
+          encoding: "utf8",
+        },
+      );
       expect(result.status, result.stderr).toBe(0);
-      expect(readFileSync(join(root, "dist/cli-worker-engine/host/syntila-agent"), "utf8")).toBe("engine");
-      expect(readFileSync(join(root, "apps/profile_lab/assets/engines/syntila-agent"), "utf8")).toBe("engine");
-      expect(() => readFileSync(join(root, "apps/workspace/assets/engines/syntila-agent"))).toThrow();
+      expect(
+        readFileSync(
+          join(root, "dist/cli-worker-engine/host/syntila-agent"),
+          "utf8",
+        ),
+      ).toBe("engine");
+      expect(
+        readFileSync(
+          join(root, "apps/profile_lab/assets/engines/syntila-agent"),
+          "utf8",
+        ),
+      ).toBe("engine");
+      expect(() =>
+        readFileSync(join(root, "apps/workspace/assets/engines/syntila-agent")),
+      ).toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -53,39 +88,59 @@ describe("CI acceptance orchestration", () => {
       const portable = `Syntila-Connect-${version}-windows-x64-portable.zip`;
       writeFileSync(join(release, installer), "installer");
       writeFileSync(join(release, portable), "portable");
-      writeFileSync(join(release, "build.json"), JSON.stringify({version, commit: sha, run_id: "123"}));
-      const hashes = spawnSync("shasum", ["-a", "256", installer, portable], {cwd: release, encoding: "utf8"});
+      writeFileSync(
+        join(release, "build.json"),
+        JSON.stringify({ version, commit: sha, run_id: "123" }),
+      );
+      const hashes = spawnSync("shasum", ["-a", "256", installer, portable], {
+        cwd: release,
+        encoding: "utf8",
+      });
       expect(hashes.status, hashes.stderr).toBe(0);
       // PowerShell writes CRLF; the release must still verify it.
-      writeFileSync(join(release, "SHA256SUMS"), hashes.stdout.replace(/\n/g, "\r\n"));
-      const gh = join(bin, "gh");
-      writeFileSync(gh, '#!/bin/sh\nif [ "$1" = release ] && [ "$2" = view ]; then\n  if [ "$RELEASE_EXISTS" = 1 ]; then case "$*" in *--json*) printf "SHA256SUMS-macos\\n";; esac; exit 0; fi\n  exit 1\nfi\nif [ "$1" = api ]; then printf "%s\\n" "$TAG_COMMIT"; exit 0; fi\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
-      chmodSync(gh, 0o755);
+      writeFileSync(
+        join(release, "SHA256SUMS"),
+        hashes.stdout.replace(/\n/g, "\r\n"),
+      );
+      const node = join(bin, "node");
+      writeFileSync(node, '#!/bin/sh\nprintf "%s\\n" "$*" > "$RELEASE_LOG"\n');
+      chmodSync(node, 0o755);
       const workflow = source(".github/workflows/release-windows.yml");
-      const script = workflow.split("      - name: Verify artifacts and create release\n")[1]
-        .split("        run: |\n")[1].split("\n").map((line) => line.slice(10)).join("\n");
-      const run = (extra = {}) => spawnSync("bash", ["-c", script], {
-        cwd: root, encoding: "utf8", env: {...process.env, PATH: `${bin}:${process.env.PATH}`,
-          BUILD_RUN_ID: "123", BUILD_SHA: sha, NOTES: "", GH_REPO: "o/r", RELEASE_LOG: join(root, "release.log"), ...extra},
-      });
+      const script = workflow
+        .split("      - name: Verify artifacts and publish to R2\n")[1]
+        .split("        run: |\n")[1]
+        .split("\n")
+        .map((line) => line.slice(10))
+        .join("\n");
+      const run = () =>
+        spawnSync("bash", ["-c", script], {
+          cwd: root,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            BUILD_RUN_ID: "123",
+            BUILD_SHA: sha,
+            RELEASE_LOG: join(root, "release.log"),
+          },
+        });
       const result = run();
       expect(result.status, result.stderr).toBe(0);
-      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release create connect-v${version}`);
-      // Another platform already created the release on this commit: the Windows files are added to it.
-      const added = run({RELEASE_EXISTS: "1", TAG_COMMIT: sha});
-      expect(added.status, added.stderr).toBe(0);
-      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(`release upload connect-v${version}`);
-      // A release on another commit must not receive these files.
-      expect(run({RELEASE_EXISTS: "1", TAG_COMMIT: "b".repeat(40)}).status).not.toBe(0);
+      expect(readFileSync(join(root, "release.log"), "utf8")).toContain(
+        `publish-connect-r2.mjs windows ${version} ${sha}`,
+      );
       writeFileSync(join(release, installer), "modified");
       expect(run().status).not.toBe(0);
     } finally {
-      rmSync(root, {recursive: true, force: true});
+      rmSync(root, { recursive: true, force: true });
     }
   });
   it("uses the public Connect platform builder in the release workflow", () => {
     for (const [workflow, command] of [
-      ["build-connect-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],
+      [
+        "build-connect-windows.yml",
+        "./scripts/build-connect-windows.ps1 -Production",
+      ],
     ]) {
       expect(source(`.github/workflows/${workflow}`)).toContain(command);
     }
@@ -154,8 +209,8 @@ describe("CI acceptance orchestration", () => {
                   : command === "codesign"
                     ? 'if [ "$1" = "-dv" ] || [ "$1" = "-d" ]; then exit 1; fi; exit 0'
                     : command === "flutter"
-                        ? `echo "flutter $*" >> "$CI_TEST_LOG"\nif [ "$1" = build ]; then app='build/macos/Build/Products/Release/Syntila Profile Lab.app'; mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"; printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Syntila</string></dict></plist>' > "$app/Contents/Info.plist"; touch "$app/Contents/MacOS/Syntila"; chmod 755 "$app/Contents/MacOS/Syntila"; fi`
-                        : "exit 0";
+                      ? `echo "flutter $*" >> "$CI_TEST_LOG"\nif [ "$1" = build ]; then app='build/macos/Build/Products/Release/Syntila Profile Lab.app'; mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"; printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Syntila</string></dict></plist>' > "$app/Contents/Info.plist"; touch "$app/Contents/MacOS/Syntila"; chmod 755 "$app/Contents/MacOS/Syntila"; fi`
+                      : "exit 0";
         writeFileSync(join(bin, command), `#!/bin/sh\n${script}\n`);
         chmodSync(join(bin, command), 0o755);
       }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify that Pages serves the exact signed repository we just built.
+# Verify that the public endpoint serves the exact signed repository we just built.
 verify_apt_publication() {
   local base="$1" repo="$2" version="$3" attempt path arch local_hash remote_hash matched
   for attempt in $(seq 1 24); do
@@ -21,6 +21,6 @@ verify_apt_publication() {
     fi
     [ "$attempt" = 24 ] || sleep 5
   done
-  echo "APT branch was pushed, but Pages did not serve the new signed indexes at $base within two minutes. Check Pages deployment and retry the publish." >&2
+  echo "R2 did not serve the new signed indexes at $base within two minutes. Check the public domain and retry the publish." >&2
   return 1
 }

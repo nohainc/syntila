@@ -56,7 +56,7 @@ are implementation details shown only in Advanced Diagnostics.
 Connect runs your Workers on a computer. See [Connect onboarding](docs/operations/CONNECT_ONBOARDING.md) for pairing and data locations.
 
 ```bash
-# Linux (Ubuntu 22.04+, amd64 or arm64): signed APT repository, setup at https://nohainc.github.io/syntila
+# Linux (Ubuntu 22.04+, amd64 or arm64): signed APT repository, setup at https://downloads.syntila.app/apt/index.html
 sudo apt install syntila-connect
 # macOS (Apple silicon)
 brew install nohainc/tap/syntila-connect
