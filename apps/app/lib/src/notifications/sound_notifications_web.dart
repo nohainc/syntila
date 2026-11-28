@@ -21,8 +21,12 @@ class WebAxSoundNotifications implements AxSoundNotifications {
     try {
       final ctx = _getOrCreateContext();
       if (ctx == null) return;
-      if (ctx.state == 'suspended') {
+      // A suspended context freezes its clock, so tones scheduled now would
+      // sound later, at the next click. Drop the chime and wake the context
+      // for the next one instead.
+      if (ctx.state != 'running') {
         ctx.resume();
+        return;
       }
       final now = ctx.currentTime;
       switch (kind) {

@@ -88,22 +88,21 @@ const VIEW_STATE_STRING_KEYS = [
   "model",
   "reasoningEffort",
   "catalogRevision",
-  "selectionUpdatedAt",
 ] as const;
 
 /**
  * Validates a Thread metadata patch. Values are merged with JSON merge-patch
  * semantics, so `null` clears a key. Only presentation state is accepted.
  *
- * View state is personal: the caller's `viewState` is stored under
- * `viewStates[userId]`, so one member's selection never replaces another's.
- * A `selectionUpdatedAt` ahead of the server clock is clamped to it, so a
- * device with a fast clock cannot outrank later choices made elsewhere.
+ * View state is the caller's own Worker/model/effort/Workflow selection for the
+ * Thread, stored under `viewStates[userId]` so one member's choice never
+ * replaces another's. Cloud is its only owner: the app writes it solely when
+ * the user makes an explicit choice, and device-local state (tab, drafts,
+ * scroll) never travels here.
  */
 export function normalizeThreadMetadataPatch(
   value: unknown,
   userId: string,
-  now: string = new Date().toISOString(),
 ): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new HttpError(400, "metadata must be an object");
@@ -115,15 +114,10 @@ export function normalizeThreadMetadataPatch(
   if (typeof input.viewState !== "object" || Array.isArray(input.viewState))
     throw new HttpError(400, "metadata.viewState must be an object");
   const viewState = input.viewState as Record<string, unknown>;
-  const allowed = new Set<string>(["tabIndex", ...VIEW_STATE_STRING_KEYS]);
+  const allowed = new Set<string>(VIEW_STATE_STRING_KEYS);
   if (Object.keys(viewState).some((key) => !allowed.has(key)))
     throw new HttpError(400, "metadata.viewState contains unsupported keys");
   const patch: Record<string, unknown> = {};
-  if (viewState.tabIndex !== undefined) {
-    if (viewState.tabIndex !== 0 && viewState.tabIndex !== 1)
-      throw new HttpError(400, "metadata.viewState.tabIndex is invalid");
-    patch.tabIndex = viewState.tabIndex;
-  }
   for (const key of VIEW_STATE_STRING_KEYS) {
     const entry = viewState[key];
     if (entry === undefined) continue;
@@ -133,16 +127,6 @@ export function normalizeThreadMetadataPatch(
     )
       throw new HttpError(400, `metadata.viewState.${key} is invalid`);
     patch[key] = entry;
-  }
-  const at = patch.selectionUpdatedAt;
-  if (typeof at === "string") {
-    const time = Date.parse(at);
-    if (Number.isNaN(time))
-      throw new HttpError(
-        400,
-        "metadata.viewState.selectionUpdatedAt is invalid",
-      );
-    if (time > Date.parse(now)) patch.selectionUpdatedAt = now;
   }
   return { viewStates: { [userId]: patch } };
 }

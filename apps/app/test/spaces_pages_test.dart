@@ -5060,6 +5060,80 @@ void main() {
   });
 
   testWidgets(
+      'Thread selection is written to Cloud only for an explicit choice',
+      (tester) async {
+    AxAccountPlanCache.instance.plan = const AxAccountPlan(isPaid: true);
+    addTearDown(() => AxAccountPlanCache.instance.plan = AxAccountPlan.free);
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _CurrentWorkflowUiDataSource();
+    final store = MemoryAxThreadViewStateStore();
+    final writes = <Map<String, dynamic>>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      viewerEmail: 'vitalii@nohainc.com',
+      currentUserId: 'user-owner',
+      threadViewStateStore: store,
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      // Another device chose Chat; this device only opens the Thread.
+      thread: const AxThread(
+          id: 'stream-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          queueStatus: '',
+          canConfigureWork: true,
+          metadata: {
+            'viewState': {'workflowReference': 'chat:1'}
+          }),
+      dataSource: data,
+      onBackToSpace: _noop,
+      onArchive: _noop,
+      onViewStateChanged: (viewState) async => writes.add(viewState),
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+
+    // Opening, typing and switching panes never write the selection.
+    await tester.enterText(find.byType(TextField).first, 'draft text');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byKey(const ValueKey('composer-mode-message')));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+    expect(writes, isEmpty);
+
+    // An explicit Workflow choice sends the whole selection once.
+    await tester.tap(find.byKey(const ValueKey('work-toggle-direct')));
+    await tester.pump(const Duration(seconds: 1));
+    expect(writes, hasLength(1));
+    expect(writes.single.keys,
+        containsAll(['workflowReference', 'workerId', 'model']));
+    expect(writes.single.keys, isNot(contains('tabIndex')));
+    expect(writes.single.keys, isNot(contains('selectionUpdatedAt')));
+    expect((writes.single['workflowReference'] as String).split(':').first,
+        'direct');
+
+    // Typing afterwards does not send it again, and the browser copy holds
+    // the draft but not the selection.
+    await tester.enterText(find.byType(TextField).first, 'more text');
+    await tester.pump(const Duration(seconds: 1));
+    expect(writes, hasLength(1));
+    final local = store.loadSync(userId: 'user-owner', threadId: 'stream-1')!;
+    expect(local.workDraft, 'more text');
+    expect(local.workerId, isNull);
+    expect(local.model, isNull);
+  });
+
+  testWidgets(
       'NewThreadPage shows the Direct Space identity and allows thread creation',
       (tester) async {
     const space = AxSpace(

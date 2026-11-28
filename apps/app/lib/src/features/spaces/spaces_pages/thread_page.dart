@@ -114,8 +114,12 @@ class _ThreadPageState extends State<ThreadPage>
   bool _threadViewRevealScheduled = false;
   bool? _paneAwaitingReveal;
   AxThreadViewState? _pendingThreadViewState;
-  String? _selectionUpdatedAt;
-  Map<String, dynamic>? _lastRemoteViewState;
+
+  /// The user made an explicit Workflow/Worker/model/effort choice that Cloud
+  /// has not received yet. Only such a choice is ever written to Cloud, so a
+  /// stale device cannot overwrite a newer selection by merely opening a Thread
+  /// or switching tabs.
+  bool _selectionDirty = false;
   final _requestController = TextEditingController();
   bool _requestHistoryOpen = false;
   int _requestHistoryDirection = 1;
@@ -1232,8 +1236,6 @@ class _ThreadPageState extends State<ThreadPage>
       catalogRevision: pending != null
           ? pending.catalogRevision
           : _explicitSelectionValue('catalogRevision'),
-      selectionUpdatedAt:
-          pending != null ? pending.selectionUpdatedAt : _selectionUpdatedAt,
       chatDraft: _editingMessageId != null
           ? _draftBeforeEdit
           : _discussionController.text,
@@ -1262,18 +1264,20 @@ class _ThreadPageState extends State<ThreadPage>
   }
 
   Map<String, dynamic> _remoteViewStatePayload(AxThreadViewState state) => {
-        'tabIndex': state.tabIndex.clamp(0, 1),
         'workflowReference': state.workflowReference,
         'workerId': state.workerId,
         'workerTypeId': state.workerTypeId,
         'model': state.model,
         'reasoningEffort': state.reasoningEffort,
         'catalogRevision': state.catalogRevision,
-        'selectionUpdatedAt': state.selectionUpdatedAt,
       };
 
-  AxThreadViewState? _withRemoteViewState(AxThreadViewState? local) =>
-      AxThreadViewState.withRemote(local, widget.thread.viewState);
+  /// Cloud owns the selection; the browser copy supplies everything else.
+  AxThreadViewState? _restoredViewState(AxThreadViewState? local) {
+    final remote = widget.thread.viewState;
+    if (local == null && remote.isEmpty) return null;
+    return AxThreadViewState.restore(local, remote);
+  }
 
   Future<void> _saveThreadViewState() async {
     if (widget.isDraft) return;
@@ -1285,29 +1289,20 @@ class _ThreadPageState extends State<ThreadPage>
       threadId: widget.thread.id,
       state: state,
     );
-    _persistRemoteViewState(state);
+    _persistSelection(state);
   }
 
-  void _persistRemoteViewState(AxThreadViewState state, [ThreadPage? owner]) {
-    final source = owner ?? widget;
-    final callback = source.onViewStateChanged;
-    // While a saved selection is still waiting for the catalogs, the current
-    // state is only defaults and must not replace the stored choice.
-    if (callback == null ||
-        !source.thread.canConfigureWork ||
-        (owner == null && _pendingThreadViewState != null)) {
-      return;
-    }
-    final payload = _remoteViewStatePayload(state);
-    final previous = _lastRemoteViewState;
-    if (previous != null && mapEquals(previous, payload)) return;
-    _lastRemoteViewState = payload;
-    callback(payload).catchError((Object _) {
-      // Leave the next change (or reopen) to retry; local state is intact.
-      if (mapEquals(_lastRemoteViewState, payload)) {
-        _lastRemoteViewState = previous;
-      }
-    });
+  /// Sends the selection to Cloud when the user changed it. A choice still
+  /// waiting for the catalogs is never dirty: an explicit change supersedes it
+  /// in [_markSelectionChangedByUser], so these are always live values.
+  void _persistSelection(AxThreadViewState state, [ThreadPage? owner]) {
+    if (!_selectionDirty) return;
+    _selectionDirty = false;
+    final callback = (owner ?? widget).onViewStateChanged;
+    if (callback == null) return;
+    // A failed write is dropped; the user's next choice sends the full
+    // selection again.
+    callback(_remoteViewStatePayload(state)).catchError((Object _) {});
   }
 
   /// An explicit choice supersedes a saved selection still waiting for the
@@ -1323,7 +1318,7 @@ class _ThreadPageState extends State<ThreadPage>
       }
       _pendingThreadViewState = null;
     }
-    _selectionUpdatedAt = DateTime.now().toUtc().toIso8601String();
+    _selectionDirty = true;
   }
 
   void _reconcilePendingThreadViewState() {
@@ -1550,7 +1545,7 @@ class _ThreadPageState extends State<ThreadPage>
       _threadViewReady = true;
       return;
     }
-    final saved = _withRemoteViewState(_threadViewStateStore.loadSync(
+    final saved = _restoredViewState(_threadViewStateStore.loadSync(
       userId: userId,
       threadId: threadId,
     ));
@@ -1561,9 +1556,6 @@ class _ThreadPageState extends State<ThreadPage>
       return;
     }
     _threadViewStateRestored = true;
-    if (widget.thread.viewState.isNotEmpty && saved != null) {
-      _lastRemoteViewState = _remoteViewStatePayload(saved);
-    }
     if (saved != null) {
       // Never overwrite non-empty input or an active edit session with the
       // persisted draft.
@@ -1583,7 +1575,6 @@ class _ThreadPageState extends State<ThreadPage>
       _chatSeenId = saved.chatSeenId;
       _workSeenId = saved.workSeenId;
       _restorePane(saved.pane);
-      _selectionUpdatedAt = saved.selectionUpdatedAt;
       _pendingThreadViewState = saved;
       final targetIndex = saved.tabIndex.clamp(0, _tabController.length - 1);
       if (_tabController.index != targetIndex) {
@@ -2034,9 +2025,8 @@ class _ThreadPageState extends State<ThreadPage>
         threadId: oldWidget.thread.id,
         state: leaving,
       ));
-      // Persist the Cloud copy for the thread being left; otherwise the stale
-      // Cloud metadata wins over the newer local copy when returning to it.
-      _persistRemoteViewState(leaving, oldWidget);
+      // Flush a choice made in the Thread being left that Cloud has not got.
+      _persistSelection(leaving, oldWidget);
     }
     if (oldWidget.thread.id != widget.thread.id ||
         oldWidget.space.id != widget.space.id ||
@@ -2107,12 +2097,11 @@ class _ThreadPageState extends State<ThreadPage>
       _threadViewReady = false;
       _threadViewRevealScheduled = false;
       _pendingThreadViewState = null;
-      _lastRemoteViewState = null;
+      _selectionDirty = false;
       _composerInputHeight.reset();
       _discussionController.clear();
       _requestController.clear();
       _workExecutionSelection = {};
-      _selectionUpdatedAt = null;
       _workflow = '';
       _followWork = _followChat = true;
       _chatSeenId = _workSeenId = null;

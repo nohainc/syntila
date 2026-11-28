@@ -24,6 +24,14 @@ class TestSoundNotifications implements AxSoundNotifications {
 }
 
 class _SoundNotificationSource extends AxFixtureDataSource {
+  /// Messages the realtime ID-only `discussion.created` events point at.
+  final messages = <String, AxDiscussionMessage>{};
+
+  @override
+  Future<AxDiscussionMessage> loadDiscussionMessage(
+          {required String messageId}) async =>
+      messages[messageId] ?? (throw StateError('not found'));
+
   @override
   Future<AxSession> loadSession() async => const AxSession(
         authenticated: true,
@@ -179,12 +187,90 @@ void main() {
       'payload': {
         'workRequestId': 'req-1',
         'threadId': 'thread-1',
+        'requestedByUserId': 'user-me',
         'status': 'completed',
       },
     });
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
     expect(sounds.played, [AxSoundKind.requestCompleted]);
+
+    // Replayed event, a collaborator's request and an unattributed request
+    // stay quiet.
+    for (final payload in [
+      {'workRequestId': 'req-1', 'requestedByUserId': 'user-me'},
+      {'workRequestId': 'req-2', 'requestedByUserId': 'user-other'},
+      {'workRequestId': 'req-3'},
+    ]) {
+      realtime.emit({
+        'type': 'work_request.completed',
+        'payload': {'threadId': 'thread-1', ...payload},
+      });
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+    }
+    expect(sounds.played, [AxSoundKind.requestCompleted]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets(
+      'ID-only message events chime for people only, once, and never for own or AI entries',
+      (tester) async {
+    final sounds = TestSoundNotifications();
+    final realtime = TestRealtime();
+    final source = _SoundNotificationSource();
+    AxDiscussionMessage message(String id, String author, {String? kind}) =>
+        AxDiscussionMessage(
+          id: id,
+          threadId: 'thread-1',
+          authorUserId: author,
+          body: 'text',
+          createdAt: '2026-01-01T00:00:00Z',
+          kind: kind ?? 'message',
+        );
+    source.messages.addAll({
+      'm-own': message('m-own', 'user-me'),
+      'm-other': message('m-other', 'user-other'),
+      'm-ai': message('m-ai', 'user-other', kind: 'ai_answer'),
+    });
+    String? rawPrefs;
+    final store = ViewPreferencesStore(
+      read: () => rawPrefs,
+      write: (v) => rawPrefs = v,
+    );
+    store.save(const ViewPreferences(muteSound: false));
+
+    await tester.pumpWidget(MaterialApp(
+      home: SyntilaAppShell(
+        services: const DefaultPlatformServices(),
+        dataSource: source,
+        realtimeClient: realtime,
+        soundNotifications: sounds,
+        viewPreferencesStore: store,
+        initialUri: Uri.parse('/'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> emit(String entityId) async {
+      realtime.emit({
+        'type': 'discussion.created',
+        'payload': {'entityId': entityId, 'threadId': 'thread-1'},
+      });
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+    }
+
+    await emit('m-own');
+    await emit('m-ai');
+    await emit('m-missing');
+    expect(sounds.played, isEmpty);
+
+    await emit('m-other');
+    await emit('m-other');
+    expect(sounds.played, [AxSoundKind.messageReceived]);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));

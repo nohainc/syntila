@@ -308,11 +308,15 @@ export async function handleUpdateThread(
   const statusOnly =
     Object.keys(body).length === 1 &&
     ["archived", "active"].includes(String(body.status));
+  // A view-state patch only writes the caller's own selection (stored per
+  // user), so viewing the Thread is enough; managing it is not required.
+  const viewStateOnly =
+    Object.keys(body).length === 1 && body.metadata !== undefined;
   const { context, thread } = await authorizeThreadAccess(
     request,
     env,
     threadId,
-    statusOnly ? "view" : "manage",
+    statusOnly || viewStateOnly ? "view" : "manage",
     accessContext,
   );
   if (
@@ -345,7 +349,7 @@ export async function handleUpdateThread(
   }
 
   const space = await spaceKind(dataOf(env).read, thread.spaceId);
-  if (space?.kind === "direct" && !isDirectGeneral) {
+  if (space?.kind === "direct" && !isDirectGeneral && !viewStateOnly) {
     if (thread.lead.userId !== context.userId) {
       throw new HttpError(
         403,

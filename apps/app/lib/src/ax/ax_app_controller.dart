@@ -654,7 +654,9 @@ extension _AxAppController on _AxAppStateMixin {
     if (known == null || !mounted) return;
     _knownInvitationIds = _currentInvitationIds();
     void announce(String id, String type, String summary) {
-      if (!_viewPreferences.muteSound) soundNotifications.playMessageReceived();
+      if (_firstSound('invitation:$id')) {
+        _playSound(AxSoundKind.messageReceived);
+      }
       _recordNotification({
         'eventId': 'invitation:$id',
         'type': type,
@@ -737,9 +739,28 @@ extension _AxAppController on _AxAppStateMixin {
       threadId == navigation.threadId &&
       _tabVisible;
 
+  /// Remembers [key] and reports whether it is new. The oldest keys are
+  /// forgotten first, so a replayed recent event can never chime twice.
   bool _firstSound(String key) {
-    if (_soundedKeys.length > 200) _soundedKeys.clear();
-    return _soundedKeys.add(key);
+    if (!_soundedKeys.add(key)) return false;
+    while (_soundedKeys.length > 500) {
+      _soundedKeys.remove(_soundedKeys.first);
+    }
+    return true;
+  }
+
+  /// Plays [kind] unless the sound is muted or the same kind just played, so
+  /// two events for one happening (for example an invitation signal and the
+  /// refreshed invitation list) make a single chime.
+  void _playSound(AxSoundKind kind) {
+    if (_viewPreferences.muteSound) return;
+    final now = DateTime.now();
+    final last = _lastSoundAt[kind];
+    if (last != null && now.difference(last) < const Duration(seconds: 1)) {
+      return;
+    }
+    _lastSoundAt[kind] = now;
+    soundNotifications.play(kind);
   }
 
   void _handleSoundNotification(Map<String, dynamic> event) {
@@ -758,20 +779,18 @@ extension _AxAppController on _AxAppStateMixin {
     if (_isViewingThread(eventThreadId)) return;
 
     if (type == 'discussion.created' || type == 'thread.discussion.created') {
-      final author = payload?['authorUserId'] ??
-          payload?['author_user_id'] ??
-          event['authorUserId'] ??
-          event['author_user_id'];
-      if (author != null && author == viewerId) return;
-      soundNotifications.playMessageReceived();
+      unawaited(_chimeForDiscussionMessage(event, payload, viewerId));
       return;
     }
 
-    // Finished requests chime for the requester too, whatever the outcome.
+    // A finished request chimes only for the person who asked. Without a
+    // known requester there is no basis to interrupt anyone, so it stays quiet.
     if (_requestFinishedTypes.contains(type)) {
+      final requester = payload?['requestedByUserId'];
+      if (viewerId == null || requester != viewerId) return;
       final id = payload?['workRequestId'] ?? payload?['workflowRunId'];
       if (id is String && !_firstSound('finished:$id')) return;
-      soundNotifications.playRequestCompleted();
+      _playSound(AxSoundKind.requestCompleted);
       return;
     }
 
@@ -788,7 +807,48 @@ extension _AxAppController on _AxAppStateMixin {
         notification.runId == runId) {
       return;
     }
-    soundNotifications.playMessageReceived();
+    _playSound(AxSoundKind.messageReceived);
+  }
+
+  /// Realtime `discussion.created` carries IDs only, so the author is read
+  /// from the message itself. Anything that cannot be attributed to another
+  /// person stays quiet: own messages (any tab or device), AI entries (the
+  /// finished request already chimed), and messages that cannot be read.
+  Future<void> _chimeForDiscussionMessage(
+    Map<String, dynamic> event,
+    Map? payload,
+    String? viewerId,
+  ) async {
+    if (viewerId == null) return;
+    final messageId = payload?['entityId'] ?? event['entityId'];
+    final key = 'message:${messageId ?? event['eventId'] ?? event['id']}';
+    final hasKey = messageId is String || event['eventId'] != null;
+    if (hasKey && !_firstSound(key)) return;
+
+    String? author = (payload?['authorUserId'] ??
+        payload?['author_user_id'] ??
+        event['authorUserId'] ??
+        event['author_user_id']) as String?;
+    var threadId = (payload?['threadId'] ?? event['threadId']) as String?;
+    var aiEntry = false;
+    if (author == null) {
+      final source = store.dataSource;
+      if (messageId is! String) return;
+      try {
+        final message =
+            await source.loadDiscussionMessage(messageId: messageId);
+        author = message.authorUserId;
+        threadId = message.threadId;
+        aiEntry = message.isAiEntry;
+      } catch (_) {
+        // Unreadable (deleted, not permitted, offline): do not guess.
+        return;
+      }
+    }
+    if (!mounted || author.isEmpty || author == viewerId || aiEntry) return;
+    // The screen may have changed while the message was being read.
+    if (_isViewingThread(threadId)) return;
+    _playSound(AxSoundKind.messageReceived);
   }
 
   Future<void> _acceptInvitation(AxSpaceInvitation invite) async {

@@ -1,9 +1,13 @@
 import 'dart:convert';
 
-/// Local-only state for reopening a Thread in the same place.
+/// State for reopening a Thread in the same place.
 ///
-/// This object is deliberately separate from Cloud-backed Thread data. Draft
-/// text is never included in a request until the user submits it.
+/// Two owners, never merged: the Workflow/Worker/model/effort selection
+/// ([workflowReference], [workerId], [workerTypeId], [model],
+/// [reasoningEffort], [catalogRevision]) belongs to Cloud and is only filled in
+/// by [restore]; everything else is device-local and is all that [toJson]
+/// writes. Draft text is never included in a request until the user submits
+/// it.
 class AxThreadViewState {
   const AxThreadViewState({
     this.tabIndex = 0,
@@ -13,7 +17,6 @@ class AxThreadViewState {
     this.model,
     this.reasoningEffort,
     this.catalogRevision,
-    this.selectionUpdatedAt,
     this.chatDraft = '',
     this.workDraft = '',
     this.chatSeenId,
@@ -34,9 +37,6 @@ class AxThreadViewState {
   final String? reasoningEffort;
   final String? catalogRevision;
 
-  /// When the user last changed the Workflow/Worker/model selection (UTC
-  /// ISO-8601). Decides between the local and Cloud copies on restore.
-  final String? selectionUpdatedAt;
   final String chatDraft;
   final String workDraft;
 
@@ -65,17 +65,12 @@ class AxThreadViewState {
   static const notesPane = 'notes';
   static const _panes = {conversationPane, aiHistoryPane, notesPane};
 
+  /// The device-local part only. [workflowReference] is kept as the owner of
+  /// [stepSelections] and [researcherCount], not as the Thread's selection.
   Map<String, dynamic> toJson() => {
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'tabIndex': tabIndex.clamp(0, 1),
         if (workflowReference != null) 'workflowReference': workflowReference,
-        if (workerId != null) 'workerId': workerId,
-        if (workerTypeId != null) 'workerTypeId': workerTypeId,
-        if (model != null) 'model': model,
-        if (reasoningEffort != null) 'reasoningEffort': reasoningEffort,
-        if (catalogRevision != null) 'catalogRevision': catalogRevision,
-        if (selectionUpdatedAt != null)
-          'selectionUpdatedAt': selectionUpdatedAt,
         if (chatDraft.isNotEmpty) 'chatDraft': _bounded(chatDraft),
         if (workDraft.isNotEmpty) 'workDraft': _bounded(workDraft),
         if (chatSeenId != null) 'chatSeenId': chatSeenId,
@@ -87,55 +82,37 @@ class AxThreadViewState {
         if (researcherCount != null) 'researcherCount': researcherCount,
       };
 
-  /// Thread metadata wins over the browser-local copy for the selection
-  /// unless the local selection is newer; the drafts and the tab (composer mode)
-  /// stay local because they are never shared through Cloud.
-  static AxThreadViewState? withRemote(
+  /// The Cloud `viewState` is the only source of the selection. The local copy
+  /// supplies everything else (tab, drafts, markers, pane, per-Workflow
+  /// choices); the tab is the composer mode and stays with the local drafts.
+  /// Step choices belong to one Workflow, so they survive only while Cloud
+  /// names the Workflow they were made for.
+  static AxThreadViewState? restore(
       AxThreadViewState? local, Map<String, dynamic> remote) {
-    if (remote.isEmpty) return local;
     String? string(String key) {
       final value = remote[key];
       return value is String && value.isNotEmpty ? value : null;
     }
 
-    // A local selection newer than the Cloud copy wins: the Cloud write may
-    // have failed, or the Thread list may predate it.
-    final localAt = DateTime.tryParse(local?.selectionUpdatedAt ?? '');
-    final remoteAt = DateTime.tryParse(string('selectionUpdatedAt') ?? '');
-    if (local != null &&
-        localAt != null &&
-        (remoteAt == null || localAt.isAfter(remoteAt))) {
-      return local;
-    }
-
-    final tab = remote['tabIndex'];
+    final workflowReference = string('workflowReference');
+    final sameWorkflow = local?.workflowReference == workflowReference;
     return AxThreadViewState(
-      // The tab is the composer mode, so it stays with the local drafts: a
-      // Cloud tab differing from this browser's would restore a draft into
-      // the hidden composer.
-      tabIndex: local?.tabIndex ?? (tab is int ? tab.clamp(0, 1) : 0),
-      workflowReference: string('workflowReference'),
+      tabIndex: local?.tabIndex ?? 0,
+      workflowReference: workflowReference,
       workerId: string('workerId'),
-      workerTypeId: string('workerTypeId') ??
-          (local?.workerId == string('workerId') ? local?.workerTypeId : null),
+      workerTypeId: string('workerTypeId'),
       model: string('model'),
       reasoningEffort: string('reasoningEffort'),
       catalogRevision: string('catalogRevision'),
-      selectionUpdatedAt: string('selectionUpdatedAt'),
       chatDraft: local?.chatDraft ?? '',
       workDraft: local?.workDraft ?? '',
       chatSeenId: local?.chatSeenId,
       workSeenId: local?.workSeenId,
       pane: local?.pane,
       workflowSelections: local?.workflowSelections ?? const {},
-      // Step choices belong to one Workflow; they survive only while the
-      // Cloud copy names the same one.
-      stepSelections: local?.workflowReference == string('workflowReference')
-          ? local?.stepSelections ?? const {}
-          : const {},
-      researcherCount: local?.workflowReference == string('workflowReference')
-          ? local?.researcherCount
-          : null,
+      stepSelections:
+          sameWorkflow ? local?.stepSelections ?? const {} : const {},
+      researcherCount: sameWorkflow ? local?.researcherCount : null,
     );
   }
 
@@ -155,12 +132,6 @@ class AxThreadViewState {
     return AxThreadViewState(
       tabIndex: tab is int ? tab.clamp(0, 1) : 0,
       workflowReference: string('workflowReference'),
-      workerId: string('workerId'),
-      workerTypeId: string('workerTypeId'),
-      model: string('model'),
-      reasoningEffort: string('reasoningEffort'),
-      catalogRevision: string('catalogRevision'),
-      selectionUpdatedAt: string('selectionUpdatedAt'),
       chatDraft: draft('chatDraft'),
       workDraft: draft('workDraft'),
       chatSeenId: string('chatSeenId'),

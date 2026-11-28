@@ -146,10 +146,16 @@ independent of the selected Space.
   restored data is stale and revalidated; hydration cannot overwrite newer data.
   Logout clears memory and the user's records, and a revision tombstone stops other
   tabs from repopulating. Storage failure falls back to memory.
-- **Local Thread view state** (separate browser namespace). Active tab, selected
-  Workflow and Worker/model/effort, and Chat/Work drafts. Never sent to Cloud;
-  restored choices are reconciled with the current catalog and ignored when stale.
-  Appearance (Light/Dark/System) is stored in `syntila-theme-v1`.
+- **Local Thread view state** (separate browser namespace, `localStorage`).
+  Device-local only: active tab (the composer mode, kept with its drafts), open
+  pane, Chat/Work drafts, last-seen markers, and per-Workflow/per-step choices.
+  Never sent to Cloud. It holds no Worker/model/effort selection for the Thread
+  (see Persisted Thread view state). Each Thread has three entries (the view, the
+  Chat draft, the Work draft) and a tab writes only the parts it changed since it
+  last read or wrote them, so a second tab or window keeps the first one's draft.
+  A write the browser refuses stays in memory for the page's next load; deleting
+  a Thread removes its entries and logout removes the user's. Appearance (Light/Dark/System) is stored in
+  `syntila-theme-v1`.
 - **Conditional reads** ([conditional reads v1](../specifications/AX_CONDITIONAL_READS.md)).
   Space detail, Space Threads and the Workflow catalog send the last ETag on
   revalidation; `304` is treated as a fresh read. The validator cache is
@@ -200,14 +206,20 @@ polling and navigation never repeat the POST.
   Thread detaches the note instead of deleting it. Notes are never published as
   events or included in Worker context. Per-Thread note: `GET`/`PUT /api/threads/:id/note`.
 - **Persisted Thread view state.** `threads.metadata_json` stores the caller's
-  choices under `metadata.viewStates[userId]`, exposed as `metadata.viewState`
-  (`tabIndex`, `workflowReference`, `workerId`, `workerTypeId`, `model`,
-  `reasoningEffort`, `catalogRevision`, `selectionUpdatedAt`). Patching it does not
-  change `updatedAt`. Restore: re-bind a vanished Worker by `workerTypeId` only when
-  exactly one of the viewer's Workers has that type; a superseded Workflow
-  resolves to its current version; a missing one falls back to the default
-  Workflow but keeps the Worker and model. Cloud wins on reopen unless the local
-  `selectionUpdatedAt` is newer. Space settings (`spaces.settings_json`) hold
+  own selection under `metadata.viewStates[userId]`, exposed as
+  `metadata.viewState` (`workflowReference`, `workerId`, `workerTypeId`,
+  `model`, `reasoningEffort`, `catalogRevision`). Cloud is its only owner: the
+  app writes it only when the user makes an explicit Workflow/Worker/model/effort
+  choice (never on open, tab change, typing or leaving a Thread), always as the
+  full selection, so a stale device cannot overwrite a newer choice it did not
+  make. Any viewer may write their own; patching does not change `updatedAt`. A
+  failed write is dropped and the next choice sends the selection again. Restore
+  reads the Thread's `viewState` and re-binds a vanished Worker by `workerTypeId`
+  only when exactly one of the viewer's Workers has that type; a superseded
+  Workflow resolves to its current version; a missing one falls back to the
+  default Workflow but keeps the Worker and model. The open page does not
+  re-restore when another device changes the selection; it applies on the next
+  open. Space settings (`spaces.settings_json`) hold
   `threadOrder`, `sidebarExpanded` and `color`, and only the owner writes them.
 - **Workflows page** (`/workflows`, user-wide). Shows the newest version per
   catalog ID; regular accounts see only the implemented `chat` and Work workflows

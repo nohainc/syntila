@@ -280,6 +280,11 @@ extension _AxAppViews on _AxAppStateMixin {
             }
             try {
               await store.collaboration.deleteThread(thread);
+              final userId = store.auth.viewer?.id;
+              if (userId != null) {
+                unawaited(store.threadViewState
+                    .remove(userId: userId, threadId: thread.id));
+              }
               _discardNotificationsFor(threadId: thread.id);
               if (!mounted) return;
               _showSnackBar('Thread deleted.');

@@ -67,11 +67,9 @@ it("stores Thread view state in metadata without touching updatedAt", async () =
     patch({
       metadata: {
         viewState: {
-          tabIndex: 1,
           workflowReference: "direct:2",
           model: "sonnet",
           reasoningEffort: "medium",
-          selectionUpdatedAt: "2026-10-21T20:00:00.000Z",
         },
       },
     }),
@@ -80,7 +78,7 @@ it("stores Thread view state in metadata without touching updatedAt", async () =
   );
   expect(first.status).toBe(200);
   const second = await handleUpdateThread(
-    patch({ metadata: { viewState: { model: null, tabIndex: 0 } } }),
+    patch({ metadata: { viewState: { model: null } } }),
     env,
     "T",
   );
@@ -90,10 +88,8 @@ it("stores Thread view state in metadata without touching updatedAt", async () =
   expect(body.thread.updatedAt).toBe(created);
   expect(body.thread.metadata).toEqual({
     viewState: {
-      tabIndex: 0,
       workflowReference: "direct:2",
       reasoningEffort: "medium",
-      selectionUpdatedAt: "2026-10-21T20:00:00.000Z",
     },
   });
   const listed = (await (
@@ -106,7 +102,9 @@ it("rejects unsupported Thread metadata", async () => {
   const { env, patch } = await fixture();
   for (const metadata of [
     { other: 1 },
-    { viewState: { tabIndex: 2 } },
+    // Device-local state never travels to Cloud.
+    { viewState: { tabIndex: 1 } },
+    { viewState: { selectionUpdatedAt: "2026-10-21T20:00:00.000Z" } },
     { viewState: { unknown: "x" } },
     { viewState: { model: 5 } },
   ]) {
@@ -153,9 +151,7 @@ it("keeps each member's Thread view state separate", async () => {
   (await sqlite.exec("UPDATE threads SET lead_user_id = 'bob'"));
   const select = (workerId: string) =>
     patch({
-      metadata: {
-        viewState: { workerId, selectionUpdatedAt: "2026-10-21T20:00:00.000Z" },
-      },
+      metadata: { viewState: { workerId } },
     });
   expect(
     (await handleUpdateThread(select("alice-worker"), env, "T")).status,
@@ -178,27 +174,28 @@ it("keeps each member's Thread view state separate", async () => {
   expect(await viewState(env)).toBe("alice-worker");
 });
 
-it("clamps a future selection time to the server clock", async () => {
-  const { env, patch } = await fixture();
-  const response = await handleUpdateThread(
-    patch({
-      metadata: {
-        viewState: { selectionUpdatedAt: "2999-01-01T00:00:00.000Z" },
-      },
-    }),
-    env,
-    "T",
-  );
-  const body = (await response.json()) as {
-    thread: { metadata: { viewState: { selectionUpdatedAt: string } } };
-  };
-  const at = Date.parse(body.thread.metadata.viewState.selectionUpdatedAt);
-  expect(at).toBeLessThanOrEqual(Date.now());
+it("lets a member who cannot manage the Thread keep their own selection", async () => {
+  const { env, envFor, patch } = await fixture();
+  const bob = envFor("bob"); // Collaborator; Alice leads the Thread.
+  expect(
+    (
+      await handleUpdateThread(
+        patch({ metadata: { viewState: { workerId: "bob-worker" } } }),
+        bob,
+        "T",
+      )
+    ).status,
+  ).toBe(200);
+  // Anything beyond the caller's own view state still needs manage access.
   await expect(
     handleUpdateThread(
-      patch({ metadata: { viewState: { selectionUpdatedAt: "soon" } } }),
-      env,
+      patch({ name: "Renamed", metadata: { viewState: { workerId: "x" } } }),
+      bob,
       "T",
     ),
-  ).rejects.toMatchObject({ status: 400 });
+  ).rejects.toMatchObject({ status: 403 });
+  const listed = (await (
+    await handleListSpaceThreads(patch({}), env, "S")
+  ).json()) as { threads: { metadata: { viewState?: unknown } }[] };
+  expect(listed.threads[0]!.metadata.viewState).toBeUndefined();
 });

@@ -27,6 +27,9 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   /// (for example `work_request.failed` then `thread.failed`) chime once.
   final _soundedKeys = <String>{};
 
+  /// When each kind last played; see `_playSound`.
+  final _lastSoundAt = <AxSoundKind, DateTime>{};
+
   late final AxSoundNotifications soundNotifications =
       widget.soundNotifications ?? createAxSoundNotifications();
   List<AxNotification> get notifications => store.notifications;
