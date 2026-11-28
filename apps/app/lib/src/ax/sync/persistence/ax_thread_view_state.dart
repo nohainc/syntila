@@ -74,6 +74,17 @@ class AxThreadViewState {
   static const notesPane = 'notes';
   static const _panes = {conversationPane, aiHistoryPane, notesPane};
 
+  /// What is written to Cloud: the selection only, every key present so a
+  /// cleared choice (null) clears it there too.
+  Map<String, dynamic> get cloudSelection => {
+        'workflowReference': workflowReference,
+        'workerId': workerId,
+        'workerTypeId': workerTypeId,
+        'model': model,
+        'reasoningEffort': reasoningEffort,
+        'catalogRevision': catalogRevision,
+      };
+
   /// The device-local part only. [workflowReference] is kept as the owner of
   /// [stepSelections] and [researcherCount], not as the Thread's selection.
   Map<String, dynamic> toJson() => {

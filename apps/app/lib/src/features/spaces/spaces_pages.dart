@@ -58,6 +58,7 @@ import '../common/syntila_markdown_body.dart';
 import '../common/collapsible_own_message.dart';
 import '../common/message_grouping.dart';
 import 'thread_presentation_controller.dart';
+import 'thread_selection_restore.dart';
 import 'timeline_follow_anchor.dart';
 import 'timeline_scroll_overlay.dart';
 import '../../ax/work_request_file_picker_stub.dart'

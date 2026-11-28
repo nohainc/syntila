@@ -1333,15 +1333,6 @@ class _ThreadPageState extends State<ThreadPage>
     );
   }
 
-  Map<String, dynamic> _remoteViewStatePayload(AxThreadViewState state) => {
-        'workflowReference': state.workflowReference,
-        'workerId': state.workerId,
-        'workerTypeId': state.workerTypeId,
-        'model': state.model,
-        'reasoningEffort': state.reasoningEffort,
-        'catalogRevision': state.catalogRevision,
-      };
-
   /// Cloud owns the selection; the browser copy supplies everything else.
   AxThreadViewState? _restoredViewState(AxThreadViewState? local) {
     final remote = widget.thread.viewState;
@@ -1372,7 +1363,7 @@ class _ThreadPageState extends State<ThreadPage>
     if (callback == null) return;
     // A failed write is dropped; the user's next choice sends the full
     // selection again.
-    callback(_remoteViewStatePayload(state)).catchError((Object _) {});
+    callback(state.cloudSelection).catchError((Object _) {});
   }
 
   /// An explicit choice supersedes a saved selection still waiting for the
@@ -1393,76 +1384,25 @@ class _ThreadPageState extends State<ThreadPage>
 
   void _reconcilePendingThreadViewState() {
     final saved = _pendingThreadViewState;
-    if (saved == null || _availableWorkflows.isEmpty) return;
-    if ((saved.workerId != null || saved.stepSelections.isNotEmpty) &&
-        !_workerListSettled) {
-      return;
-    }
-    // Wait until the initial Worker catalog is applied before resolving a saved
-    // selection; otherwise the empty intermediate list loses its type hint.
-    if (saved.workerId != null &&
-        !widget.space.isDirect &&
-        _workflowConfigurations != null &&
-        !_initialWorkersApplied) {
-      return;
-    }
-    // Match the exact reference first, then the same workflow code at its
-    // current version so a version bump keeps the stored choice.
-    final savedId = saved.workflowReference?.split(':').first;
-    final workflow = _availableWorkflows
-            .where((item) => item.reference == saved.workflowReference)
-            .firstOrNull ??
-        (savedId == null
-            ? null
-            : _currentWorkflowVersions(_availableWorkflows)
-                .where((item) => item.id == savedId)
-                .firstOrNull);
-    // A saved Workflow that no longer exists falls back to the default
-    // Workflow but keeps the saved Worker, model and effort.
-    if (workflow == null && _loadingWorkflows) return;
-    if (workflow != null) _workflow = workflow.reference;
-    var workerId = saved.workerId;
-    var catalogRevision = saved.catalogRevision;
-    final knownWorkers = [..._spaceWorkers, ..._ownChatWorkers];
-    if (workerId != null && knownWorkers.isNotEmpty) {
-      // Worker IDs can change when a Worker is rebuilt or re-registered; the
-      // Worker type code does not. Re-bind by code when the ID is gone. The
-      // viewer's own Workers count too, so a saved own Worker is never
+    if (saved == null) return;
+    final restored = restoreThreadSelection(
+      saved,
+      workflows: _availableWorkflows,
+      currentWorkflows: _currentWorkflowVersions(_availableWorkflows),
+      // The viewer's own Workers count too, so a saved own Worker is never
       // swapped for a Space Worker of the same type.
-      var worker = knownWorkers.where((w) => w.id == workerId).firstOrNull;
-      if (worker == null && saved.workerTypeId != null) {
-        final sameType = knownWorkers
-            .where((w) => w.workerTypeId == saved.workerTypeId)
-            .toList();
-        final ready = sameType.where((w) => w.isReady).toList();
-        worker = ready.length == 1
-            ? ready.single
-            : sameType.length == 1
-                ? sameType.single
-                : null;
-        if (worker != null) workerId = worker.id;
-      }
-      // The catalog revision changes with every rebuilt Worker catalog; model
-      // and effort codes stay as saved.
-      final current = worker?.executionOptions?.catalogRevision;
-      if (current != null) catalogRevision = current;
+      workers: [..._spaceWorkers, ..._ownChatWorkers],
+      workersSettled: _workerListSettled,
+      awaitingInitialWorkers: !widget.space.isDirect &&
+          _workflowConfigurations != null &&
+          !_initialWorkersApplied,
+      loadingWorkflows: _loadingWorkflows,
+    );
+    if (restored == null) return;
+    if (restored.workflowReference != null) {
+      _workflow = restored.workflowReference!;
     }
-    // Restoring preferences never silently replaces unavailable saved choices.
-    final selection = <String, dynamic>{
-      if (workerId != null) 'workerId': workerId,
-      if (saved.model != null) 'model': saved.model,
-      if (saved.reasoningEffort != null)
-        'reasoningEffort': saved.reasoningEffort,
-      if (catalogRevision != null) 'catalogRevision': catalogRevision,
-      if (saved.researcherCount != null)
-        'researcherCount': saved.researcherCount,
-      if (saved.stepSelections.isNotEmpty)
-        'steps': {
-          for (final entry in saved.stepSelections.entries)
-            entry.key: Map<String, dynamic>.of(entry.value),
-        },
-    };
-    _workExecutionSelection = selection;
+    _workExecutionSelection = restored.selection;
     _pendingThreadViewState = null;
     _updateComposerState(() {});
   }
